@@ -1,0 +1,289 @@
+<style>
+
+/* ============================================
+   TAGERS · SISTEMA DE DISEÑO
+   Paleta oficial: guinda, oliva, terracota, crema
+   ============================================ */
+
+:root{
+
+  --guinda:        #6B2737;
+  --guinda-oscuro: #4E1C28;
+  --oliva:         #5C6B2A;
+  --terracota:     #C4522A;
+  --terracota-osc: #A3401E;
+  --crema:         #F2EBE0;
+
+  --gris-texto:    #3A3A3A;
+  --gris-suave:    #8A8A8A;
+  --gris-borde:    #E2DACD;
+
+  --verde-ok:      #4C7A3D;
+  --amarillo-alerta:#D9A441;
+  --rojo-error:    #B23A2E;
+
+  --radio:         12px;
+  --sombra:        0 4px 14px rgba(107,39,55,.10);
+}
+
+*{
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+}
+
+body{
+  margin: 0;
+  background: var(--crema);
+  color: var(--gris-texto);
+}
+
+/* ============================================
+   BARRA SUPERIOR (todas las pantallas)
+   ============================================ */
+
+.tagers-header{
+  background: var(--guinda);
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--sombra);
+}
+
+.tagers-header .marca{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.tagers-header .marca .logo{
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--terracota);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size: 18px;
+}
+
+.tagers-header h1{
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+
+.tagers-header .subtitulo{
+  font-size: 11px;
+  opacity: .75;
+  margin-top: 2px;
+}
+
+/* Navegación rápida entre módulos (íconos en el header) */
+
+.tagers-nav{
+  display:flex;
+  gap:6px;
+}
+
+.tagers-nav button{
+  background: rgba(255,255,255,.12);
+  border: none;
+  color: white;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: .15s;
+}
+
+.tagers-nav button:hover{
+  background: rgba(255,255,255,.25);
+}
+
+.tagers-nav button.activo{
+  background: var(--terracota);
+}
+
+/* ============================================
+   CONTENEDORES
+   ============================================ */
+
+.tagers-contenido{
+  padding: 24px;
+}
+
+.tagers-card{
+  background: white;
+  border-radius: var(--radio);
+  padding: 20px;
+  box-shadow: var(--sombra);
+  border: 1px solid var(--gris-borde);
+}
+
+.tagers-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+/* ============================================
+   BOTONES
+   ============================================ */
+
+.tagers-btn{
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .15s;
+  width: 100%;
+}
+
+.tagers-btn-primario{
+  background: var(--terracota);
+  color: white;
+}
+.tagers-btn-primario:hover{ background: var(--terracota-osc); }
+
+.tagers-btn-exito{
+  background: var(--verde-ok);
+  color: white;
+}
+.tagers-btn-exito:hover{ opacity: .88; }
+
+.tagers-btn-peligro{
+  background: var(--rojo-error);
+  color: white;
+}
+.tagers-btn-peligro:hover{ opacity: .88; }
+
+.tagers-btn-secundario{
+  background: white;
+  color: var(--guinda);
+  border: 1.5px solid var(--guinda);
+}
+
+/* ============================================
+   BADGES / ESTADOS
+   ============================================ */
+
+.tagers-badge{
+  display:inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+}
+
+.tagers-badge-verde   { background: var(--verde-ok); }
+.tagers-badge-amarillo{ background: var(--amarillo-alerta); color:#3A3A3A; }
+.tagers-badge-rojo    { background: var(--rojo-error); }
+.tagers-badge-gris    { background: var(--gris-suave); }
+
+/* ============================================
+   FORMULARIOS
+   ============================================ */
+
+.tagers-input, .tagers-select, .tagers-textarea{
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--gris-borde);
+  font-size: 14px;
+  outline: none;
+  margin-top: 6px;
+  margin-bottom: 12px;
+  background: white;
+  color: var(--gris-texto);
+}
+
+.tagers-input:focus, .tagers-select:focus, .tagers-textarea:focus{
+  border-color: var(--terracota);
+}
+
+.tagers-textarea{
+  resize: none;
+  height: 70px;
+}
+
+label.tagers-label{
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--guinda);
+}
+
+/* ============================================
+   TABLAS
+   ============================================ */
+
+.tagers-tabla{
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: var(--radio);
+  overflow: hidden;
+}
+
+.tagers-tabla th{
+  background: var(--guinda);
+  color: white;
+  padding: 10px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.tagers-tabla td{
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--gris-borde);
+  font-size: 13.5px;
+}
+
+.tagers-tabla tr:hover td{
+  background: var(--crema);
+}
+
+/* ============================================
+   UTILIDADES
+   ============================================ */
+
+.tagers-cargando{
+  text-align:center;
+  color: var(--gris-suave);
+  padding: 30px;
+  font-size: 14px;
+}
+
+.tagers-numero-grande{
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--guinda);
+  margin-top: 10px;
+}
+
+</style>
+
+<script>
+
+/**
+ * Navegación rápida entre módulos.
+ * Cierra el modal actual y le pide al servidor abrir otro.
+ * Uso: <button onclick="tagersIrA('abrirDashboard')">
+ */
+function tagersIrA(funcionServidor){
+
+  google.script.run
+    .withSuccessHandler(function(){})
+    .withFailureHandler(function(error){
+      alert("No se pudo abrir el módulo: "+error.message);
+    })[funcionServidor]();
+
+  google.script.host.close();
+
+}
+
+</script>

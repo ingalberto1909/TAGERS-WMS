@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<style>
+
+:root{
+  --guinda:#6B2737;
+  --guinda-dark:#4E1C28;
+  --oliva:#5C6B2A;
+  --terracota:#C4522A;
+  --crema:#F2EBE0;
+}
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Arial,Helvetica,sans-serif;
+}
+
+body{
+
+background:var(--crema);
+
+}
+
+@keyframes fadeInUp{
+from{ opacity:0; transform:translateY(10px); }
+to{ opacity:1; transform:translateY(0); }
+}
+
+.vista-animada{
+animation:fadeInUp .35s ease;
+}
+
+/*======================*/
+/* BARRA SUPERIOR */
+/*======================*/
+
+header{
+
+background:var(--guinda);
+color:var(--crema);
+padding:20px;
+
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:15px;
+
+box-shadow:0 3px 10px rgba(0,0,0,.15);
+
+}
+
+header h1{
+
+font-size:28px;
+
+}
+
+header input{
+
+width:320px;
+
+padding:12px;
+
+border:none;
+
+border-radius:8px;
+
+font-size:16px;
+
+}
+
+header input:focus{
+
+outline:2px solid var(--terracota);
+
+}
+
+#volverInicioApp{
+
+padding:12px 18px;
+
+border:none;
+
+border-radius:8px;
+
+background:var(--guinda-dark);
+
+color:var(--crema);
+
+font-size:15px;
+
+cursor:pointer;
+
+white-space:nowrap;
+
+transition:background .15s ease;
+
+}
+
+#volverInicioApp:hover{
+
+background:#3a141d;
+
+}
+
+
+/*======================*/
+/* DASHBOARD */
+/*======================*/
+
+#dashboard{
+
+padding:30px;
+
+display:grid;
+
+grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+
+gap:20px;
+
+}
+
+
+/*======================*/
+/* TARJETAS */
+/*======================*/
+
+.card{
+
+background:white;
+
+border-radius:15px;
+
+padding:20px;
+
+box-shadow:0 5px 20px rgba(0,0,0,.12);
+
+transition:transform .25s ease,box-shadow .25s ease;
+
+cursor:pointer;
+
+animation:fadeInUp .3s ease;
+
+}
+
+.card:hover{
+
+transform:translateY(-8px);
+
+box-shadow:0 10px 26px rgba(0,0,0,.18);
+
+}
+
+.card h2{
+
+margin-bottom:20px;
+
+color:var(--guinda);
+
+}
+
+.card table{
+
+width:100%;
+
+margin-bottom:15px;
+
+}
+
+.card td{
+
+padding:6px;
+
+color:#4a3a34;
+
+}
+
+.boton{
+
+width:100%;
+
+padding:12px;
+
+background:var(--terracota);
+
+color:white;
+
+border:none;
+
+border-radius:8px;
+
+cursor:pointer;
+
+font-size:16px;
+
+transition:background .15s ease;
+
+}
+
+.boton:hover{
+
+background:#a8431f;
+
+}
+
+
+/*======================*/
+/* RACK */
+/*======================*/
+
+#rack{
+
+display:none;
+
+padding:25px;
+
+}
+
+#rack h2{
+
+margin-bottom:20px;
+
+color:var(--guinda);
+
+}
+
+.nivel{
+
+background:white;
+
+padding:15px;
+
+margin-bottom:15px;
+
+border-radius:12px;
+
+box-shadow:0 3px 10px rgba(0,0,0,.08);
+
+animation:fadeInUp .3s ease;
+
+}
+
+.nivel h3{
+
+color:var(--guinda-dark);
+
+}
+
+.posiciones{
+
+display:flex;
+
+gap:15px;
+
+margin-top:10px;
+
+flex-wrap:wrap;
+
+}
+
+.posicion{
+
+flex:1;
+
+min-width:90px;
+
+padding:18px;
+
+border-radius:10px;
+
+text-align:center;
+
+font-weight:bold;
+
+cursor:pointer;
+
+color:white;
+
+transition:transform .15s ease;
+
+}
+
+.posicion:hover{
+
+transform:scale(1.04);
+
+}
+
+.verde{
+
+background:var(--oliva);
+
+}
+
+.amarillo{
+
+background:#D9A441;
+color:#3a2c00;
+
+}
+
+.rojo{
+
+background:var(--guinda);
+
+}
+
+.gris{
+
+background:#9e9186;
+
+}
+
+#volver{
+
+margin-bottom:20px;
+
+padding:10px 18px;
+
+border:none;
+
+background:var(--guinda);
+
+color:white;
+
+border-radius:8px;
+
+cursor:pointer;
+
+transition:background .15s ease;
+
+}
+
+#volver:hover{
+
+background:var(--guinda-dark);
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>
+
+<h1>📦 TAGERS WMS</h1>
+
+<input
+id="buscar"
+placeholder="Buscar Rack..."
+onkeyup="filtrarRacks()"
+>
+
+<button id="volverInicioApp" onclick="volverAInicioApp()">
+⬅ Menú principal
+</button>
+
+</header>
+
+
+<div id="resultadosProducto" style="padding:0 30px"></div>
+
+<div id="dashboard" class="vista-animada">
+
+Cargando racks...
+
+</div>
+
+<div id="rack">
+
+<button id="volver">
+
+⬅ Regresar
+
+</button>
+
+<div id="contenidoRack"></div>
+
+</div>
+
+<script>
+
+const URL_APP = "<?= urlApp ?>";
+
+function volverAInicioApp(){
+window.top.location.href = URL_APP + "?page=index";
+}
+
+let rackActualDatos = [];
+
+let racks=[];
+
+let rackActual="";
+google.script.run
+.withSuccessHandler(cargarDashboard)
+.obtenerResumenRacks();
+
+function cargarDashboard(datos){
+
+racks=datos;
+
+dibujarDashboard(racks);
+
+}
+
+function dibujarDashboard(lista){
+
+let html="";
+
+lista.forEach(r=>{
+
+html+=`
+
+<div class="card">
+
+<h2>📦 ${r.rack}</h2>
+
+<table>
+
+<tr>
+
+<td>Productos</td>
+
+<td><b>${r.productos}</b></td>
+
+</tr>
+
+<tr>
+
+<td>Ubicaciones</td>
+
+<td><b>${r.ubicaciones}</b></td>
+
+</tr>
+
+<tr>
+
+<td>Bajo mínimo</td>
+
+<td><b>${r.bajoMinimo}</b></td>
+
+</tr>
+
+<tr>
+
+<td>Agotados</td>
+
+<td><b>${r.agotados}</b></td>
+
+</tr>
+
+</table>
+
+<button
+
+class="boton"
+
+onclick="abrirRack('${r.rack}')"
+
+>
+
+Abrir Rack
+
+</button>
+
+</div>
+
+`;
+
+});
+
+document.getElementById("dashboard").innerHTML=html;
+
+}
+let temporizadorBusqueda;
+
+function filtrarRacks(){
+
+  let texto = document.getElementById("buscar").value.toUpperCase().trim();
+
+  // Filtra racks al instante (como ya hacías)
+  let filtrados = racks.filter(x => x.rack.includes(texto));
+  dibujarDashboard(filtrados);
+
+  // Búsqueda de productos con pequeño retraso (evita spamear el servidor)
+  clearTimeout(temporizadorBusqueda);
+
+  if (texto.length < 2) {
+    document.getElementById("resultadosProducto").innerHTML = "";
+    return;
+  }
+
+  temporizadorBusqueda = setTimeout(()=>{
+
+    google.script.run
+      .withSuccessHandler(mostrarResultadosProducto)
+      .buscarProducto(texto);
+
+  }, 300);
+
+}
+
+function mostrarResultadosProducto(resultados){
+
+  const cont = document.getElementById("resultadosProducto");
+
+  if (!resultados || resultados.length === 0){
+    cont.innerHTML = "";
+    return;
+  }
+
+  let html = `<h3 style="margin:10px 0;color:#4E1C28">🔎 Productos encontrados (${resultados.length})</h3>`;
+  html += `<table border="1" width="100%" cellspacing="0" cellpadding="8" style="background:white;border-radius:8px;overflow:hidden">
+    <tr style="background:#6B2737;color:white">
+      <th>Producto</th><th>Código</th><th>Ubicación</th>
+      <th>Existencia</th><th>Estado</th><th>Proveedor</th><th></th>
+    </tr>`;
+
+  resultados.forEach(p=>{
+
+    html += `
+      <tr>
+        <td>${p.producto}</td>
+        <td>${p.codigo}</td>
+        <td>${p.ubicacion || "-"}</td>
+        <td>${p.existencia}</td>
+        <td>${p.estado}</td>
+        <td>${p.proveedor}</td>
+        <td>
+          <button class="boton" style="padding:6px 12px"
+            onclick="irAUbicacion('${p.rack}')">
+            Ver Rack
+          </button>
+        </td>
+      </tr>`;
+
+  });
+
+  html += "</table>";
+
+  cont.innerHTML = html;
+
+}
+
+function irAUbicacion(rack){
+  document.getElementById("resultadosProducto").innerHTML = "";
+  document.getElementById("buscar").value = "";
+  dibujarDashboard(racks);
+  abrirRack(rack);
+}
+
+function abrirRack(rack){
+
+rackActual=rack;
+
+google.script.run
+
+.withSuccessHandler(mostrarRack)
+
+.obtenerUbicacionesRack(rack);
+
+}
+
+function mostrarRack(datos){
+
+rackActualDatos = datos;
+
+document.getElementById("dashboard").style.display="none";
+
+document.getElementById("rack").style.display="block";
+
+let html="<h2>📦 Rack "+rackActual+"</h2>";
+
+let niveles=["N05","N04","N03","N02","N01"];
+
+niveles.forEach(n=>{
+
+html+=`
+
+<div class="nivel">
+
+<h3>${n}</h3>
+
+<div class="posiciones">
+
+`;
+["P01","P02","P03"].forEach(p=>{
+
+let encontrado = datos.find(x =>
+    x.nivel === n &&
+    x.posicion === p
+);
+
+let cantidadProductos = 0;
+
+if(encontrado){
+    cantidadProductos = encontrado.productos.length;
+}
+
+let clase="gris";
+
+if(encontrado){
+
+let agotado=false;
+
+let bajo=false;
+
+encontrado.productos.forEach(prod=>{
+
+if(Number(prod.existencia)==0){
+
+agotado=true;
+
+}
+
+else if(Number(prod.existencia)<Number(prod.minimo)){
+
+bajo=true;
+
+}
+
+});
+
+if(agotado)
+
+clase="rojo";
+
+else if(bajo)
+
+clase="amarillo";
+
+else
+
+clase="verde";
+
+}
+
+html+=`
+
+<div
+
+class="posicion ${clase}"
+
+onclick='verUbicacion(${JSON.stringify(encontrado)})'
+
+>
+
+${p}<br>
+<small>${cantidadProductos} prod.</small>
+
+</div>
+
+`;
+
+});
+
+html+=`
+
+</div>
+
+</div>
+
+`;
+
+});
+
+document.getElementById("contenidoRack").innerHTML=html;
+
+}
+
+document
+.getElementById("volver")
+.onclick=function(){
+
+document.getElementById("rack").style.display="none";
+
+document.getElementById("dashboard").style.display="grid";
+
+};
+
+function verUbicacion(x){
+
+    if(!x){
+        alert("Esta ubicación no tiene productos.");
+        return;
+    }
+
+    let html = `
+    <h2>📍 ${x.ubicacion}</h2>
+
+    <button onclick="mostrarRack(rackActualDatos)">
+        ⬅ Regresar
+    </button>
+
+    <br><br>
+
+    <table border="1" width="100%" cellspacing="0" cellpadding="8">
+
+    <tr style="background:#6B2737;color:white">
+
+        <th>Producto</th>
+        <th>Código</th>
+        <th>Existencia</th>
+        <th>Mínimo</th>
+        <th>Estado</th>
+        <th>Proveedor</th>
+
+    </tr>
+    `;
+
+    x.productos.forEach(p=>{
+
+        html += `
+
+        <tr>
+
+        <td>${p.producto}</td>
+        <td>${p.codigo}</td>
+        <td>${p.existencia}</td>
+        <td>${p.minimo}</td>
+        <td>${p.estado}</td>
+        <td>${p.proveedor}</td>
+
+        </tr>
+
+        `;
+
+    });
+
+    html += "</table>";
+
+    document.getElementById("contenidoRack").innerHTML = html;
+
+}
+
+</script>
+
+</body>
+
+</html>

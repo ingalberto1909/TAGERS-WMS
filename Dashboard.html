@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+
+  <style>
+    :root {
+      --guinda: #70263a;
+      --guinda-oscuro: #4f1727;
+      --fondo: #f5f6fa;
+      --texto: #263238;
+      --gris: #6b7280;
+      --borde: #e8e1d8;
+      --blanco: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      min-width: 0;
+      min-height: 100%;
+      overflow-x: hidden;
+      font-family: Arial, sans-serif;
+      background: var(--fondo);
+      color: var(--texto);
+    }
+
+    .app {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      flex: 0 0 260px;
+      width: 260px;
+      min-width: 260px;
+      min-height: 100vh;
+      padding: 24px 16px;
+      background: linear-gradient(180deg, var(--guinda), var(--guinda-oscuro));
+      color: white;
+      overflow-y: auto;
+    }
+
+    .marca {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 0 10px 24px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,.22);
+    }
+
+    .logo { font-size: 32px; }
+
+    .marca h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .marca small { color: #f2dfe4; }
+
+    .menu-lateral {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .menu-principal,
+    .submenu button {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: white;
+      cursor: pointer;
+      font-size: 15px;
+      text-align: left;
+    }
+
+    .menu-principal {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 14px;
+      font-weight: bold;
+    }
+
+    .menu-principal:hover,
+    .menu-principal.activo {
+      background: rgba(255,255,255,.18);
+    }
+
+    .submenu {
+      display: none;
+      margin: 2px 0 8px 17px;
+      padding-left: 10px;
+      border-left: 1px solid rgba(255,255,255,.28);
+    }
+
+    .submenu.abierto { display: block; }
+
+    .submenu button {
+      padding: 10px 12px;
+      color: #f7e9ed;
+    }
+
+    .submenu button:hover,
+    .submenu button.activo {
+      background: rgba(255,255,255,.14);
+    }
+
+    .flecha { font-size: 18px; }
+
+    .contenido {
+      flex: 1;
+      width: auto;
+      min-width: 0;
+      padding: 28px;
+      overflow-x: auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 26px;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      color: var(--guinda);
+    }
+
+    .topbar p {
+      margin: 6px 0 0;
+      color: var(--gris);
+    }
+
+    .buscador {
+      width: 320px;
+      max-width: 100%;
+      padding: 12px 15px;
+      border: 1px solid var(--borde);
+      border-radius: 10px;
+      outline: none;
+      font-size: 14px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi,
+    .panel {
+      background: var(--blanco);
+      border: 1px solid var(--borde);
+      border-radius: 15px;
+      box-shadow: 0 4px 14px rgba(30, 20, 15, .05);
+    }
+
+    .kpi { padding: 20px; }
+
+    .kpi-label {
+      color: var(--gris);
+      font-size: 14px;
+    }
+
+    .kpi-numero {
+      margin-top: 10px;
+      color: var(--guinda);
+      font-size: 30px;
+      font-weight: bold;
+    }
+
+    .panel {
+      padding: 20px;
+      overflow-x: auto;
+    }
+
+    .panel h3 {
+      margin: 0 0 18px;
+      color: var(--guinda);
+    }
+
+    .tagers-tabla {
+      width: 100%;
+      min-width: 650px;
+      border-collapse: collapse;
+    }
+
+    .tagers-tabla th {
+      padding: 12px;
+      background: var(--guinda);
+      color: white;
+      text-align: left;
+    }
+
+    .tagers-tabla td {
+      padding: 12px;
+      border-bottom: 1px solid var(--borde);
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 20px;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .entrada { background: #3f7d3b; }
+    .salida { background: #bd3c31; }
+    .ajuste { background: #b7791f; }
+
+    .menu-movil {
+      display: none;
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      padding: 9px 13px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--guinda);
+      color: white;
+      cursor: pointer;
+      font-size: 22px;
+    }
+
+    @media (max-width: 850px) {
+      .menu-movil { display: block; }
+
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 99;
+        transform: translateX(-100%);
+        transition: transform .25s ease;
+      }
+
+      .sidebar.abierto { transform: translateX(0); }
+
+      .contenido {
+        width: 100%;
+        padding: 68px 15px 20px;
+      }
+
+      .kpis { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 480px) {
+      .kpis { grid-template-columns: 1fr; }
+    }
+    .formulario-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.campo label {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--gris);
+}
+
+.campo input,
+.campo textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 9px;
+  font: inherit;
+}
+
+.campo-completo {
+  grid-column: 1 / -1;
+}
+
+.boton-guardar {
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--guinda);
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.boton-guardar:hover {
+  background: var(--guinda-oscuro);
+}
+
+.datos-producto {
+  display: none;
+  margin: 18px 0;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f7f2ea;
+}
+
+@media (max-width: 600px) {
+  .formulario-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.campo input,
+.campo textarea,
+.campo select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 9px;
+  font: inherit;
+  background: white;
+}
+.mapa-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.lista-racks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.boton-rack {
+  width: 100%;
+  padding: 13px;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: white;
+  color: var(--texto);
+  cursor: pointer;
+  text-align: left;
+  font-weight: bold;
+}
+
+.boton-rack:hover,
+.boton-rack.activo {
+  border-color: var(--guinda);
+  background: #fff5f7;
+  color: var(--guinda);
+}
+
+.ubicaciones-mapa {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.ubicacion-card {
+  padding: 14px;
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  background: white;
+}
+
+.ubicacion-card h4 {
+  margin: 0 0 10px;
+  color: var(--guinda);
+}
+
+.producto-mapa {
+  padding: 9px 0;
+  border-top: 1px solid var(--borde);
+  font-size: 13px;
+}
+
+@media (max-width: 850px) {
+  .mapa-layout {
+    grid-template-columns: 1fr;
+  }
+}
+  </style>
+</head>
+
+<body>
+  <button class="menu-movil" onclick="alternarMenu()">☰</button>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="marca">
+        <div class="logo">📦</div>
+        <div>
+          <h1>TAGERS WMS</h1>
+          <small>Gestión de almacén</small>
+        </div>
+      </div>
+
+      <nav class="menu-lateral">
+        <button class="menu-principal activo" onclick="mostrarVista('inicio', this)">
+          🏠 <span>Inicio</span>
+        </button>
+
+        <div>
+          <button class="menu-principal" onclick="alternarSubmenu('operaciones')">
+            <span>📦 Operaciones</span><span class="flecha">⌄</span>
+          </button>
+          <div class="submenu" id="operaciones">
+            <button onclick="mostrarVista('entradas', this)">📥 Entradas</button>
+            <button onclick="mostrarVista('salidas', this)">📤 Salidas</button>
+            <button onclick="mostrarVista('ajustes', this)">🔄 Ajustes</button>
+          </div>
+        </div>
+
+        <div>
+          <button class="menu-principal" onclick="alternarSubmenu('inventario')">
+            <span>📋 Inventario</span><span class="flecha">⌄</span>
+          </button>
+          <div class="submenu" id="inventario">
+            <button onclick="mostrarVista('consulta', this)">📦 Consulta</button>
+            <button onclick="mostrarVista('kardex', this)">📖 Kardex</button>
+            <button onclick="mostrarVista('mapa', this)">🗺️ Mapa</button>
+          </div>
+        </div>
+
+        <div>
+          <button class="menu-principal" onclick="alternarSubmenu('control')">
+            <span>📑 Control</span><span class="flecha">⌄</span>
+          </button>
+          <div class="submenu" id="control">
+            <button onclick="mostrarVista('conteos', this)">📋 Conteos</button>
+            <button onclick="mostrarVista('discrepancias', this)">⚠️ Discrepancias</button>
+          </div>
+        </div>
+
+        <button class="menu-principal" onclick="mostrarVista('reportes', this)">
+          📊 <span>Reportes</span>
+        </button>
+
+        <button class="menu-principal" onclick="mostrarVista('configuracion', this)">
+          ⚙️ <span>Configuración</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main class="contenido">
+      <div id="vista-principal"></div>
+    </main>
+  </div>
+
+  <script>
+    function alternarMenu() {
+      document.getElementById("sidebar").classList.toggle("abierto");
+    }
+
+    function alternarSubmenu(id) {
+      document.getElementById(id).classList.toggle("abierto");
+    }
+
+    function formatoNumero(valor) {
+      const numero = Number(valor);
+
+      if (!Number.isFinite(numero)) return "-";
+
+      return numero.toLocaleString("es-MX", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+      });
+    }
+
+    function escapeHtml(valor) {
+      return String(valor ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function badgeTipo(tipo) {
+      const tipoSeguro = escapeHtml(tipo || "AJUSTE");
+      const clase = tipo === "ENTRADA"
+        ? "entrada"
+        : tipo === "SALIDA"
+          ? "salida"
+          : "ajuste";
+
+      return `<span class="badge ${clase}">${tipoSeguro}</span>`;
+    }
+
+    function mostrarVista(vista, boton) {
+      document.querySelectorAll(".menu-principal, .submenu button")
+        .forEach(b => b.classList.remove("activo"));
+
+      if (boton) boton.classList.add("activo");
+
+      document.getElementById("sidebar").classList.remove("abierto");
+
+      const panel = document.getElementById("vista-principal");
+
+      if (vista === "inicio") {
+        panel.innerHTML = vistaInicio();
+        cargarInicio();
+        return;
+      }
+
+      if (vista === "consulta") {
+        panel.innerHTML = vistaConsulta();
+        return;
+      }
+if (vista === "entradas" || vista === "salidas") {
+  panel.innerHTML = vistaMovimiento(vista);
+  return;
+}
+if (vista === "mapa") {
+  panel.innerHTML = vistaMapa();
+  cargarMapaDashboard();
+  return;
+}
+      const titulos = {
+        entradas: "📥 Entradas",
+        salidas: "📤 Salidas",
+        ajustes: "🔄 Ajustes de inventario",
+        kardex: "📖 Kardex de movimientos",
+        mapa: "🗺️ Mapa del almacén",
+        conteos: "📋 Conteos cíclicos",
+        discrepancias: "⚠️ Discrepancias",
+        reportes: "📊 Reportes",
+        configuracion: "⚙️ Configuración"
+      };
+
+      panel.innerHTML = `
+        <section class="topbar">
+          <div>
+            <h2>${titulos[vista]}</h2>
+            <p>Este módulo se integrará en este mismo panel.</p>
+          </div>
+        </section>
+        <section class="panel">
+          Seleccionaste el módulo: <b>${titulos[vista]}</b>
+        </section>
+      `;
+    }
+
+    function vistaInicio() {
+      return `
+        <section class="topbar">
+          <div>
+            <h2>🏠 Inicio</h2>
+            <p>Resumen operativo del almacén.</p>
+          </div>
+        </section>
+
+        <section class="kpis">
+          <div class="kpi"><div class="kpi-label">Productos</div><div class="kpi-numero" id="productos">–</div></div>
+          <div class="kpi"><div class="kpi-label">Ubicaciones</div><div class="kpi-numero" id="ubicaciones">–</div></div>
+          <div class="kpi"><div class="kpi-label">Bajo mínimo</div><div class="kpi-numero" id="minimo">–</div></div>
+          <div class="kpi"><div class="kpi-label">Agotados</div><div class="kpi-numero" id="agotados">–</div></div>
+          <div class="kpi"><div class="kpi-label">Discrepancias pendientes</div><div class="kpi-numero" id="pendientes">–</div></div>
+          <div class="kpi"><div class="kpi-label">Conteos abiertos</div><div class="kpi-numero" id="conteos">–</div></div>
+        </section>
+
+        <section class="panel">
+          <h3>📜 Actividad reciente</h3>
+          <div id="actividad">Cargando movimientos...</div>
+        </section>
+      `;
+    }
+
+    function cargarInicio() {
+      google.script.run
+        .withSuccessHandler(d => {
+          const ids = {
+            productos: d.productos,
+            ubicaciones: d.ubicaciones,
+            minimo: d.bajoMinimo,
+            agotados: d.agotados,
+            pendientes: d.pendientes,
+            conteos: d.conteos
+          };
+
+          Object.keys(ids).forEach(id => {
+            const elemento = document.getElementById(id);
+            if (elemento) elemento.textContent = ids[id];
+          });
+        })
+        .obtenerDashboard();
+
+      google.script.run
+        .withSuccessHandler(movimientos => {
+          const cont = document.getElementById("actividad");
+          if (!cont) return;
+
+          if (!movimientos || movimientos.length === 0) {
+            cont.textContent = "Sin movimientos registrados.";
+            return;
+          }
+
+          let html = `
+            <table class="tagers-tabla">
+              <tr>
+                <th>Fecha</th><th>Hora</th><th>Tipo</th>
+                <th>Producto</th><th>Cantidad</th><th>Saldo</th>
+              </tr>
+          `;
+
+          movimientos.forEach(m => {
+            const cantidad = Number(m.entrada) !== 0 ? m.entrada : m.salida;
+
+            html += `
+              <tr>
+                <td>${escapeHtml(m.fecha)}</td>
+                <td>${escapeHtml(m.hora)}</td>
+                <td>${badgeTipo(m.tipo)}</td>
+                <td>${escapeHtml(m.producto)}</td>
+                <td>${formatoNumero(cantidad)}</td>
+                <td><b>${formatoNumero(m.existenciaNueva)}</b></td>
+              </tr>
+            `;
+          });
+
+          cont.innerHTML = html + "</table>";
+        })
+        .withFailureHandler(error => {
+          const cont = document.getElementById("actividad");
+          if (cont) cont.textContent = "❌ " + error.message;
+        })
+        .obtenerUltimosMovimientosKardex(8);
+    }
+
+    function vistaConsulta() {
+      return `
+        <section class="topbar">
+          <div>
+            <h2>📦 Consulta de inventario</h2>
+            <p>Busca por nombre de producto o código.</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <input
+            id="texto-consulta"
+            class="buscador"
+            style="width:100%"
+            placeholder="Escribe un producto o código..."
+            oninput="consultarProductoDashboard()"
+          >
+          <div id="resultado-consulta" style="margin-top:18px">
+            Escribe al menos 2 caracteres para buscar.
+          </div>
+        </section>
+      `;
+    }
+
+    function consultarProductoDashboard() {
+      const texto = document.getElementById("texto-consulta").value.trim();
+      const cont = document.getElementById("resultado-consulta");
+
+      if (texto.length < 2) {
+        cont.textContent = "Escribe al menos 2 caracteres para buscar.";
+        return;
+      }
+
+      cont.textContent = "Buscando...";
+
+      google.script.run
+        .withSuccessHandler(productos => {
+          if (!productos || productos.length === 0) {
+            cont.textContent = "No se encontraron productos.";
+            return;
+          }
+
+          let html = `
+            <table class="tagers-tabla">
+              <tr>
+                <th>Código</th><th>Producto</th><th>Ubicación</th>
+                <th>Existencia</th><th>Mínimo</th><th>Estado</th>
+              </tr>
+          `;
+
+          productos.forEach(p => {
+            html += `
+              <tr>
+                <td>${escapeHtml(p.codigo)}</td>
+                <td>${escapeHtml(p.producto)}</td>
+                <td>${escapeHtml(p.ubicacion)}</td>
+                <td><b>${formatoNumero(p.existencia)}</b></td>
+                <td>${formatoNumero(p.minimo)}</td>
+                <td>${escapeHtml(p.estado)}</td>
+              </tr>
+            `;
+          });
+
+          cont.innerHTML = html + "</table>";
+        })
+        .withFailureHandler(error => {
+          cont.textContent = "❌ " + error.message;
+        })
+        .buscarProducto(texto);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      mostrarVista(
+        "inicio",
+        document.querySelector('.menu-principal[onclick*="inicio"]')
+      );
+    });
+    function vistaMovimiento(vista) {
+  const esEntrada = vista === "entradas";
+  const titulo = esEntrada ? "📥 Nueva entrada" : "📤 Nueva salida";
+  const campoExtra = esEntrada ? "Lote" : "Área / destino";
+  const idExtra = esEntrada ? "lote" : "area";
+
+  return `
+    <section class="topbar">
+      <div>
+        <h2>${titulo}</h2>
+        <p>Registra el movimiento directamente desde el Dashboard.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <form onsubmit="guardarMovimiento(event, '${esEntrada ? "ENTRADA" : "SALIDA"}')">
+        <div class="formulario-grid">
+          <div class="campo">
+            <label>Código de producto</label>
+            <input
+              id="mov-codigo"
+              required
+              placeholder="Escanea o escribe el código"
+              onblur="consultarCodigoMovimiento()"
+            >
+          </div>
+
+          <div class="campo">
+            <label>Cantidad</label>
+            <input id="mov-cantidad" type="number" min="0.01" step="any" required>
+          </div>
+
+          <div class="campo">
+  <label>${campoExtra}</label>
+
+  ${
+    esEntrada
+      ? `<input id="mov-lote" placeholder="Lote">`
+      : `
+        <select id="mov-area" required>
+          <option value="">Selecciona un área</option>
+          <option value="Panaderia">Panadería</option>
+          <option value="Cocina">Cocina</option>
+          <option value="Reposteria">Repostería</option>
+        </select>
+        
+      `
+  }
+</div>
+
+          <div class="campo campo-completo">
+            <label>Observación</label>
+            <textarea id="mov-observacion" rows="3" placeholder="Comentario opcional"></textarea>
+          </div>
+        </div>
+
+        <div class="datos-producto" id="datos-producto"></div>
+
+        <br>
+        <button class="boton-guardar" type="submit">
+          Guardar ${esEntrada ? "entrada" : "salida"}
+        </button>
+      </form>
+    </section>
+  `;
+}
+
+function consultarCodigoMovimiento() {
+  const codigo = document.getElementById("mov-codigo").value.trim();
+  const cont = document.getElementById("datos-producto");
+
+  if (!codigo) {
+    cont.style.display = "none";
+    return;
+  }
+
+  cont.style.display = "block";
+  cont.textContent = "Buscando producto...";
+
+  google.script.run
+    .withSuccessHandler(productos => {
+      const codigoBuscado = codigo.toUpperCase().trim();
+
+      const producto = (productos || []).find(p =>
+        String(p.codigo || "").toUpperCase().trim() === codigoBuscado
+      );
+
+      if (!producto) {
+        cont.innerHTML = "❌ No se encontró el producto en MATRIZ.";
+        return;
+      }
+
+      cont.innerHTML = `
+        <b>${escapeHtml(producto.producto)}</b><br>
+        Código: ${escapeHtml(producto.codigo)} ·
+        Ubicación: ${escapeHtml(producto.ubicacion)} ·
+        Existencia disponible: <b>${formatoNumero(producto.existencia)}</b>
+      `;
+    })
+    .withFailureHandler(error => {
+      cont.innerHTML =
+        "❌ Error al consultar: " + (error.message || error);
+    })
+    .buscarProducto(codigo);
+}
+function guardarMovimiento(event, tipo) {
+  event.preventDefault();
+
+  const boton = event.target.querySelector('button[type="submit"]');
+
+  try {
+    const codigoInput = document.getElementById("mov-codigo");
+    const cantidadInput = document.getElementById("mov-cantidad");
+    const observacionInput = document.getElementById("mov-observacion");
+    const loteInput = document.getElementById("mov-lote");
+    const areaInput = document.getElementById("mov-area");
+
+    const codigo = codigoInput ? codigoInput.value.trim() : "";
+    const cantidad = cantidadInput ? cantidadInput.value : "";
+    const observacion = observacionInput ? observacionInput.value.trim() : "";
+    const lote = loteInput ? loteInput.value.trim() : "";
+    const area = areaInput ? areaInput.value : "";
+
+    if (!codigo) throw new Error("Captura el código del producto.");
+    if (!cantidad || Number(cantidad) <= 0) {
+      throw new Error("Captura una cantidad válida.");
+    }
+
+    if (tipo === "SALIDA" && !area) {
+      throw new Error("Selecciona un área de destino.");
+    }
+
+    boton.disabled = true;
+    boton.textContent = "Guardando...";
+
+    google.script.run
+      .withSuccessHandler(function(resultado) {
+        alert(
+          "✅ " + resultado.mensaje +
+          "\nProducto: " + resultado.producto +
+          "\nSaldo: " + formatoNumero(resultado.existenciaNueva)
+        );
+
+        mostrarVista(tipo === "ENTRADA" ? "entradas" : "salidas", null);
+      })
+      .withFailureHandler(function(error) {
+        alert("❌ Error al guardar: " + (error.message || error));
+        boton.disabled = false;
+        boton.textContent =
+          tipo === "ENTRADA" ? "Guardar entrada" : "Guardar salida";
+      })
+      .registrarMovimientoDashboard(tipo, {
+        codigo: codigo,
+        cantidad: cantidad,
+        lote: lote,
+        area: area,
+        observacion: observacion
+      });
+
+  } catch (error) {
+    alert("❌ " + error.message);
+    boton.disabled = false;
+    boton.textContent =
+      tipo === "ENTRADA" ? "Guardar entrada" : "Guardar salida";
+  }
+}
+function vistaMapa() {
+  return `
+    <section class="topbar">
+      <div>
+        <h2>🗺️ Mapa del almacén</h2>
+        <p>Selecciona un rack para consultar sus ubicaciones y existencias.</p>
+      </div>
+    </section>
+
+    <section class="mapa-layout">
+      <aside class="panel">
+        <h3>Racks</h3>
+        <div class="lista-racks" id="lista-racks">
+          Cargando racks...
+        </div>
+      </aside>
+
+      <section class="panel">
+        <h3 id="titulo-rack">Detalle del almacén</h3>
+        <div id="detalle-rack">
+          Selecciona un rack del panel izquierdo.
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+function cargarMapaDashboard() {
+  google.script.run
+    .withSuccessHandler(racks => {
+      const cont = document.getElementById("lista-racks");
+
+      if (!racks || racks.length === 0) {
+        cont.textContent = "No hay racks registrados.";
+        return;
+      }
+
+      cont.innerHTML = racks.map(r => `
+        <button class="boton-rack" onclick="seleccionarRackMapa('${escapeHtml(r.rack)}', this)">
+          ${escapeHtml(r.rack)}<br>
+          <small>
+            ${formatoNumero(r.productos)} productos ·
+            ${formatoNumero(r.ubicaciones)} ubicaciones
+          </small>
+        </button>
+      `).join("");
+    })
+    .withFailureHandler(error => {
+      document.getElementById("lista-racks").textContent =
+        "❌ " + error.message;
+    })
+    .obtenerResumenRacks();
+}
+
+function seleccionarRackMapa(rack, boton) {
+  document.querySelectorAll(".boton-rack")
+    .forEach(b => b.classList.remove("activo"));
+
+  boton.classList.add("activo");
+
+  document.getElementById("titulo-rack").textContent = "Rack: " + rack;
+  document.getElementById("detalle-rack").textContent =
+    "Cargando ubicaciones...";
+
+  google.script.run
+    .withSuccessHandler(ubicaciones => {
+      const cont = document.getElementById("detalle-rack");
+
+      if (!ubicaciones || ubicaciones.length === 0) {
+        cont.textContent = "No hay ubicaciones registradas para este rack.";
+        return;
+      }
+
+      cont.innerHTML = `
+        <div class="ubicaciones-mapa">
+          ${ubicaciones.map(u => `
+            <article class="ubicacion-card">
+              <h4>📍 ${escapeHtml(u.ubicacion || "Sin ubicación")}</h4>
+              <div>
+                Nivel: <b>${escapeHtml(u.nivel)}</b> ·
+                Posición: <b>${escapeHtml(u.posicion)}</b>
+              </div>
+
+              ${u.productos.map(p => `
+                <div class="producto-mapa">
+                  <b>${escapeHtml(p.producto)}</b><br>
+                  Código: ${escapeHtml(p.codigo)}<br>
+                  Existencia: <b>${formatoNumero(p.existencia)}</b>
+                </div>
+              `).join("")}
+            </article>
+          `).join("")}
+        </div>
+      `;
+    })
+    .withFailureHandler(error => {
+      document.getElementById("detalle-rack").textContent =
+        "❌ " + error.message;
+    })
+    .obtenerUbicacionesRack(rack);
+}
+  </script>
+</body>
+</html>

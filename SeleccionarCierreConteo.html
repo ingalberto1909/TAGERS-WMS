@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<style>
+
+body{
+font-family:Arial;
+padding:20px;
+background:#f1f5f9;
+}
+
+h2{
+color:#1565c0;
+}
+
+select,button{
+
+width:100%;
+padding:12px;
+margin-top:15px;
+border-radius:8px;
+
+}
+
+button{
+
+background:#16a34a;
+color:white;
+border:none;
+font-size:16px;
+cursor:pointer;
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<h2>📚 Cerrar Conteo Cíclico</h2>
+
+
+<select id="folio">
+
+<option>
+Cargando folios...
+</option>
+
+</select>
+
+
+<button onclick="cerrar()">
+✅ Cerrar Conteo
+</button>
+
+
+
+<script>
+
+
+google.script.run
+.withSuccessHandler(function(datos){
+
+let select=document.getElementById("folio");
+
+select.innerHTML="";
+
+
+datos.forEach(f=>{
+
+let op=document.createElement("option");
+
+op.value=f;
+
+op.text=f;
+
+select.appendChild(op);
+
+});
+
+
+})
+.obtenerFoliosAbiertos();
+
+
+
+function cerrar(){
+
+let folio=document.getElementById("folio").value;
+
+
+google.script.run
+.withSuccessHandler(function(){
+
+alert("Conteo cerrado correctamente");
+
+google.script.host.close();
+
+
+})
+.cerrarConteoFolio(folio);
+
+
+}
+
+
+</script>
+
+
+</body>
+
+</html>

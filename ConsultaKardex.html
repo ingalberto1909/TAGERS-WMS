@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<base target="_top">
+
+<?!= include('EstiloTAGERS'); ?>
+
+</head>
+<body>
+
+<div class="tagers-header">
+
+  <div class="marca">
+    <div class="logo">📦</div>
+    <div>
+      <h1>TAGERS WMS</h1>
+      <div class="subtitulo">Dashboard Ejecutivo</div>
+    </div>
+  </div>
+
+  <div class="tagers-nav">
+    <button class="activo" onclick="tagersIrA('abrirDashboard')">📊 Dashboard</button>
+    <button onclick="tagersIrA('abrirMapa')">🗺️ Mapa</button>
+    <button onclick="tagersIrA('abrirCapturaConteo')">📷 Conteo</button>
+    <button onclick="tagersIrA('abrirAprobacion')">✅ Discrepancias</button>
+    <button onclick="tagersIrA('abrirKardex')">📜 Kardex</button>
+  </div>
+
+</div>
+
+<div class="tagers-contenido">
+
+  <div class="tagers-grid" id="grid">
+
+    <div class="tagers-card">
+      <div>Productos</div>
+      <div class="tagers-numero-grande" id="productos">–</div>
+    </div>
+
+    <div class="tagers-card">
+      <div>Ubicaciones</div>
+      <div class="tagers-numero-grande" id="ubicaciones">–</div>
+    </div>
+
+    <div class="tagers-card">
+      <div>Bajo mínimo</div>
+      <div class="tagers-numero-grande" id="minimo">–</div>
+    </div>
+
+    <div class="tagers-card">
+      <div>Agotados</div>
+      <div class="tagers-numero-grande" id="agotados">–</div>
+    </div>
+
+    <div class="tagers-card">
+      <div>Discrepancias pendientes</div>
+      <div class="tagers-numero-grande" id="pendientes">–</div>
+    </div>
+
+    <div class="tagers-card">
+      <div>Conteos abiertos</div>
+      <div class="tagers-numero-grande" id="conteos">–</div>
+    </div>
+
+  </div>
+
+  <br>
+
+  <div class="tagers-card">
+
+    <h2 style="color:var(--guinda);margin-bottom:14px">
+      📜 Actividad reciente (Kardex)
+    </h2>
+
+    <div id="actividad" class="tagers-cargando">
+      Cargando movimientos...
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+
+google.script.run
+  .withSuccessHandler(function(d){
+
+    document.getElementById("productos").innerHTML   = d.productos;
+    document.getElementById("ubicaciones").innerHTML  = d.ubicaciones;
+    document.getElementById("minimo").innerHTML       = d.bajoMinimo;
+    document.getElementById("agotados").innerHTML     = d.agotados;
+    document.getElementById("pendientes").innerHTML   = d.pendientes;
+    document.getElementById("conteos").innerHTML      = d.conteos;
+
+  })
+  .withFailureHandler(function(error){
+    document.getElementById("grid").innerHTML =
+      "<div class='tagers-card'>❌ Error: "+error.message+"</div>";
+  })
+  .obtenerDashboard();
+
+function badgeTipo(tipo){
+
+  if (tipo == "ENTRADA") return "<span class='tagers-badge tagers-badge-verde'>ENTRADA</span>";
+  if (tipo == "SALIDA")  return "<span class='tagers-badge tagers-badge-rojo'>SALIDA</span>";
+  return "<span class='tagers-badge tagers-badge-amarillo'>"+tipo+"</span>";
+
+}
+
+function formatoNumero(valor) {
+  const numero = Number(valor);
+
+  if (!Number.isFinite(numero)) return "-";
+
+  return numero.toLocaleString("es-MX", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+}
+
+google.script.run
+  .withSuccessHandler(function(movimientos) {
+    const cont = document.getElementById("actividad");
+
+    try {
+      if (!Array.isArray(movimientos) || movimientos.length === 0) {
+        cont.innerHTML = "Sin movimientos registrados todavía.";
+        return;
+      }
+
+      let html = `
+        <table class="tagers-tabla">
+          <tr>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Tipo</th>
+            <th>Producto</th>
+            <th>Cantidad</th>
+            <th>Saldo</th>
+            <th>Usuario</th>
+          </tr>
+      `;
+
+      movimientos.forEach(m => {
+        const cantidad = Number(m.entrada) !== 0
+          ? formatoNumero(m.entrada)
+          : formatoNumero(m.salida);
+
+        html += `
+          <tr>
+            <td>${m.fecha || "-"}</td>
+            <td>${m.hora || "-"}</td>
+            <td>${badgeTipo(m.tipo)}</td>
+            <td>${m.producto || "-"}</td>
+            <td>${cantidad}</td>
+            <td><b>${formatoNumero(m.existenciaNueva)}</b></td>
+            <td>${m.usuario || "-"}</td>
+          </tr>
+        `;
+      });
+
+      html += "</table>";
+      cont.innerHTML = html;
+
+    } catch (error) {
+      console.error(error);
+      cont.innerHTML = "❌ Error al mostrar movimientos: " + error.message;
+    }
+  })
+  .withFailureHandler(function(error) {
+    document.getElementById("actividad").innerHTML =
+      "❌ Error: " + error.message;
+  })
+    .obtenerUltimosMovimientosKardex(8);
+
+</script>
+
+</body>
+</html>

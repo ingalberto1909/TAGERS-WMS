@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<base target="_top">
+
+<style>
+
+/* ===========================
+   TAGERS WMS v2
+=========================== */
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Arial,Helvetica,sans-serif;
+}
+
+body{
+    background:#eef2f7;
+}
+
+/* HEADER */
+
+.header{
+    background:#1565C0;
+    color:white;
+    padding:18px 30px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    box-shadow:0 3px 10px rgba(0,0,0,.20);
+}
+
+.header h1{
+    font-size:28px;
+}
+
+.header p{
+    font-size:14px;
+    opacity:.9;
+}
+
+/* CONTENIDO */
+
+.contenido{
+    padding:25px;
+}
+
+/* BUSCADOR */
+
+.buscar{
+    margin-bottom:30px;
+}
+
+.buscar input{
+
+    width:350px;
+    padding:12px 15px;
+    border-radius:8px;
+    border:none;
+    outline:none;
+    font-size:16px;
+    box-shadow:0 2px 8px rgba(0,0,0,.15);
+
+}
+
+/* GRID */
+
+.grid{
+
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+    gap:20px;
+
+}
+
+/* TARJETA */
+
+.card{
+
+    background:white;
+    border-radius:15px;
+    padding:25px;
+    box-shadow:0 5px 12px rgba(0,0,0,.15);
+    transition:.25s;
+    cursor:pointer;
+
+}
+
+.card:hover{
+
+    transform:translateY(-5px);
+
+}
+
+.card h2{
+
+    color:#1565C0;
+    margin-bottom:15px;
+
+}
+
+.card p{
+
+    color:#555;
+    margin:6px 0;
+
+}
+
+.boton{
+
+    margin-top:20px;
+    background:#1565C0;
+    color:white;
+    padding:10px;
+    border-radius:8px;
+    text-align:center;
+    font-weight:bold;
+
+}
+
+.footer{
+
+    text-align:center;
+    color:#777;
+    margin-top:40px;
+    font-size:12px;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+<div>
+
+<h1>📦 TAGERS WMS</h1>
+
+<p>Sistema de Gestión de Almacén</p>
+
+</div>
+
+<div>
+
+Versión 2.0
+
+</div>
+
+</div>
+
+
+<div class="contenido">
+
+<div class="buscar">
+
+<input
+type="text"
+placeholder="🔍 Buscar Rack..."
+id="buscarRack">
+
+</div>
+
+
+<div
+id="contenedorRacks"
+class="grid">
+
+</div>
+
+<div class="footer">
+
+TAGERS WMS © 2026
+
+</div>
+
+</div>
+
+<script>
+
+let racks=[];
+
+google.script.run
+.withSuccessHandler(cargarRacks)
+.obtenerResumenRacks();
+
+function cargarRacks(lista){
+
+    racks = lista;
+
+    let contenedor = document.getElementById("contenedorRacks");
+
+    contenedor.innerHTML = "";
+
+    lista.forEach(rack => {
+
+        let card = document.createElement("div");
+        card.className = "card";
+
+        card.innerHTML = `
+            <h2>📦 ${rack.rack}</h2>
+
+            <p><b>📦 Productos:</b> ${rack.productos}</p>
+
+            <p><b>📍 Ubicaciones:</b> ${rack.ubicaciones}</p>
+
+            <p><b>⚠ Bajo mínimo:</b> ${rack.bajoMinimo}</p>
+
+            <p><b>❌ Agotados:</b> ${rack.agotados}</p>
+
+            <div class="boton">
+                Abrir Rack
+            </div>
+        `;
+card.onclick = function(){
+
+    google.script.run
+    .withSuccessHandler(mostrarRack)
+    .abrirRack(rack.rack);
+
+};
+        contenedor.appendChild(card);
+
+    });
+function mostrarRack(datos){
+
+    alert("Rack cargado correctamente.\n\nUbicaciones encontradas: " + datos.length);
+
+
+}
+</script>
+
+</body>
+
+</html>

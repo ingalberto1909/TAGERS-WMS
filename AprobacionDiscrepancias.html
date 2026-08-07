@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<style>
+
+body{
+font-family:Arial,Helvetica,sans-serif;
+background:#edf1f5;
+padding:20px;
+}
+
+h2{
+color:#1565c0;
+margin-bottom:20px;
+}
+
+#lista{
+max-height:520px;
+overflow:auto;
+}
+
+.card{
+
+background:white;
+padding:18px;
+margin-bottom:15px;
+border-radius:12px;
+box-shadow:0 3px 10px rgba(0,0,0,.15);
+
+}
+
+button{
+
+width:100%;
+padding:12px;
+border:none;
+border-radius:8px;
+cursor:pointer;
+font-size:15px;
+margin-top:8px;
+
+}
+
+.aprobar{
+
+background:#16a34a;
+color:white;
+
+}
+
+.rechazar{
+
+background:#dc2626;
+color:white;
+
+}
+
+textarea{
+
+width:100%;
+height:70px;
+padding:10px;
+margin-top:10px;
+resize:none;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>✅ Discrepancias Pendientes</h2>
+<div id="lista">
+
+Cargando...
+
+</div>
+
+<script>
+
+cargar();
+
+
+function cargar(){
+
+google.script.run
+
+.withSuccessHandler(function(datos){
+
+mostrar(datos);
+
+})
+
+.withFailureHandler(function(error){
+
+alert("ERROR: "+error.message);
+
+})
+
+.obtenerDiscrepanciasPendientes();
+
+}
+
+
+
+function mostrar(datos){
+
+
+if(datos.length==0){
+
+document.getElementById("lista").innerHTML=
+"✅ No existen discrepancias pendientes.";
+
+return;
+
+}
+
+
+let html="";
+
+
+datos.forEach(d=>{
+
+
+html+=`
+
+<div class="card">
+
+<b>Código:</b> ${d.codigo}<br>
+
+<b>Producto:</b> ${d.producto}<br><br>
+
+<b>Rack:</b> ${d.rack}<br>
+
+<b>Ubicación:</b> ${d.ubicacion}<br><br>
+
+<b>Sistema:</b> ${d.sistema}<br>
+
+<b>Conteo:</b> ${d.fisico}<br>
+
+<b>Diferencia:</b> ${d.diferencia}<br>
+
+
+<select id="m${d.fila}" style="width:100%;padding:10px;margin-top:10px;border-radius:6px;">
+
+<option value="">Seleccionar motivo del ajuste...</option>
+
+<option value="Producto dañado">
+Producto dañado
+</option>
+
+<option value="Merma">
+Merma
+</option>
+
+<option value="Error de surtido">
+Error de surtido
+</option>
+
+<option value="Error de captura">
+Error de captura
+</option>
+
+<option value="Diferencia en recepción">
+Diferencia en recepción
+</option>
+
+<option value="Caducidad">
+Caducidad
+</option>
+
+<option value="Otro">
+Otro
+</option>
+
+</select>
+
+
+<textarea id="c${d.fila}" placeholder="Comentario"></textarea>
+
+
+<button class="aprobar"
+onclick="aprobar(${d.fila})">
+✅ Aprobar
+</button>
+
+
+<button class="rechazar"
+onclick="rechazar(${d.fila})">
+❌ Rechazar
+</button>
+
+
+</div>
+
+`;
+
+});
+
+
+document.getElementById("lista").innerHTML=html;
+
+
+}
+
+
+function aprobar(fila){
+
+let motivo =
+document.getElementById("m"+fila).value;
+
+
+let comentario =
+document.getElementById("c"+fila).value;
+
+
+if(motivo==""){
+
+alert("Selecciona un motivo del ajuste");
+return;
+
+}
+
+
+if(comentario.trim()==""){
+
+alert("Escribe una observación del ajuste");
+return;
+
+}
+
+
+google.script.run
+
+.withSuccessHandler(function(){
+
+alert("Discrepancia aprobada");
+
+cargar();
+
+})
+
+.withFailureHandler(function(error){
+
+alert("ERROR: "+error.message);
+
+})
+
+.aprobarDiscrepancia(
+fila,
+motivo,
+comentario
+);
+
+
+}
+
+
+
+function rechazar(fila){
+
+
+let comentario=document.getElementById("c"+fila).value;
+
+
+google.script.run
+
+.withSuccessHandler(function(){
+
+alert("Discrepancia rechazada");
+
+cargar();
+
+})
+
+.rechazarDiscrepancia(
+fila,
+comentario
+);
+
+
+}
+
+
+</script>
+
+</body>
+
+</html>
