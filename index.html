@@ -76,71 +76,99 @@ to{ opacity:1; transform:translateY(0); }
 animation:fadeInUp .35s ease;
 }
 
+/* ===================== */
+/* MENU LATERAL           */
+/* ===================== */
+
 #sidebar{
-width:230px;
+width:250px;
 flex-shrink:0;
-background:var(--guinda);
-color:#F2EBE0;
+background:var(--bg-panel);
+color:var(--text);
 display:flex;
 flex-direction:column;
-padding:20px 0;
+padding:20px 14px;
 overflow-y:auto;
-box-shadow:2px 0 10px rgba(0,0,0,.15);
+border-right:1px solid var(--border);
 transition:left .25s ease;
 z-index:100;
 }
 
 #sidebar .logoLateral{
-text-align:center;
+display:flex;
+align-items:center;
+gap:10px;
 font-size:17px;
 font-weight:700;
-letter-spacing:.5px;
+letter-spacing:.3px;
 margin-bottom:22px;
-padding:0 10px;
+padding:0 6px;
+color:var(--text);
 }
+
+#sidebar .logoLateral .logoIcono{
+width:38px;
+height:38px;
+border-radius:11px;
+background:var(--guinda);
+color:#fff;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:19px;
+flex-shrink:0;
+}
+
+#sidebar .logoLateral b{ color:var(--guinda); }
 
 #sidebar .logoLateral span{
 display:block;
-font-size:12px;
-font-weight:400;
-opacity:.8;
-margin-top:4px;
+font-size:11px;
+font-weight:600;
+letter-spacing:1.5px;
+opacity:.55;
+margin-top:1px;
 }
 
 .menuLateralBtn{
 background:none;
 border:none;
-border-left:4px solid transparent;
-color:#F2EBE0;
+border-radius:11px;
+color:var(--text);
 text-align:left;
-padding:14px 20px;
-font-size:15px;
+padding:11px 14px;
+font-size:14.5px;
 display:flex;
 align-items:center;
 gap:10px;
 cursor:pointer;
 width:100%;
 font-family:inherit;
-transition:background .15s ease;
+transition:background .15s ease,color .15s ease;
+margin-bottom:2px;
 }
 
 .menuLateralBtn .icono{
-font-size:18px;
+font-size:17px;
+width:20px;
+text-align:center;
+flex-shrink:0;
 }
 
 .menuLateralBtn:hover{
-background:var(--guinda-dark);
+background:var(--bg);
 }
 
 .menuLateralBtn.activo{
-background:var(--guinda-dark);
-border-left:4px solid var(--terracota);
+background:var(--guinda);
+color:#fff;
 font-weight:600;
+box-shadow:0 4px 12px rgba(107,39,55,.28);
 }
 
 .menuLateralBtn.sub{
-padding-left:40px;
-font-size:14px;
+padding-left:38px;
+font-size:13.5px;
 }
 
 .menuLateralBtn.grupoBtn{
@@ -150,6 +178,7 @@ justify-content:flex-start;
 .flechaGrupo{
 margin-left:auto;
 font-size:12px;
+opacity:.6;
 transition:transform .2s ease;
 }
 
@@ -169,22 +198,24 @@ max-height:400px;
 
 .sidebarFooter{
 margin-top:auto;
-padding:14px 20px 0;
-border-top:1px solid rgba(255,255,255,.15);
+padding-top:14px;
+border-top:1px solid var(--border);
 }
 
 .sidebarFooter .usuarioInfo{
 display:flex;
 align-items:center;
 gap:10px;
-padding:10px 0;
+padding:8px 6px;
+border-radius:12px;
+background:var(--bg);
 }
 
 .avatarUsuario{
 width:36px;
 height:36px;
 border-radius:50%;
-background:var(--terracota);
+background:var(--guinda);
 color:#fff;
 display:flex;
 align-items:center;
@@ -202,23 +233,26 @@ font-weight:600;
 white-space:nowrap;
 overflow:hidden;
 text-overflow:ellipsis;
+color:var(--text);
 }
 
 .rolUsuario{
 font-size:11px;
-opacity:.75;
+opacity:.65;
 text-transform:capitalize;
+color:var(--text-muted);
 }
 
 .btnCerrarSesion{
 margin-top:10px;
 width:100%;
-background:rgba(0,0,0,.15);
+background:rgba(196,82,42,.12);
 border:none;
-color:#F2EBE0;
+color:var(--terracota);
 padding:9px;
-border-radius:8px;
+border-radius:10px;
 font-size:13px;
+font-weight:600;
 cursor:pointer;
 display:flex;
 align-items:center;
@@ -227,7 +261,11 @@ gap:6px;
 transition:background .15s ease;
 }
 
-.btnCerrarSesion:hover{ background:rgba(0,0,0,.3); }
+.btnCerrarSesion:hover{ background:rgba(196,82,42,.22); }
+
+/* ===================== */
+/* AREA PRINCIPAL         */
+/* ===================== */
 
 #areaPrincipal{
 flex:1;
@@ -238,48 +276,124 @@ min-width:0;
 }
 
 header{
-height:60px;
+height:64px;
 flex-shrink:0;
-background:var(--oliva);
-color:white;
+background:var(--bg-panel);
+color:var(--text);
 display:flex;
 align-items:center;
-padding:0 18px;
-font-size:19px;
-font-weight:700;
-box-shadow:0 3px 10px rgba(0,0,0,.12);
+padding:0 20px;
+box-shadow:0 1px 0 var(--border);
 gap:14px;
 }
 
 header .tituloHeader{
-flex:1;
+display:none;
 }
+
+.buscadorHeader{
+flex:1;
+max-width:900px;
+position:relative;
+display:flex;
+align-items:center;
+background:var(--bg);
+border:1px solid var(--border);
+border-radius:12px;
+padding:0 12px;
+height:40px;
+}
+
+.buscadorHeader .iconoLupa{ font-size:15px; opacity:.55; flex-shrink:0; }
+
+.buscadorHeader input{
+border:none;
+background:none;
+outline:none;
+flex:1;
+font-size:13.5px;
+color:var(--text);
+padding:0 10px;
+font-family:inherit;
+}
+
+.buscadorHeader .atajoTecla{
+font-size:11px;
+opacity:.5;
+border:1px solid var(--border);
+border-radius:6px;
+padding:2px 6px;
+flex-shrink:0;
+}
+
+.resultadosBuscadorHeader{
+position:absolute;
+top:46px;
+left:0;
+right:0;
+background:var(--bg-panel);
+border:1px solid var(--border);
+border-radius:12px;
+box-shadow:0 12px 30px rgba(0,0,0,.15);
+max-height:340px;
+overflow:auto;
+z-index:40;
+display:none;
+}
+
+.accionesHeader{
+display:flex;
+align-items:center;
+gap:14px;
+flex-shrink:0;
+margin-left:auto;
+}
+
+.chipUsuarioHeader{
+display:flex;
+align-items:center;
+gap:9px;
+padding:5px 10px 5px 5px;
+border-radius:30px;
+border:1px solid var(--border);
+cursor:pointer;
+}
+
+.chipUsuarioHeader:hover{ background:var(--bg); }
+
+.chipUsuarioHeader .avatarUsuario{ width:30px; height:30px; font-size:13px; }
+.chipUsuarioHeader .nombreUsuario{ font-size:12.5px; max-width:130px; }
+.chipUsuarioHeader .rolUsuario{ font-size:10.5px; }
 
 .hamburguesa{
 display:none;
 background:none;
 border:none;
-color:white;
+color:var(--text);
 font-size:22px;
 cursor:pointer;
 padding:4px 8px;
+flex-shrink:0;
 }
 
 .iconoHeaderBtn{
 background:none;
 border:none;
-color:white;
-font-size:20px;
+color:var(--text);
+font-size:19px;
 cursor:pointer;
 position:relative;
-padding:4px 8px;
+padding:7px;
+border-radius:10px;
 }
+
+.iconoHeaderBtn:hover{ background:var(--bg); }
 
 .badge{
 position:absolute;
 top:-2px;
 right:-2px;
-background:var(--guinda);
+background:var(--terracota);
 color:white;
 font-size:10px;
 font-weight:700;
@@ -294,9 +408,9 @@ padding:0 4px;
 
 .panelDropdown{
 position:absolute;
-top:56px;
-right:16px;
-width:300px;
+top:46px;
+right:-8px;
+width:320px;
 max-height:380px;
 overflow-y:auto;
 background:var(--bg-panel);
@@ -334,6 +448,8 @@ flex:1;
 overflow-y:auto;
 padding:20px;
 }
+
+/* BIENVENIDA / HEADER DE INICIO */
 
 .dashboardHeader{
 display:flex;
@@ -383,6 +499,7 @@ margin-top:8px;
 color:var(--text-muted);
 }
 
+/* KPIs */
 
 .kpiGrid{
 display:grid;
@@ -395,13 +512,24 @@ margin-bottom:20px;
 background:var(--bg-panel);
 padding:16px;
 border-radius:16px;
-box-shadow:0 5px 12px var(--sombra);
-border-top:4px solid var(--border);
+border:1px solid var(--border);
+box-shadow:0 2px 10px var(--sombra);
 }
 
-.kpiCard.tono-guinda{ border-top-color:var(--guinda); }
-.kpiCard.tono-oliva{ border-top-color:var(--oliva); }
-.kpiCard.tono-terracota{ border-top-color:var(--terracota); }
+.kpiCard .kpiIcono{
+width:38px;
+height:38px;
+border-radius:11px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:17px;
+margin-bottom:10px;
+}
+
+.kpiCard.tono-guinda .kpiIcono{ background:rgba(107,39,55,.12); }
+.kpiCard.tono-oliva .kpiIcono{ background:rgba(92,107,42,.12); }
+.kpiCard.tono-terracota .kpiIcono{ background:rgba(196,82,42,.12); }
 
 .kpiCard .kpiLabel{
 font-size:11px;
@@ -413,8 +541,8 @@ text-transform:uppercase;
 
 .kpiCard .kpiValor{
 font-size:26px;
-font-weight:700;
-color:var(--guinda);
+font-weight:800;
+color:var(--text);
 margin:6px 0 2px;
 }
 
@@ -422,6 +550,8 @@ margin:6px 0 2px;
 font-size:12px;
 color:var(--text-muted);
 }
+
+/* PANELES DE INICIO (gráficas / mapa de calor / actividad) */
 
 .panelesInicio{
 display:grid;
@@ -630,6 +760,8 @@ color:var(--text);
 font-size:12px;
 }
 
+/* INDICADORES viejos (se conservan por si se usan en otras vistas) */
+
 .indicadores{
 display:grid;
 grid-template-columns:repeat(3,1fr);
@@ -675,6 +807,8 @@ font-size:13px;
 border-bottom:none;
 }
 
+/* GRAFICAS */
+
 .graficas{
 display:grid;
 grid-template-columns:1fr 1fr;
@@ -691,6 +825,8 @@ color:var(--guinda);
 .graficaCaja{
 max-width:none;
 }
+
+/* BOTONES */
 
 .boton{
 background:var(--terracota);
@@ -772,12 +908,15 @@ flex-shrink:0;
 opacity:.9;
 }
 
+/* TARJETAS */
+
 .cardProducto{
 background:var(--bg-panel);
 padding:18px;
 margin:15px 0;
-border-radius:18px;
-box-shadow:0 6px 16px var(--sombra);
+border-radius:16px;
+border:1px solid var(--border);
+box-shadow:0 2px 10px var(--sombra);
 }
 
 .panelesInicio .cardProducto,
@@ -786,6 +925,47 @@ box-shadow:0 6px 16px var(--sombra);
 max-width:none;
 margin:0;
 }
+
+.kpiCardNueva{
+background:var(--bg-panel);
+border:1px solid var(--border);
+border-radius:16px;
+padding:16px;
+box-shadow:0 2px 10px var(--sombra);
+}
+
+.kpiIconoBadge{
+width:38px;
+height:38px;
+border-radius:11px;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:17px;
+margin-bottom:10px;
+}
+
+.kpiCardNueva .kpiEtiqueta{
+font-size:10.5px;
+text-transform:uppercase;
+letter-spacing:.4px;
+color:var(--text-muted);
+font-weight:700;
+}
+
+.kpiCardNueva .kpiNumero{
+font-size:26px;
+font-weight:800;
+color:var(--text);
+margin-top:2px;
+}
+
+.kpiCardNueva .kpiTendencia{
+font-size:11.5px;
+margin-top:4px;
+color:var(--text-muted);
+}
+
 
 .nombreProducto{
 font-size:18px;
@@ -1117,6 +1297,68 @@ display:block;
 
 /* RESPONSIVE */
 
+@media (min-width:769px){
+
+#sidebar{
+width:76px;
+transition:width .22s ease;
+overflow-x:hidden;
+position:relative;
+}
+
+#sidebar:hover{
+width:250px;
+}
+
+#sidebar .menuLateralBtn{
+overflow:hidden;
+white-space:nowrap;
+position:relative;
+z-index:1;
+}
+
+#sidebar .logoLateral{
+overflow:hidden;
+white-space:nowrap;
+}
+
+#sidebar .textoMenu{
+opacity:1;
+transition:opacity .12s ease;
+}
+
+#sidebar:not(:hover) .textoMenu{
+opacity:0;
+}
+
+#sidebar:not(:hover) .flechaGrupo{
+opacity:0;
+}
+
+#sidebar:not(:hover) .btnCerrarSesion{
+justify-content:center;
+padding:9px 0;
+}
+
+#sidebar:not(:hover) .usuarioInfo{
+justify-content:center;
+}
+
+.indicadorSidebarHover{
+position:absolute;
+left:14px;
+right:14px;
+height:0;
+background:var(--bg);
+border-radius:11px;
+transition:top .16s ease, height .16s ease, opacity .16s ease;
+opacity:0;
+z-index:0;
+pointer-events:none;
+}
+
+}
+
 @media (max-width:1100px){
 .kpiGrid{ grid-template-columns:repeat(3,1fr); }
 .panelesInicio,.panelesInicio2{ grid-template-columns:1fr; }
@@ -1225,7 +1467,117 @@ function pintarUsuarioSidebar(){
   if(nombreEl) nombreEl.innerText = USUARIO_ACTUAL.nombre || "Usuario";
   if(rolEl) rolEl.innerText = USUARIO_ACTUAL.rol || "";
   if(avatarEl) avatarEl.innerText = (USUARIO_ACTUAL.nombre || "?").trim().charAt(0).toUpperCase();
+
+  const nombreHeaderEl = document.getElementById("nombreUsuarioHeader");
+  const rolHeaderEl = document.getElementById("rolUsuarioHeader");
+  const avatarHeaderEl = document.getElementById("avatarUsuarioHeader");
+
+  if(nombreHeaderEl) nombreHeaderEl.innerText = USUARIO_ACTUAL.nombre || "Usuario";
+  if(rolHeaderEl) rolHeaderEl.innerText = USUARIO_ACTUAL.rol || "";
+  if(avatarHeaderEl) avatarHeaderEl.innerText = (USUARIO_ACTUAL.nombre || "?").trim().charAt(0).toUpperCase();
 }
+
+let temporizadorBuscadorHeader = null;
+
+function buscarGlobalHeader(){
+
+  clearTimeout(temporizadorBuscadorHeader);
+
+  const texto = document.getElementById("buscadorGlobalHeader").value.trim();
+  const cont = document.getElementById("resultadosBuscadorHeader");
+
+  if(texto.length < 2){
+    cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscadorHeader = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(res){
+
+        const sinNada = (!res.productos || !res.productos.length) && (!res.racks || !res.racks.length) && (!res.proveedores || !res.proveedores.length);
+
+        if(sinNada){
+          cont.innerHTML = "<div style='padding:12px;font-size:13px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        let html = "";
+
+        (res.racks||[]).forEach(r => {
+          html += `
+            <div style="padding:9px 14px;background:var(--bg);font-size:11.5px;font-weight:700;color:var(--guinda);text-transform:uppercase">📍 Rack ${r.rack} — ${r.total} producto(s)</div>
+            ${r.productos.map(p => `
+              <div style="padding:9px 14px 9px 24px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+                onclick="cerrarBuscadorHeaderYAbrirProducto('${p.codigo}')">
+                <b>${p.producto}</b>
+                <div style="font-size:11px;color:var(--text-muted)">${p.codigo} — Existencia: ${p.existencia} ${p.udm||""}</div>
+              </div>
+            `).join("")}
+          `;
+        });
+
+        (res.proveedores||[]).forEach(pr => {
+          html += `
+            <div style="padding:9px 14px;background:var(--bg);font-size:11.5px;font-weight:700;color:var(--guinda);text-transform:uppercase">🏭 Proveedor ${pr.proveedor} — ${pr.total} producto(s)</div>
+            ${pr.productos.map(p => `
+              <div style="padding:9px 14px 9px 24px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+                onclick="cerrarBuscadorHeaderYAbrirProducto('${p.codigo}')">
+                <b>${p.producto}</b>
+                <div style="font-size:11px;color:var(--text-muted)">${p.codigo} — Existencia: ${p.existencia} ${p.udm||""} — Rack: ${p.rack||"—"}</div>
+              </div>
+            `).join("")}
+          `;
+        });
+
+        if(res.productos && res.productos.length){
+          html += `<div style="padding:9px 14px;background:var(--bg);font-size:11.5px;font-weight:700;color:var(--guinda);text-transform:uppercase">📦 Productos</div>`;
+          html += res.productos.map(p => `
+            <div style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13.5px"
+              onclick="cerrarBuscadorHeaderYAbrirProducto('${p.codigo}')">
+              <b>${p.producto}</b>
+              <div style="font-size:11.5px;color:var(--text-muted)">${p.codigo} — Existencia: ${p.existencia} — Rack: ${p.rack||"—"} — Proveedor: ${p.proveedor||"—"}</div>
+            </div>
+          `).join("");
+        }
+
+        cont.innerHTML = html;
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        cont.innerHTML = "⚠️ " + e.message;
+        cont.style.display = "block";
+      })
+      .busquedaGlobalHeaderApp(texto);
+
+  }, 300);
+
+}
+
+function cerrarBuscadorHeaderYAbrirProducto(codigo){
+  document.getElementById("buscadorGlobalHeader").value = "";
+  document.getElementById("resultadosBuscadorHeader").style.display = "none";
+  abrirDetalleProducto(codigo);
+}
+
+document.addEventListener("click", function(e){
+  const buscador = document.querySelector(".buscadorHeader");
+  if(buscador && !buscador.contains(e.target)){
+    const resultados = document.getElementById("resultadosBuscadorHeader");
+    if(resultados) resultados.style.display = "none";
+  }
+});
+
+document.addEventListener("keydown", function(e){
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"){
+    e.preventDefault();
+    const input = document.getElementById("buscadorGlobalHeader");
+    if(input) input.focus();
+  }
+});
 
 function cerrarSesionTAGERS(){
 
@@ -1240,6 +1592,12 @@ function cerrarSesionTAGERS(){
 
 }
 
+// ===============================
+// PERMISOS POR ROL
+// ===============================
+// Ajusta los nombres de rol (ADMIN/SUPERVISOR/OPERADOR) a los que
+// realmente uses en la columna D de la hoja USUARIOS. Los ids deben
+// coincidir con los id= de los botones del menú lateral.
 
 const PERMISOS_ROL = {
   "ADMIN": null, // null = ve todo, sin restricciones
@@ -1247,19 +1605,25 @@ const PERMISOS_ROL = {
     "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas","btnAjustes",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
-    "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard",
+    "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
   ],
   "OPERADOR": [
     "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
-    "btnCapturarConteo",
+    "btnCapturarConteo","btnRecetas",
     "btnNuevaRequisicion","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
   ],
   "CONSULTA": [
-    "btnInicio","btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
+    // Solo lectura: ve inicio, inventario, kardex, mapa y ubicaciones.
+    // NO tiene entradas, salidas, ajustes, ni ninguna pantalla de conteo cíclico.
+    // Sí puede crear/ver SUS PROPIAS requisiciones (Panadería/Cocina/Repostería) —
+    // las 3 pantallas exclusivas de Almacén se ocultan aparte, por Área real,
+    // no por rol (ver aplicarAccesoRequisicionesMenu()).
+    // Recetas: puede consultar/buscar (crear/editar se oculta aparte, por rol real).
+    "btnInicio","btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnRecetas",
     "btnNuevaRequisicion","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
   ]
@@ -1288,6 +1652,10 @@ function aplicarPermisosPorRol(rol){
 
 }
 
+// ===============================
+// TEMA / MODO OSCURO
+// ===============================
+
 (function inicializarTema(){
   const guardado = localStorage.getItem("tagers-tema");
   if(guardado === "dark"){
@@ -1314,6 +1682,10 @@ function ejecutarMigracionExistencia(){
     .congelarFormulasExistenciaMatrizApp();
 
 }
+
+// ================================================================
+// REQUISICIONES INTERNAS
+// ================================================================
 
 function abrirNuevaRequisicion(){
 
@@ -1784,6 +2156,481 @@ function aplicarAccesoRequisicionesMenu(){
 
 }
 
+function inicializarIndicadorSidebar(){
+
+  const sidebar = document.getElementById("sidebar");
+  if(!sidebar || document.querySelector(".indicadorSidebarHover")) return;
+
+  const indicador = document.createElement("div");
+  indicador.className = "indicadorSidebarHover";
+  sidebar.appendChild(indicador);
+
+  sidebar.querySelectorAll(".menuLateralBtn").forEach(btn=>{
+    btn.addEventListener("mouseenter", function(){
+      const rectSidebar = sidebar.getBoundingClientRect();
+      const rectBtn = btn.getBoundingClientRect();
+      indicador.style.top = (rectBtn.top - rectSidebar.top + sidebar.scrollTop) + "px";
+      indicador.style.height = rectBtn.height + "px";
+      indicador.style.opacity = "1";
+    });
+  });
+
+  sidebar.addEventListener("mouseleave", function(){
+    indicador.style.opacity = "0";
+  });
+
+}
+
+// ================================================================
+// RECETAS BOM
+// ================================================================
+
+function abrirRecetas(){
+
+  marcarActivo("btnRecetas");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+    <div>
+      <h2>📖 Catálogo de Recetas</h2>
+      <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Consulta y administración de recetas</p>
+    </div>
+    <div class="boton" style="width:auto;padding:10px 18px;margin:0" onclick="abrirFormularioReceta()">➕ Nueva Receta</div>
+  </div>
+
+  <div class="cardProducto">
+    <div class="gridFormulario">
+      <div class="campo">
+        <label>Buscar receta</label>
+        <input id="buscarRecetaInput" placeholder="Nombre o código..." oninput="filtrarListaRecetas()">
+      </div>
+      <div class="campo">
+        <label>Categoría</label>
+        <select id="filtroCategoriaReceta" onchange="filtrarListaRecetas()"><option value="">Todas</option></select>
+      </div>
+      <div class="campo">
+        <label>Estado</label>
+        <select id="filtroEstadoReceta" onchange="filtrarListaRecetas()">
+          <option value="">Todas</option>
+          <option value="ACTIVA" selected>Activas</option>
+          <option value="INACTIVA">Inactivas</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start" class="layoutRecetas">
+    <div class="cardProducto" style="max-height:70vh;overflow:auto">
+      <div id="listaRecetas">Cargando...</div>
+    </div>
+    <div class="cardProducto" id="detalleRecetaCont">
+      <p style="text-align:center;color:var(--text-muted);padding:30px 0">Selecciona una receta de la lista para ver su detalle.</p>
+    </div>
+  </div>
+
+  </div>
+
+  `;
+
+  cargarListaRecetas();
+  cargarCategoriasRecetas();
+
+}
+
+function cargarCategoriasRecetas(){
+  google.script.run
+    .withSuccessHandler(function(categorias){
+      const sel = document.getElementById("filtroCategoriaReceta");
+      if(!sel) return;
+      sel.innerHTML = `<option value="">Todas</option>` + categorias.map(c => `<option value="${c}">${c}</option>`).join("");
+    })
+    .withFailureHandler(function(){})
+    .obtenerCategoriasRecetasApp();
+}
+
+function cargarListaRecetas(){
+  google.script.run
+    .withSuccessHandler(function(lista){
+      window.todasLasRecetas = lista || [];
+      filtrarListaRecetas();
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("listaRecetas").innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerRecetasApp();
+}
+
+function filtrarListaRecetas(){
+
+  const cont = document.getElementById("listaRecetas");
+  if(!cont) return;
+
+  let lista = window.todasLasRecetas || [];
+
+  const texto = (document.getElementById("buscarRecetaInput").value||"").trim().toUpperCase();
+  const categoria = document.getElementById("filtroCategoriaReceta").value;
+  const estado = document.getElementById("filtroEstadoReceta").value;
+
+  if(texto) lista = lista.filter(r => r.nombre.toUpperCase().includes(texto) || r.codigo.toUpperCase().includes(texto));
+  if(categoria) lista = lista.filter(r => r.categoria === categoria);
+  if(estado) lista = lista.filter(r => r.estado === estado);
+
+  if(!lista.length){
+    cont.innerHTML = "<p style='text-align:center;color:var(--text-muted);padding:20px 0'>Sin recetas con estos filtros.</p>";
+    return;
+  }
+
+  cont.innerHTML = `
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">LISTA DE RECETAS (${lista.length})</p>
+    ${lista.map(r => `
+      <div class="itemRecetaLista" onclick="abrirDetalleReceta('${r.nombre.replace(/'/g,"\\'")}')" style="padding:10px 8px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:8px">
+        <div style="font-weight:700;font-size:13.5px">🧪 ${r.nombre}</div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-top:2px">
+          <span>${r.codigo} · ${r.totalIngredientes} ingr.</span>
+          <span style="color:${r.estado==='ACTIVA'?'var(--oliva)':'var(--terracota)'};font-weight:700">${r.estado}</span>
+        </div>
+      </div>
+    `).join("")}
+  `;
+
+}
+
+function abrirDetalleReceta(nombre){
+
+  const cont = document.getElementById("detalleRecetaCont");
+  cont.innerHTML = "Cargando...";
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      window.recetaActualDetalle = datos;
+
+      cont.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+          <div>
+            <h3 style="margin:0;color:var(--guinda)">${datos.nombre} <span style="font-size:12px;font-weight:700;color:${datos.estado==='ACTIVA'?'var(--oliva)':'var(--terracota)'}">● ${datos.estado}</span></h3>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div class="boton" style="width:auto;padding:8px 14px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirFormularioReceta('${datos.nombre.replace(/'/g,"\\'")}')">✏️ Editar Receta</div>
+            <div class="boton" style="width:auto;padding:8px 14px;margin:0;background:${datos.estado==='ACTIVA'?'var(--terracota)':'var(--oliva)'}" onclick="cambiarEstadoRecetaDesdeApp('${datos.nombre.replace(/'/g,"\\'")}','${datos.estado==='ACTIVA'?'INACTIVA':'ACTIVA'}')">${datos.estado==='ACTIVA'?'⛔ Inactivar':'✅ Activar'}</div>
+          </div>
+        </div>
+
+        <div class="gridFormulario" style="margin-top:14px">
+          <div class="campo"><label>Código</label><input value="${datos.codigo}" readonly></div>
+          <div class="campo"><label>Categoría</label><input value="${datos.categoria}" readonly></div>
+          <div class="campo"><label>Rendimiento</label><input value="${datos.rendimiento}" readonly></div>
+        </div>
+
+        <div style="display:flex;gap:16px;border-bottom:1px solid var(--border);margin:16px 0 12px;font-size:13px">
+          <div style="padding:8px 4px;border-bottom:2px solid var(--guinda);color:var(--guinda);font-weight:700">Ingredientes</div>
+          <div style="padding:8px 4px;color:var(--text-muted)">Información adicional</div>
+          <div style="padding:8px 4px;color:var(--text-muted)">Costeo</div>
+          <div style="padding:8px 4px;color:var(--text-muted)">Historial</div>
+        </div>
+
+        <table class="tablaTop" style="font-size:13px">
+          <thead><tr><th>#</th><th>Ingrediente</th><th style="text-align:right">Cantidad neta</th><th>UDM</th></tr></thead>
+          <tbody>
+            ${datos.ingredientes.map((ing,i) => `
+              <tr>
+                <td>${i+1}</td>
+                <td>${ing.nombre}</td>
+                <td style="text-align:right">${formatearCantidadJS(ing.cantidad)}</td>
+                <td>${ing.udm}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+
+        <div class="cardProducto" style="margin-top:16px;background:var(--bg)">
+          <h4 style="margin-top:0">Resumen de la receta</h4>
+          <div class="gridFormulario">
+            <div><div style="font-size:11px;color:var(--text-muted)">TOTAL DE INGREDIENTES</div><div style="font-size:18px;font-weight:800">${datos.ingredientes.length}</div></div>
+            <div><div style="font-size:11px;color:var(--text-muted)">RENDIMIENTO</div><div style="font-size:18px;font-weight:800">${datos.rendimiento}</div></div>
+            <div><div style="font-size:11px;color:var(--text-muted)">CATEGORÍA</div><div style="font-size:18px;font-weight:800">${datos.categoria}</div></div>
+          </div>
+        </div>
+      `;
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerDetalleRecetaApp(nombre);
+
+}
+
+function formatearCantidadJS(valor){
+  const num = Number(valor);
+  if(!isFinite(num)) return "0";
+  return num.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+function cambiarEstadoRecetaDesdeApp(nombre, nuevoEstado){
+
+  const accion = nuevoEstado === "INACTIVA" ? "inactivar" : "activar";
+  if(!confirm("¿Seguro que quieres " + accion + " la receta \"" + nombre + "\"?")) return;
+
+  google.script.run
+    .withSuccessHandler(function(){
+      abrirDetalleReceta(nombre);
+      cargarListaRecetas();
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .cambiarEstadoRecetaApp(nombre, nuevoEstado, obtenerTokenSesion());
+
+}
+
+// ---------------- Formulario crear/editar ----------------
+
+function abrirFormularioReceta(nombreExistente){
+
+  window.recetaFormEsEdicion = !!nombreExistente;
+  window.recetaFormNombreOriginal = nombreExistente || null;
+  window.recetaFormIngredientes = [];
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton" style="width:auto;padding:8px 14px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirRecetas()">← Recetas</button>
+      <h2 style="margin:0">${nombreExistente ? "✏️ Editar Receta" : "➕ Nueva Receta"}</h2>
+    </div>
+
+    <div class="cardProducto">
+
+      <label>Nombre de la receta</label>
+      <input id="recetaFormNombre" placeholder="Ej. ACEITE MEDITERRÁNEO">
+
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Rendimiento</label>
+          <input id="recetaFormRendimiento" placeholder="Ej. 4.5 KG">
+        </div>
+        <div class="campo">
+          <label>Categoría</label>
+          <input id="recetaFormCategoria" list="listaCategoriasReceta" placeholder="Ej. Salsas">
+          <datalist id="listaCategoriasReceta"></datalist>
+        </div>
+      </div>
+
+      <label style="margin-top:14px">Ingredientes</label>
+
+      <div style="position:relative;max-width:500px;margin:8px 0">
+        <input id="buscarIngredienteReceta" placeholder="Buscar producto para agregar..." oninput="buscarIngredienteParaReceta()" autocomplete="off">
+        <div id="resultadosIngredienteReceta" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+      </div>
+
+      <div id="tablaIngredientesReceta" style="overflow:auto;max-height:40vh"></div>
+
+      <div id="mensajeFormReceta" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirRecetas()">Cancelar</div>
+        <div class="boton" onclick="guardarReceta()">💾 Guardar receta</div>
+      </div>
+
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(function(categorias){
+      const dl = document.getElementById("listaCategoriasReceta");
+      if(dl) dl.innerHTML = categorias.map(c => `<option value="${c}">`).join("");
+    })
+    .withFailureHandler(function(){})
+    .obtenerCategoriasRecetasApp();
+
+  if(nombreExistente){
+    google.script.run
+      .withSuccessHandler(function(datos){
+        document.getElementById("recetaFormNombre").value = datos.nombre;
+        document.getElementById("recetaFormRendimiento").value = datos.rendimiento;
+        document.getElementById("recetaFormCategoria").value = datos.categoria;
+        window.recetaFormIngredientes = datos.ingredientes.map(i => ({ nombre: i.nombre, cantidad: i.cantidad, udm: i.udm }));
+        dibujarTablaIngredientesReceta();
+      })
+      .withFailureHandler(function(e){
+        mostrarMensajeTemporal("mensajeFormReceta", "⚠️ " + e.message, "error");
+      })
+      .obtenerDetalleRecetaApp(nombreExistente);
+  } else {
+    dibujarTablaIngredientesReceta();
+  }
+
+}
+
+let temporizadorBuscarIngredienteReceta = null;
+
+function buscarIngredienteParaReceta(){
+
+  clearTimeout(temporizadorBuscarIngredienteReceta);
+
+  const texto = document.getElementById("buscarIngredienteReceta").value.trim();
+  const cont = document.getElementById("resultadosIngredienteReceta");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarIngredienteReceta = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarIngredienteAReceta(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        cont.innerHTML = "⚠️ " + e.message;
+        cont.style.display = "block";
+      })
+      .buscarProductoParaRecetaApp(texto);
+
+  }, 300);
+
+}
+
+function sincronizarIngredientesRecetaDesdeInputs(){
+  (window.recetaFormIngredientes || []).forEach((ing,i) => {
+    const cant = document.getElementById("recetaIngCantidad"+i);
+    const udm = document.getElementById("recetaIngUdm"+i);
+    if(cant) ing.cantidad = Number(cant.value) || 0;
+    if(udm) ing.udm = udm.value;
+  });
+}
+
+function agregarIngredienteAReceta(producto){
+
+  sincronizarIngredientesRecetaDesdeInputs();
+
+  if(window.recetaFormIngredientes.some(i => i.nombre === producto.producto)){
+    mostrarMensajeTemporal("mensajeFormReceta", "Ese ingrediente ya está en la receta", "error");
+  } else {
+    window.recetaFormIngredientes.push({ nombre: producto.producto, cantidad: 1, udm: producto.udm || "KG" });
+    dibujarTablaIngredientesReceta();
+  }
+
+  document.getElementById("buscarIngredienteReceta").value = "";
+  document.getElementById("resultadosIngredienteReceta").innerHTML = "";
+  document.getElementById("resultadosIngredienteReceta").style.display = "none";
+
+}
+
+function quitarIngredienteReceta(indice){
+  if(!confirm("¿Eliminar este ingrediente de la receta?")) return;
+  sincronizarIngredientesRecetaDesdeInputs();
+  window.recetaFormIngredientes.splice(indice, 1);
+  dibujarTablaIngredientesReceta();
+}
+
+function dibujarTablaIngredientesReceta(){
+
+  const cont = document.getElementById("tablaIngredientesReceta");
+  const lista = window.recetaFormIngredientes || [];
+
+  if(!lista.length){
+    cont.innerHTML = "<p style='color:var(--text-muted);font-size:13px'>Agrega ingredientes con el buscador de arriba.</p>";
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Ingrediente</th><th style="text-align:right">Cantidad</th><th>UDM</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((ing,i) => `
+          <tr>
+            <td>${ing.nombre}</td>
+            <td style="text-align:right">
+              <input type="number" id="recetaIngCantidad${i}" value="${ing.cantidad}" min="0" step="0.001"
+                style="width:100px;max-width:100px;text-align:right;margin:0;padding:6px">
+            </td>
+            <td>
+              <input id="recetaIngUdm${i}" value="${ing.udm}" style="width:70px;max-width:70px;margin:0;padding:6px">
+            </td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarIngredienteReceta(${i})">🗑️</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function guardarReceta(){
+
+  sincronizarIngredientesRecetaDesdeInputs();
+
+  const datos = {
+    nombre: document.getElementById("recetaFormNombre").value.trim(),
+    rendimiento: document.getElementById("recetaFormRendimiento").value.trim(),
+    categoria: document.getElementById("recetaFormCategoria").value.trim(),
+    ingredientes: window.recetaFormIngredientes || []
+  };
+
+  if(!datos.nombre){
+    mostrarMensajeTemporal("mensajeFormReceta", "Captura el nombre de la receta", "error");
+    return;
+  }
+  if(!datos.rendimiento){
+    mostrarMensajeTemporal("mensajeFormReceta", "Captura el rendimiento", "error");
+    return;
+  }
+  if(!datos.categoria){
+    mostrarMensajeTemporal("mensajeFormReceta", "Captura la categoría", "error");
+    return;
+  }
+  if(!datos.ingredientes.length){
+    mostrarMensajeTemporal("mensajeFormReceta", "Agrega al menos un ingrediente", "error");
+    return;
+  }
+
+  const handlerExito = function(){
+    alert("✓ Receta " + (window.recetaFormEsEdicion ? "actualizada" : "creada") + " correctamente");
+    abrirRecetas();
+  };
+
+  const handlerError = function(e){
+    mostrarMensajeTemporal("mensajeFormReceta", "⚠️ " + e.message, "error");
+  };
+
+  if(window.recetaFormEsEdicion){
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .editarRecetaApp(window.recetaFormNombreOriginal, datos, obtenerTokenSesion());
+  } else {
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .crearRecetaApp(datos, obtenerTokenSesion());
+  }
+
+}
+
 function alternarModoOscuro(){
 
   const actual = document.documentElement.getAttribute("data-theme");
@@ -1801,6 +2648,10 @@ function alternarModoOscuro(){
   if(icono){ icono.innerText = nuevo === "dark" ? "☀️" : "🌙"; }
 
 }
+
+// ===============================
+// SIDEBAR MOVIL / GRUPOS
+// ===============================
 
 function toggleSidebarMovil(){
   document.getElementById("sidebar").classList.toggle("abierto");
@@ -1825,6 +2676,12 @@ function toggleGrupo(id){
   submenu.classList.toggle("abierto");
   if(flecha){ flecha.classList.toggle("rotada"); }
 }
+
+// ===============================
+// COMPRAS e INVENTARIO MENSUAL
+// Solo botones + vista de marcador de posición por ahora — sin lógica
+// todavía. La funcionalidad de cada módulo se agrega después.
+// ===============================
 
 function abrirVistaProximamente(idBoton, titulo, icono, descripcion){
 
@@ -2216,6 +3073,262 @@ function abrirOrdenesCompra(){
 
 function abrirHistorialCompras(){
   abrirListaOrdenesCompra("btnHistorialCompras", "Historial de Compras", false);
+}
+
+function abrirAnalisisCompras(){
+
+  marcarActivo("btnAnalisisCompras");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <h2>🔎 Análisis de Compras</h2>
+  <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Consulta rápida por producto: cuánto se ha comprado, y proyecta cuánto se necesitará.</p>
+
+  <div class="cardProducto">
+    <div style="position:relative;max-width:500px">
+      <label>Buscar producto</label>
+      <input id="buscarAnalisisComprasInput" placeholder="Ej. Almeja 7x7..." oninput="buscarSugerenciasAnalisisCompras()" onkeydown="if(event.key==='Enter') consultarAnalisisCompras()">
+      <div id="resultadosAnalisisComprasSugerencias" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+    <div class="boton" style="max-width:200px;margin-top:10px" onclick="consultarAnalisisCompras()">🔎 Consultar</div>
+  </div>
+
+  <div id="resultadoAnalisisCompras"></div>
+
+  </div>
+
+  `;
+
+}
+
+let temporizadorSugerenciasAnalisisCompras = null;
+
+function buscarSugerenciasAnalisisCompras(){
+
+  clearTimeout(temporizadorSugerenciasAnalisisCompras);
+
+  const texto = document.getElementById("buscarAnalisisComprasInput").value.trim();
+  const cont = document.getElementById("resultadosAnalisisComprasSugerencias");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorSugerenciasAnalisisCompras = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.style.display = "none";
+          return;
+        }
+
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick="seleccionarSugerenciaAnalisisCompras('${p.producto.replace(/'/g,"\\'")}')">
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(){ cont.style.display = "none"; })
+      .buscarProductoCatalogoApp(texto);
+
+  }, 300);
+
+}
+
+function seleccionarSugerenciaAnalisisCompras(nombre){
+  document.getElementById("buscarAnalisisComprasInput").value = nombre;
+  document.getElementById("resultadosAnalisisComprasSugerencias").style.display = "none";
+  consultarAnalisisCompras();
+}
+
+function consultarAnalisisCompras(){
+
+  const texto = document.getElementById("buscarAnalisisComprasInput").value.trim();
+  const cont = document.getElementById("resultadoAnalisisCompras");
+
+  if(!texto){
+    cont.innerHTML = "";
+    return;
+  }
+
+  document.getElementById("resultadosAnalisisComprasSugerencias").style.display = "none";
+  cont.innerHTML = "<div class='cardProducto'>Buscando...</div>";
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      if(!datos){
+        cont.innerHTML = "<div class='cardProducto'><p style='text-align:center;color:var(--text-muted)'>No hay compras registradas de ese producto todavía.</p></div>";
+        return;
+      }
+
+      window.analisisComprasActual = datos;
+
+      cont.innerHTML = `
+
+      <div class="cardProducto">
+
+        <h3 style="margin-top:0;color:var(--guinda)">${datos.nombre}</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:-8px">${datos.codigo}</p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:10px">
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">COMPRADO ESTE MES</div>
+            <div style="font-size:22px;font-weight:800;color:var(--guinda)">${formatearCantidadJS(datos.compradoEsteMes)}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">ÓRDENES DE COMPRA</div>
+            <div style="font-size:22px;font-weight:800">${datos.numeroOrdenes}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">PROVEEDORES USADOS</div>
+            <div style="font-size:22px;font-weight:800">${datos.proveedoresUtilizados}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">PROMEDIO MENSUAL</div>
+            <div style="font-size:22px;font-weight:800">${formatearCantidadJS(datos.promedioMensual)}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">PROMEDIO SEMANAL</div>
+            <div style="font-size:22px;font-weight:800">${formatearCantidadJS(datos.promedioSemanal)}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">PRECIO PROMEDIO</div>
+            <div style="font-size:22px;font-weight:800">$${datos.precioPromedio.toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+          </div>
+        </div>
+
+        <div class="gridFormulario" style="margin-top:14px">
+          <div>
+            <label>Última compra</label>
+            <p style="margin:4px 0">${formatearCantidadJS(datos.ultimaCompra.cantidad)} — $${datos.ultimaCompra.precio.toLocaleString("es-MX",{minimumFractionDigits:2})} — ${datos.ultimaCompra.proveedor} — ${datos.ultimaCompra.fecha}</p>
+          </div>
+          <div>
+            <label>Importe total comprado (histórico disponible)</label>
+            <p style="margin:4px 0">$${datos.importeTotalComprado.toLocaleString("es-MX",{minimumFractionDigits:2})}</p>
+          </div>
+        </div>
+
+        ${datos.existenciaActual !== null ? `
+          <div class="gridFormulario">
+            <div><label>Existencia actual</label><p style="margin:4px 0">${formatearCantidadJS(datos.existenciaActual)}</p></div>
+            <div><label>Mínimo / Máximo</label><p style="margin:4px 0">${formatearCantidadJS(datos.minimoActual)} / ${formatearCantidadJS(datos.maximoActual)}</p></div>
+          </div>
+        ` : ""}
+
+      </div>
+
+      <div class="cardProducto">
+        <h3 style="margin-top:0">📋 Historial mensual (últimos 12 meses)</h3>
+        <canvas id="chartHistorialComprasProducto" style="max-height:260px"></canvas>
+      </div>
+
+      <div class="cardProducto">
+        <h3 style="margin-top:0">🔮 Proyectar consumo</h3>
+        <div class="gridFormulario" style="max-width:500px">
+          <div class="campo">
+            <label>Incremento esperado (%)</label>
+            <input id="incrementoProyeccionInput" type="number" value="10" step="0.1">
+          </div>
+        </div>
+        <div class="boton" style="max-width:220px" onclick="generarProyeccionCompras()">🔮 Generar proyección</div>
+        <div id="resultadoProyeccionCompras" style="margin-top:14px"></div>
+      </div>
+
+      `;
+
+      dibujarChartHistorialComprasProducto(datos.historialMensual);
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
+    })
+    .obtenerAnalisisProductoComprasApp(texto);
+
+}
+
+function dibujarChartHistorialComprasProducto(historial){
+
+  const ctx = document.getElementById("chartHistorialComprasProducto");
+  if(!ctx) return;
+
+  if(window.chartHistorialComprasInstancia){
+    window.chartHistorialComprasInstancia.destroy();
+  }
+
+  window.chartHistorialComprasInstancia = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: historial.map(m => m.mes),
+      datasets: [{ label: "Comprado", data: historial.map(m => m.cantidad), backgroundColor: "#6B2737" }]
+    },
+    options: { plugins: { legend: { display: false } } }
+  });
+
+}
+
+function generarProyeccionCompras(){
+
+  const texto = (window.analisisComprasActual || {}).nombre;
+  if(!texto) return;
+
+  const incremento = document.getElementById("incrementoProyeccionInput").value;
+  const cont = document.getElementById("resultadoProyeccionCompras");
+  cont.innerHTML = "Calculando...";
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      cont.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">CONSUMO HISTÓRICO ANUAL</div>
+            <div style="font-size:20px;font-weight:800">${formatearCantidadJS(datos.consumoAnualHistorico)}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:rgba(107,39,55,.08)">
+            <div style="font-size:11px;color:var(--text-muted)">CONSUMO PROYECTADO (+${datos.incrementoPct}%)</div>
+            <div style="font-size:20px;font-weight:800;color:var(--guinda)">${formatearCantidadJS(datos.consumoAnualProyectado)}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">PROMEDIO MENSUAL PROYECTADO</div>
+            <div style="font-size:20px;font-weight:800">${formatearCantidadJS(datos.promedioMensualProyectado)}</div>
+          </div>
+          <div class="cardProducto" style="margin:0;background:var(--bg)">
+            <div style="font-size:11px;color:var(--text-muted)">PROMEDIO SEMANAL PROYECTADO</div>
+            <div style="font-size:20px;font-weight:800">${formatearCantidadJS(datos.promedioSemanalProyectado)}</div>
+          </div>
+        </div>
+
+        <table class="tablaTop" style="font-size:13px;margin-top:14px">
+          <thead><tr><th>Mes</th><th style="text-align:right">Histórico</th><th style="text-align:right">Proyectado</th></tr></thead>
+          <tbody>
+            ${datos.proyeccionMensual.map(m => `
+              <tr>
+                <td>${m.mes}</td>
+                <td style="text-align:right">${formatearCantidadJS(m.historico)}</td>
+                <td style="text-align:right;color:var(--guinda);font-weight:700">${formatearCantidadJS(m.proyectado)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = "⚠️ " + e.message;
+    })
+    .generarProyeccionConsumoApp(texto, incremento);
+
 }
 
 function abrirAnalisisCostos(){
@@ -3935,31 +5048,37 @@ function volverInicio(){
 
   <div class="kpiGrid">
     <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">📦</div>
       <div class="kpiLabel">Productos</div>
       <div class="kpiValor" id="kpiProductos">--</div>
       <div class="kpiNota">en catálogo</div>
     </div>
     <div class="kpiCard tono-oliva">
+      <div class="kpiIcono">📍</div>
       <div class="kpiLabel">Ubicaciones</div>
       <div class="kpiValor" id="kpiUbicaciones">--</div>
       <div class="kpiNota">con producto asignado</div>
     </div>
     <div class="kpiCard tono-terracota">
+      <div class="kpiIcono">⚠️</div>
       <div class="kpiLabel">Bajo mínimo</div>
       <div class="kpiValor" id="kpiBajo">--</div>
       <div class="kpiNota">requieren reorden</div>
     </div>
     <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">⏰</div>
       <div class="kpiLabel">Agotados</div>
       <div class="kpiValor" id="kpiAgotados">--</div>
       <div class="kpiNota">requiere atención</div>
     </div>
     <div class="kpiCard tono-oliva">
+      <div class="kpiIcono">📄</div>
       <div class="kpiLabel">Discrepancias</div>
       <div class="kpiValor" id="kpiDiscrepancias">--</div>
       <div class="kpiNota">pendientes de aprobar</div>
     </div>
     <div class="kpiCard tono-terracota">
+      <div class="kpiIcono">🔄</div>
       <div class="kpiLabel">Conteos abiertos</div>
       <div class="kpiValor" id="kpiConteos">--</div>
       <div class="kpiNota">ciclos en curso</div>
@@ -6406,116 +7525,121 @@ function aplicarFiltros(){
 <div id="sidebar">
 
 <div class="logoLateral">
-📦 TAGERS
-<span>WMS</span>
+<div class="logoIcono">📦</div>
+<div class="textoMenu"><b>TAGERS</b><span>WMS</span></div>
 </div>
 
-<button class="menuLateralBtn activo" id="btnInicio" onclick="volverInicio()">
-<span class="icono">🏠</span> Inicio
+<button class="menuLateralBtn activo" id="btnInicio" onclick="volverInicio()" title="Inicio">
+<span class="icono">🏠</span><span class="textoMenu">Inicio</span>
 </button>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoOperaciones')">
-  <span class="icono">🗂️</span> Operaciones <span class="flechaGrupo" id="flecha-grupoOperaciones">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoOperaciones')" title="Operaciones">
+  <span class="icono">🗂️</span><span class="textoMenu">Operaciones</span> <span class="flechaGrupo" id="flecha-grupoOperaciones">▸</span>
   </button>
   <div class="submenu" id="grupoOperaciones">
-    <button class="menuLateralBtn sub" id="btnEntradas" onclick="abrirEntradas()"><span class="icono">📥</span> Entradas</button>
-    <button class="menuLateralBtn sub" id="btnSalidas" onclick="abrirSalidas()"><span class="icono">📤</span> Salidas</button>
-    <button class="menuLateralBtn sub" id="btnImportarSalidas" onclick="abrirImportarSalidas()"><span class="icono">📄</span> Importar salidas</button>
-    <button class="menuLateralBtn sub" id="btnAjustes" onclick="abrirAjustesInventario()"><span class="icono">⚖️</span> Ajustes de inventario</button>
+    <button class="menuLateralBtn sub" id="btnEntradas" onclick="abrirEntradas()" title="Entradas"><span class="icono">📥</span><span class="textoMenu">Entradas</span></button>
+    <button class="menuLateralBtn sub" id="btnSalidas" onclick="abrirSalidas()" title="Salidas"><span class="icono">📤</span><span class="textoMenu">Salidas</span></button>
+    <button class="menuLateralBtn sub" id="btnImportarSalidas" onclick="abrirImportarSalidas()" title="Importar salidas"><span class="icono">📄</span><span class="textoMenu">Importar salidas</span></button>
+    <button class="menuLateralBtn sub" id="btnAjustes" onclick="abrirAjustesInventario()" title="Ajustes de inventario"><span class="icono">⚖️</span><span class="textoMenu">Ajustes de inventario</span></button>
   </div>
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoInventario')">
-  <span class="icono">📦</span> Inventario <span class="flechaGrupo" id="flecha-grupoInventario">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoInventario')" title="Inventario">
+  <span class="icono">📦</span><span class="textoMenu">Inventario</span> <span class="flechaGrupo" id="flecha-grupoInventario">▸</span>
   </button>
   <div class="submenu" id="grupoInventario">
-    <button class="menuLateralBtn sub" id="btnKardex" onclick="abrirKardex()"><span class="icono">📜</span> Kardex</button>
-    <button class="menuLateralBtn sub" id="btnMapa" onclick="irAMapa()"><span class="icono">📍</span> Mapa del almacén</button>
-    <button class="menuLateralBtn sub" id="btnInventarioLista" onclick="abrirInventario()"><span class="icono">📋</span> Existencias</button>
-    <button class="menuLateralBtn sub" id="btnUbicaciones" onclick="abrirUbicaciones()"><span class="icono">🔎</span> Buscar ubicación</button>
+    <button class="menuLateralBtn sub" id="btnKardex" onclick="abrirKardex()" title="Kardex"><span class="icono">📜</span><span class="textoMenu">Kardex</span></button>
+    <button class="menuLateralBtn sub" id="btnMapa" onclick="irAMapa()" title="Mapa del almacén"><span class="icono">📍</span><span class="textoMenu">Mapa del almacén</span></button>
+    <button class="menuLateralBtn sub" id="btnInventarioLista" onclick="abrirInventario()" title="Existencias"><span class="icono">📋</span><span class="textoMenu">Existencias</span></button>
+    <button class="menuLateralBtn sub" id="btnUbicaciones" onclick="abrirUbicaciones()" title="Buscar ubicación"><span class="icono">🔎</span><span class="textoMenu">Buscar ubicación</span></button>
   </div>
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoControl')">
-  <span class="icono">📋</span> Control <span class="flechaGrupo" id="flecha-grupoControl">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoControl')" title="Control">
+  <span class="icono">📋</span><span class="textoMenu">Control</span> <span class="flechaGrupo" id="flecha-grupoControl">▸</span>
   </button>
   <div class="submenu" id="grupoControl">
-    <button class="menuLateralBtn sub" id="btnGenerarConteo" onclick="abrirGenerarConteo()"><span class="icono">📋</span> Generar conteo</button>
-    <button class="menuLateralBtn sub" id="btnCapturarConteo" onclick="abrirCapturarConteo()"><span class="icono">📷</span> Capturar conteo</button>
-    <button class="menuLateralBtn sub" id="btnRevisarDiscrepancias" onclick="abrirRevisarDiscrepancias()"><span class="icono">🔎</span> Revisar discrepancias</button>
-    <button class="menuLateralBtn sub" id="btnAprobarDiscrepancias" onclick="abrirAprobarDiscrepancias()"><span class="icono">✅</span> Aprobar discrepancias</button>
-    <button class="menuLateralBtn sub" id="btnCerrarConteo" onclick="abrirCerrarConteo()"><span class="icono">📚</span> Cerrar conteo</button>
+    <button class="menuLateralBtn sub" id="btnGenerarConteo" onclick="abrirGenerarConteo()" title="Generar conteo"><span class="icono">📋</span><span class="textoMenu">Generar conteo</span></button>
+    <button class="menuLateralBtn sub" id="btnCapturarConteo" onclick="abrirCapturarConteo()" title="Capturar conteo"><span class="icono">📷</span><span class="textoMenu">Capturar conteo</span></button>
+    <button class="menuLateralBtn sub" id="btnRevisarDiscrepancias" onclick="abrirRevisarDiscrepancias()" title="Revisar discrepancias"><span class="icono">🔎</span><span class="textoMenu">Revisar discrepancias</span></button>
+    <button class="menuLateralBtn sub" id="btnAprobarDiscrepancias" onclick="abrirAprobarDiscrepancias()" title="Aprobar discrepancias"><span class="icono">✅</span><span class="textoMenu">Aprobar discrepancias</span></button>
+    <button class="menuLateralBtn sub" id="btnCerrarConteo" onclick="abrirCerrarConteo()" title="Cerrar conteo"><span class="icono">📚</span><span class="textoMenu">Cerrar conteo</span></button>
   </div>
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoRequisiciones')">
-  <span class="icono">📦</span> Requisiciones internas <span class="flechaGrupo" id="flecha-grupoRequisiciones">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoRequisiciones')" title="Requisiciones internas">
+  <span class="icono">📦</span><span class="textoMenu">Requisiciones internas</span> <span class="flechaGrupo" id="flecha-grupoRequisiciones">▸</span>
   </button>
   <div class="submenu" id="grupoRequisiciones">
-    <button class="menuLateralBtn sub" id="btnNuevaRequisicion" onclick="abrirNuevaRequisicion()"><span class="icono">➕</span> Nueva requisición</button>
-    <button class="menuLateralBtn sub" id="btnMisRequisiciones" onclick="abrirMisRequisiciones()"><span class="icono">📋</span> Mis requisiciones</button>
-    <button class="menuLateralBtn sub" id="btnRequisicionesPendientes" onclick="abrirRequisicionesPendientes()"><span class="icono">🟡</span> Requisiciones pendientes</button>
-    <button class="menuLateralBtn sub" id="btnPreparacionRequisicion" onclick="abrirPreparacionRequisicion()"><span class="icono">🧰</span> Preparación</button>
-    <button class="menuLateralBtn sub" id="btnEntregasRequisicion" onclick="abrirEntregasRequisicion()"><span class="icono">✅</span> Entregas</button>
-    <button class="menuLateralBtn sub" id="btnHistorialRequisicion" onclick="abrirHistorialRequisicion()"><span class="icono">🗂️</span> Historial</button>
+    <button class="menuLateralBtn sub" id="btnNuevaRequisicion" onclick="abrirNuevaRequisicion()" title="Nueva requisición"><span class="icono">➕</span><span class="textoMenu">Nueva requisición</span></button>
+    <button class="menuLateralBtn sub" id="btnMisRequisiciones" onclick="abrirMisRequisiciones()" title="Mis requisiciones"><span class="icono">📋</span><span class="textoMenu">Mis requisiciones</span></button>
+    <button class="menuLateralBtn sub" id="btnRequisicionesPendientes" onclick="abrirRequisicionesPendientes()" title="Requisiciones pendientes"><span class="icono">🟡</span><span class="textoMenu">Requisiciones pendientes</span></button>
+    <button class="menuLateralBtn sub" id="btnPreparacionRequisicion" onclick="abrirPreparacionRequisicion()" title="Preparación"><span class="icono">🧰</span><span class="textoMenu">Preparación</span></button>
+    <button class="menuLateralBtn sub" id="btnEntregasRequisicion" onclick="abrirEntregasRequisicion()" title="Entregas"><span class="icono">✅</span><span class="textoMenu">Entregas</span></button>
+    <button class="menuLateralBtn sub" id="btnHistorialRequisicion" onclick="abrirHistorialRequisicion()" title="Historial"><span class="icono">🗂️</span><span class="textoMenu">Historial</span></button>
   </div>
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoCompras')">
-  <span class="icono">🛒</span> Compras <span class="flechaGrupo" id="flecha-grupoCompras">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoCompras')" title="Compras">
+  <span class="icono">🛒</span><span class="textoMenu">Compras</span> <span class="flechaGrupo" id="flecha-grupoCompras">▸</span>
   </button>
   <div class="submenu" id="grupoCompras">
-    <button class="menuLateralBtn sub" id="btnCentroReabastecimiento" onclick="abrirCentroReabastecimiento()"><span class="icono">🧭</span> Centro de reabastecimiento</button>
-    <button class="menuLateralBtn sub" id="btnOrdenesCompra" onclick="abrirOrdenesCompra()"><span class="icono">🧾</span> Órdenes de compra</button>
-    <button class="menuLateralBtn sub" id="btnRecepcionMercancia" onclick="abrirRecepcionMercancia()"><span class="icono">📦</span> Recepción de mercancía</button>
-    <button class="menuLateralBtn sub" id="btnHistorialCompras" onclick="abrirHistorialCompras()"><span class="icono">📜</span> Historial de compras</button>
-    <button class="menuLateralBtn sub" id="btnAnalisisCostos" onclick="abrirAnalisisCostos()"><span class="icono">📊</span> Análisis de costos</button>
-    <button class="menuLateralBtn sub" id="btnProveedores" onclick="abrirProveedores()"><span class="icono">🏭</span> Proveedores</button>
+    <button class="menuLateralBtn sub" id="btnCentroReabastecimiento" onclick="abrirCentroReabastecimiento()" title="Centro de reabastecimiento"><span class="icono">🧭</span><span class="textoMenu">Centro de reabastecimiento</span></button>
+    <button class="menuLateralBtn sub" id="btnOrdenesCompra" onclick="abrirOrdenesCompra()" title="Órdenes de compra"><span class="icono">🧾</span><span class="textoMenu">Órdenes de compra</span></button>
+    <button class="menuLateralBtn sub" id="btnRecepcionMercancia" onclick="abrirRecepcionMercancia()" title="Recepción de mercancía"><span class="icono">📦</span><span class="textoMenu">Recepción de mercancía</span></button>
+    <button class="menuLateralBtn sub" id="btnHistorialCompras" onclick="abrirHistorialCompras()" title="Historial de compras"><span class="icono">📜</span><span class="textoMenu">Historial de compras</span></button>
+    <button class="menuLateralBtn sub" id="btnAnalisisCostos" onclick="abrirAnalisisCostos()" title="Análisis de costos"><span class="icono">📊</span><span class="textoMenu">Análisis de costos</span></button>
+    <button class="menuLateralBtn sub" id="btnAnalisisCompras" onclick="abrirAnalisisCompras()" title="Análisis de compras"><span class="icono">🔎</span><span class="textoMenu">Análisis de compras</span></button>
+    <button class="menuLateralBtn sub" id="btnProveedores" onclick="abrirProveedores()" title="Proveedores"><span class="icono">🏭</span><span class="textoMenu">Proveedores</span></button>
   </div>
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoInventarioMensual')">
-  <span class="icono">🗓️</span> Inventario mensual <span class="flechaGrupo" id="flecha-grupoInventarioMensual">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoInventarioMensual')" title="Inventario mensual">
+  <span class="icono">🗓️</span><span class="textoMenu">Inventario mensual</span> <span class="flechaGrupo" id="flecha-grupoInventarioMensual">▸</span>
   </button>
   <div class="submenu" id="grupoInventarioMensual">
-    <button class="menuLateralBtn sub" id="btnGenerarInventarioMensual" onclick="abrirGenerarInventarioMensual()"><span class="icono">📋</span> Generar inventario</button>
-    <button class="menuLateralBtn sub" id="btnCapturarInventarioMensual" onclick="abrirCapturarInventarioMensual()"><span class="icono">📷</span> Capturar inventario</button>
-    <button class="menuLateralBtn sub" id="btnRevisarDiferenciasMensual" onclick="abrirRevisarDiferenciasMensual()"><span class="icono">🔎</span> Revisar diferencias</button>
-    <button class="menuLateralBtn sub" id="btnCerrarInventarioMensual" onclick="abrirCerrarInventarioMensual()"><span class="icono">📚</span> Cerrar inventario</button>
-    <button class="menuLateralBtn sub" id="btnHistorialInventarioMensual" onclick="abrirHistorialInventarioMensual()"><span class="icono">🗂️</span> Historial</button>
-    <button class="menuLateralBtn sub" id="btnDashboardInventarioMensual" onclick="abrirDashboardInventarioMensual()"><span class="icono">📊</span> Dashboard</button>
+    <button class="menuLateralBtn sub" id="btnGenerarInventarioMensual" onclick="abrirGenerarInventarioMensual()" title="Generar inventario"><span class="icono">📋</span><span class="textoMenu">Generar inventario</span></button>
+    <button class="menuLateralBtn sub" id="btnCapturarInventarioMensual" onclick="abrirCapturarInventarioMensual()" title="Capturar inventario"><span class="icono">📷</span><span class="textoMenu">Capturar inventario</span></button>
+    <button class="menuLateralBtn sub" id="btnRevisarDiferenciasMensual" onclick="abrirRevisarDiferenciasMensual()" title="Revisar diferencias"><span class="icono">🔎</span><span class="textoMenu">Revisar diferencias</span></button>
+    <button class="menuLateralBtn sub" id="btnCerrarInventarioMensual" onclick="abrirCerrarInventarioMensual()" title="Cerrar inventario"><span class="icono">📚</span><span class="textoMenu">Cerrar inventario</span></button>
+    <button class="menuLateralBtn sub" id="btnHistorialInventarioMensual" onclick="abrirHistorialInventarioMensual()" title="Historial"><span class="icono">🗂️</span><span class="textoMenu">Historial</span></button>
+    <button class="menuLateralBtn sub" id="btnDashboardInventarioMensual" onclick="abrirDashboardInventarioMensual()" title="Dashboard"><span class="icono">📊</span><span class="textoMenu">Dashboard</span></button>
   </div>
 </div>
 
-<button class="menuLateralBtn" id="btnDashboard" onclick="abrirDashboard()">
-<span class="icono">📊</span> Reportes
+<button class="menuLateralBtn" id="btnDashboard" onclick="abrirDashboard()" title="Reportes">
+<span class="icono">📊</span><span class="textoMenu">Reportes</span>
+</button>
+
+<button class="menuLateralBtn" id="btnRecetas" onclick="abrirRecetas()" title="Recetas">
+<span class="icono">📖</span><span class="textoMenu">Recetas</span>
 </button>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoConfig')">
-  <span class="icono">⚙️</span> Configuración <span class="flechaGrupo" id="flecha-grupoConfig">▸</span>
+  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoConfig')" title="Configuración">
+  <span class="icono">⚙️</span><span class="textoMenu">Configuración</span> <span class="flechaGrupo" id="flecha-grupoConfig">▸</span>
   </button>
   <div class="submenu" id="grupoConfig">
-    <button class="menuLateralBtn sub" onclick="alternarModoOscuro()"><span class="icono" id="iconoTema">🌙</span> Modo oscuro</button>
-    <button class="menuLateralBtn sub" onclick="ejecutarMigracionExistencia()"><span class="icono">🧊</span> Congelar fórmula de Existencia</button>
+    <button class="menuLateralBtn sub" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
+    <button class="menuLateralBtn sub" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
   </div>
 </div>
 
 <div class="sidebarFooter">
   <div class="usuarioInfo">
     <div class="avatarUsuario" id="avatarUsuario">?</div>
-    <div class="datosUsuario">
+    <div class="datosUsuario textoMenu">
       <div class="nombreUsuario" id="nombreUsuarioSidebar">Cargando...</div>
       <div class="rolUsuario" id="rolUsuarioSidebar"></div>
     </div>
   </div>
-  <button class="btnCerrarSesion" onclick="cerrarSesionTAGERS()">🚪 Cerrar sesión</button>
+  <button class="btnCerrarSesion" onclick="cerrarSesionTAGERS()" title="Cerrar sesión">🚪<span class="textoMenu"> Cerrar sesión</span></button>
 </div>
 
 </div>
@@ -6527,23 +7651,44 @@ function aplicarFiltros(){
 
 <button class="hamburguesa" onclick="toggleSidebarMovil()">☰</button>
 
-<span class="tituloHeader">📦 TAGERS WMS</span>
+<div class="buscadorHeader">
+  <span class="iconoLupa">🔍</span>
+  <input id="buscadorGlobalHeader" placeholder="Buscar producto, código, rack, proveedor..." oninput="buscarGlobalHeader()" onfocus="buscarGlobalHeader()">
+  <span class="atajoTecla">Ctrl+K</span>
+  <div class="resultadosBuscadorHeader" id="resultadosBuscadorHeader"></div>
+</div>
 
+<div class="accionesHeader">
+
+<div style="position:relative">
 <button class="iconoHeaderBtn" onclick="toggleNotificaciones()" title="Alertas de inventario">
 🔔
 <span class="badge" id="badgeNotificaciones">0</span>
 </button>
 
-</header>
-
 <div class="panelDropdown" id="panelNotificaciones">
+
 <h4>⚠️ Alertas de inventario</h4>
 <div id="listaNotificaciones"></div>
 </div>
 
-<div class="contenedor"></div>
+</div>
+
+<button class="iconoHeaderBtn" onclick="alternarModoOscuro()" title="Cambiar tema" id="btnTemaHeader">🌙</button>
+
+<div class="chipUsuarioHeader" id="chipUsuarioHeader">
+  <div class="avatarUsuario" id="avatarUsuarioHeader">?</div>
+  <div class="datosUsuario">
+    <div class="nombreUsuario" id="nombreUsuarioHeader">Cargando...</div>
+    <div class="rolUsuario" id="rolUsuarioHeader"></div>
+  </div>
+</div>
 
 </div>
+
+</header>
+
+<div class="contenedor"></div>
 
 
 <div class="modalEscaner" id="modalEscaner">
@@ -6669,6 +7814,8 @@ window.addEventListener("load", function(){
     icono.innerText = document.documentElement.getAttribute("data-theme") === "dark" ? "☀️" : "🌙";
   }
 
+  inicializarIndicadorSidebar();
+
   verificarSesionTAGERS(function(){
     volverInicio();
   });
@@ -6676,6 +7823,8 @@ window.addEventListener("load", function(){
 });
 
 </script>
+
+</div>
 
 </body>
 

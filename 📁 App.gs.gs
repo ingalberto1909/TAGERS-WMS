@@ -1,4 +1,8 @@
-
+/**
+ * Regresa true si la celda de ubicación NO cuenta como una ubicación real:
+ * vacía, solo espacios, o solo guiones (--, ---, etc: así marcan en MATRIZ
+ * los productos de temporada que aún no tienen rack asignado).
+ */
 function ubicacionVacia_(valor){
   const limpio = String(valor||"").trim();
   return limpio === "" || /^-+$/.test(limpio);
@@ -74,6 +78,16 @@ function obtenerMesLetra(fecha){
 
 }
 
+/**
+ * CORREGIDO: el usuario del KARDEX ahora es el nombre real
+ * (obtenerNombreUsuario, definido en tu script de la hoja),
+ * no el correo (Session.getEffectiveUser().getEmail()).
+ */
+/**
+ * Lógica REAL de registrar una entrada: escribe en ENTRADA y en KARDEX.
+ * La usan tanto la entrada manual (guardarEntradaApp) como la recepción
+ * de Órdenes de Compra — sin lógica duplicada entre ambos flujos.
+ */
 function registrarEntradaInterna_(datos, usuario, folioPersonalizado, observacionPersonalizada){
 
   const ss = SpreadsheetApp.getActive();
@@ -95,6 +109,8 @@ function registrarEntradaInterna_(datos, usuario, folioPersonalizado, observacio
     datos.ubicacion || ""
   ]);
 
+  // Única fuente de verdad para la existencia: se actualiza por delta
+  // (+cantidad) y de aquí sale la existencia anterior para el Kardex.
   const resultadoExistencia = ajustarExistenciaMatrizPorDelta_(datos.codigo, Number(datos.cantidad));
   const existenciaAnterior = resultadoExistencia ? resultadoExistencia.anterior : 0;
   const existenciaNueva = resultadoExistencia ? resultadoExistencia.nueva : Number(datos.cantidad);
@@ -123,6 +139,27 @@ function guardarEntradaApp(datos){
   return registrarEntradaInterna_(datos, obtenerNombreDesdeToken(datos.token));
 }
 
+/**
+ * Registra una salida. Valida existencia suficiente ANTES de mover nada.
+ * Layout de la hoja SALIDA (una sola fila, A→K):
+ *   A AÑO | B MES | C FECHA | D CODIGO | E PRODUCTO | F CANTIDAD | G UDM
+ *   H AREA | I LOTE | J CADUCIDAD | K UBICACION
+ *
+ * OJO: el formulario de Salida no tiene campo de Caducidad, así que
+ * datos.caducidad siempre llega vacío y la columna J se escribe en blanco
+ * en cada salida. Si J tiene una fórmula (ARRAYFORMULA, etc.) que se
+ * autoexpande, esto se la va a romper en esa fila. Si es tu caso, avísame
+ * y lo dejamos sin tocar esa columna (como hicimos con el layout anterior).
+ *
+ * CORREGIDO: usuario del KARDEX ahora es el nombre real, y la nota usa
+ * datos.area (tu campo actual) en vez de datos.motivo (ya no existe).
+ */
+/**
+ * Lógica REAL de registrar una salida: valida existencia, escribe en SALIDA
+ * y en KARDEX. Tanto la salida manual (registrarSalidaApp) como la
+ * importación masiva de requerimientos (registrarSalidasImportadasApp) usan
+ * ESTA MISMA función — no hay lógica duplicada entre ambos flujos.
+ */
 function registrarSalidaInterna_(datos, usuario){
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
@@ -173,6 +210,8 @@ function registrarSalidaInterna_(datos, usuario){
 
   SpreadsheetApp.flush();
 
+  // Única fuente de verdad para la existencia (antes esta función nunca
+  // la escribía en MATRIZ — dependía de la fórmula de la columna K).
   const resultadoExistencia = ajustarExistenciaMatrizPorDelta_(datos.codigo, -cantidad);
   const nuevaExistencia = resultadoExistencia ? resultadoExistencia.nueva : (existenciaActual - cantidad);
   const folio = datos.folio || ("SAL-" + fecha.getTime());
@@ -282,6 +321,14 @@ function buscarUbicacionApp(termino){
     });
 }
 
+// ============================================
+// IMPORTAR SALIDAS DESDE EXCEL (requerimientos)
+// ============================================
+
+/**
+ * Normaliza un nombre de producto para comparar: mayúsculas, sin acentos,
+ * sin caracteres especiales, sin espacios dobles.
+ */
 function normalizarTexto_(texto){
   return String(texto || "")
     .toUpperCase()
@@ -324,6 +371,11 @@ function similitudTexto_(a, b){
   return maxLen === 0 ? 1 : 1 - (distancia / maxLen);
 }
 
+/**
+ * Busca en el catálogo (ya normalizado) el producto más parecido a un
+ * nombre libre proveniente de un documento externo (requerimiento, Excel).
+ * Orden de intento: exacto normalizado -> contiene -> similitud (Levenshtein).
+ */
 function buscarCoincidenciaProducto_(nombreBuscado, catalogoNormalizado){
 
   const buscado = normalizarTexto_(nombreBuscado);
@@ -358,6 +410,12 @@ function buscarCoincidenciaProducto_(nombreBuscado, catalogoNormalizado){
   return null;
 }
 
+/**
+ * items = [{ productoDocumento, cantidad }, ...] ya extraídos del Excel en
+ * el navegador (fase 3). Aquí se hace la búsqueda de coincidencias contra
+ * MATRIZ (fase 4) y se deja un respaldo en la hoja IMPORTAR_SALIDAS para
+ * quien quiera revisarlo directamente en Sheets.
+ */
 function analizarImportacionSalidasApp(items){
 
   const ss = SpreadsheetApp.getActive();
@@ -441,6 +499,12 @@ function analizarImportacionSalidasApp(items){
   return resultados;
 }
 
+/**
+ * Registra en lote las filas ya revisadas/confirmadas por el usuario
+ * (fase 6-7). Usa registrarSalidaInterna_ — LA MISMA función que una salida
+ * manual — fila por fila, y guarda un resumen en HISTORIAL_IMPORTACIONES
+ * (fase 8).
+ */
 function registrarSalidasImportadasApp(filas, token, nombreArchivo){
 
   const usuario = obtenerNombreDesdeToken(token);
@@ -484,6 +548,20 @@ function registrarSalidasImportadasApp(filas, token, nombreArchivo){
   return { exitosas: exitosas, fallidas: fallidas, folio: folioLote };
 }
 
+// ============================================
+// IMPORTAR SALIDAS DESDE PDF (texto real o escaneado, vía OCR)
+// ============================================
+
+/**
+ * Recibe el PDF en base64 (lo manda el navegador), lo sube a Drive
+ * convirtiéndolo a Google Doc con OCR activado, extrae el texto, borra
+ * los archivos temporales, y regresa el texto plano. Funciona igual de
+ * bien con un PDF de texto real que con uno escaneado/foto, porque el
+ * OCR de Google lee ambos.
+ *
+ * IMPORTANTE: requiere el servicio avanzado "Drive API" activado en el
+ * proyecto (Servicios -> + -> Drive API).
+ */
 function extraerTextoPDFApp(base64PDF, nombreArchivo){
 
   const bytes = Utilities.base64Decode(base64PDF);
@@ -512,13 +590,23 @@ function extraerTextoPDFApp(base64PDF, nombreArchivo){
   return texto;
 }
 
+/**
+ * De cada línea del texto extraído del PDF intenta sacar "producto" y
+ * "cantidad", asumiendo el patrón típico de un pedido: el nombre del
+ * producto, seguido de la cantidad, seguido de un precio con "$".
+ * Ej: "SALSA COUNTRY 0.5 KG (1 * 0.5 Kg)   22   $23.23   $511.06"
+ *      -> producto: "SALSA COUNTRY 0.5 KG (1 * 0.5 Kg)", cantidad: 22
+ */
 function extraerItemsDesdeTextoPDF_(texto){
 
   const lineas = String(texto || "")
     .split("\n")
     .map(l => l.trim());
 
-  
+  // El encabezado de la tabla termina en la primera línea que dice
+  // exactamente "Total" (después de Código/Nombre/Cantidad/Precio/Total).
+  // Todo lo que sigue son los datos, en bloques de 4 líneas:
+  // [Nombre de producto] [Cantidad] [Precio] [Total].
   let inicioDatos = -1;
 
   for(let i = 0; i < lineas.length; i++){
@@ -539,6 +627,8 @@ function extraerItemsDesdeTextoPDF_(texto){
     const nombre = lineasDatos[i];
     const cantidad = Number(String(lineasDatos[i+1]).replace(",", "."));
 
+    // Filtro de seguridad: si "nombre" en realidad es un precio o número
+    // suelto, el bloque se desalineó — mejor no meter basura.
     if(nombre && !/^\$/.test(nombre) && !isNaN(cantidad) && cantidad > 0){
       items.push({ productoDocumento: nombre, cantidad: cantidad });
     }
@@ -548,12 +638,20 @@ function extraerItemsDesdeTextoPDF_(texto){
   return items;
 }
 
+/**
+ * Punto de entrada que llama el frontend: PDF en base64 -> texto (OCR) ->
+ * extraer items -> reusar analizarImportacionSalidasApp (EL MISMO motor
+ * de coincidencias que usa la importación por Excel).
+ */
 function analizarPDFRequerimientoApp(base64PDF, nombreArchivo){
 
   const texto = extraerTextoPDFApp(base64PDF, nombreArchivo);
   const items = extraerItemsDesdeTextoPDF_(texto);
 
   if(!items.length){
+    // No encontramos el patrón esperado. En vez de fallar a ciegas,
+    // regresamos un pedazo del texto que sí sacó el OCR para poder
+    // ajustar el patrón al formato real del documento.
     const muestra = texto.substring(0, 1200);
     throw new Error(
       "No se identificaron productos con el patrón esperado.\n\n--- TEXTO EXTRAÍDO (primeros 1200 caracteres) ---\n" + muestra
@@ -581,6 +679,7 @@ function obtenerResumenDashboard(){
     let minimo=Number(f[11])||0;
 
     if(ubicacionVacia_(ubicacion)){
+      // Producto de temporada / sin ubicación: no maneja stock, no cuenta como agotado ni bajo
       sinUbicacion++;
       return;
     }
@@ -654,6 +753,11 @@ function obtenerProductosBajoMinimo(){
     .slice(0, 50);
 }
 
+/**
+ * Detalle completo de un producto por código, para el modal que se abre
+ * al hacer clic en una alerta de inventario: existencia, mínimo, máximo,
+ * punto de reorden y fecha del último ingreso (última ENTRADA en KARDEX).
+ */
 function obtenerDetalleProductoApp(codigo){
 
   const ss = SpreadsheetApp.getActive();
@@ -719,6 +823,11 @@ function obtenerDetalleProductoApp(codigo){
   return producto;
 }
 
+/**
+ * Regresa el listado completo (sin límite de 50) de productos con ubicación,
+ * separados por estado, para el modal de "Stock crítico" en Inicio.
+ * tipo: "critico" (agotado + bajo mínimo) u "optimo" (arriba del mínimo).
+ */
 function obtenerProductosPorEstadoStock(tipo){
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getDataRange().getValues();
@@ -776,6 +885,8 @@ function obtenerEntradasSalidas7dias(){
 
   const labels = dias.map(d => Utilities.formatDate(d, Session.getScriptTimeZone(), "dd/MM"));
 
+  // Un Set por día: cuenta PRODUCTOS DISTINTOS que tuvieron entrada/salida,
+  // no la suma de cantidad (así un solo ingreso de 500kg ya no infla la barra).
   const productosEntrada = dias.map(()=> new Set());
   const productosSalida = dias.map(()=> new Set());
 
@@ -820,6 +931,7 @@ function obtenerDashboardMovil(){
     let minimo = Number(f[11]) || 0;
 
     if(ubicacionVacia_(ubicacion)){
+      // Producto de temporada / sin ubicación: se excluye de las métricas de stock
       sinUbicacion++;
       return;
     }
@@ -877,6 +989,9 @@ function obtenerDashboardMovil(){
   };
 }
 
+/**
+ * NUEVO: historial de AUDITORIA_AJUSTES para la vista "Ajustes de inventario".
+ */
 function obtenerAjustesInventarioApp(limite){
   const hoja = SpreadsheetApp.getActive().getSheetByName("AUDITORIA_AJUSTES");
   if(!hoja) return [];
@@ -901,6 +1016,11 @@ function obtenerAjustesInventarioApp(limite){
   return ajustes.slice(0, limite || 100);
 }
 
+/**
+ * NUEVO: versiones para la app web de las funciones de conteo cíclico que en
+ * tu script de la hoja usan SpreadsheetApp.getUi() (eso truena en la app web).
+ * Reusan la misma lógica pero regresan datos en vez de mostrar alerts.
+ */
 function obtenerRacksConteoApp(){
   return obtenerRacksConteo();
 }
@@ -951,6 +1071,16 @@ function generarConteoRacksApp(racks, token){
   return { folio: folioConteo, productos: salida.length, racks: racks };
 }
 
+// ============================================
+// PROGRAMACIÓN DE CONTEOS CÍCLICOS (PROGRAMACION_CONTEOS)
+// ============================================
+
+/**
+ * Revisa PROGRAMACION_CONTEOS y regresa los racks que "tocan" hoy:
+ * el día de la semana coincide con la columna Dia, Y según la Frecuencia
+ * (SEMANAL/QUINCENAL/MENSUAL) ya pasó suficiente tiempo desde la última
+ * generación (columna G) — o nunca se ha generado.
+ */
 function obtenerConteosProgramadosHoyApp(){
 
   const ss = SpreadsheetApp.getActive();
@@ -1013,6 +1143,11 @@ function obtenerConteosProgramadosHoyApp(){
   return programados;
 }
 
+/**
+ * Actualiza la columna "Última generación" (G) en PROGRAMACION_CONTEOS
+ * para las filas indicadas, después de generar el conteo desde la tarjeta
+ * de Inicio — así no se vuelve a sugerir hasta que le vuelva a tocar.
+ */
 function marcarConteoProgramadoGeneradoApp(filas){
 
   const ss = SpreadsheetApp.getActive();
@@ -1136,6 +1271,9 @@ function cerrarConteoFolioApp(folio, token){
     auditoria.getRange(auditoria.getLastRow()+1, 1, auditoriaDatos.length, 9).setValues(auditoriaDatos);
   }
 
+  // Actualizar Existencia → Guardar Kardex (misma función central que usan
+  // Entradas, Salidas e Inventario Mensual — antes esto nunca se hacía
+  // aquí y la existencia solo se movía si la fórmula de MATRIZ la jalaba).
   ajustesKardex.forEach(a => {
     actualizarExistenciaMatriz_(a.codigo, a.existenciaNueva);
     registrarKardex(
@@ -1164,6 +1302,10 @@ function cerrarConteoFolioApp(folio, token){
   return { productosGuardados: historialDatos.length, ajustesRegistrados: auditoriaDatos.length };
 }
 
+/**
+ * NUEVO: cuenta discrepancias pendientes y conteos cíclicos abiertos,
+ * para las tarjetas KPI del dashboard de Inicio.
+ */
 function obtenerContadoresControl(){
   const ss = SpreadsheetApp.getActive();
   let discrepancias = 0;
@@ -1184,6 +1326,9 @@ function obtenerContadoresControl(){
   return { discrepancias: discrepancias, conteosAbiertos: conteosAbiertos };
 }
 
+/**
+ * NUEVO: agrupa MATRIZ por RACK x NIVEL para el "mapa de calor" de Inicio.
+ */
 function obtenerMapaCalorRacks(){
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getDataRange().getValues();
@@ -1230,6 +1375,10 @@ function obtenerMapaCalorRacks(){
   return { racks: racks, niveles: niveles, filas: filas };
 }
 
+/**
+ * Top 10 productos con más ENTRADAS, más SALIDAS, y de mayor ROTACIÓN
+ * (entradas+salidas) durante el mes en curso, leyendo KARDEX.
+ */
 function obtenerTopMovimientosMesApp(){
 
   const ss = SpreadsheetApp.getActive();
@@ -1276,6 +1425,8 @@ function obtenerTopMovimientosMesApp(){
 
   });
 
+  // "Top" = las que MÁS VECES tuvieron un movimiento en el mes, no las de
+  // mayor cantidad acumulada (5 salidas de 100kg > 1 sola salida de 2000kg).
   const listaEntradas = Object.values(entradasPorCodigo).sort((a,b)=> b.veces - a.veces).slice(0,10);
   const listaSalidas = Object.values(salidasPorCodigo).sort((a,b)=> b.veces - a.veces).slice(0,10);
 
@@ -1298,6 +1449,10 @@ function obtenerTopMovimientosMesApp(){
 
 }
 
+/**
+ * Valor monetario total del inventario: existencia x costo unitario
+ * (MATRIZ columna R). Solo cuenta productos con existencia y costo > 0.
+ */
 function obtenerValorInventarioApp(){
 
   const ss = SpreadsheetApp.getActive();
@@ -1337,6 +1492,10 @@ function obtenerValorInventarioApp(){
 
 }
 
+/**
+ * Top 10 más urgentes de "bajo mínimo" (reusa obtenerProductosBajoMinimo,
+ * solo ordena por qué tan lejos están del mínimo y recorta a 10).
+ */
 function obtenerTopBajoMinimoApp(){
   return obtenerProductosBajoMinimo()
     .slice()
@@ -1344,6 +1503,10 @@ function obtenerTopBajoMinimoApp(){
     .slice(0, 10);
 }
 
+/**
+ * Un solo endpoint para las 5 tarjetas nuevas del dashboard: top entradas,
+ * top salidas, top rotación, top bajo mínimo y valor de inventario.
+ */
 function obtenerResumenExtraDashboardApp(){
 
   const movimientos = obtenerTopMovimientosMesApp();
@@ -1357,6 +1520,11 @@ function obtenerResumenExtraDashboardApp(){
   };
 
 }
+
+/**
+ * NUEVO: un solo endpoint que junta todo lo que necesita el dashboard de
+ * Inicio (KPIs, gráfica 7 días, mapa de calor, actividad reciente).
+ */
 
 function obtenerResumenInicioApp(){
 
@@ -1383,6 +1551,26 @@ function obtenerResumenInicioApp(){
 
 }
 
+// ============================================
+// MÓDULO DE COMPRAS: Centro de Reabastecimiento, Órdenes de Compra,
+// Recepción de Mercancía, Historial de Compras
+// ============================================
+//
+// Hojas usadas (ya creadas por Alberto):
+//   ORDENES_COMPRA: OC | Fecha | Proveedor | Usuario | Estado | Total | Observaciones
+//   DETALLE_OC:      OC | Código | Producto | Cantidad | UDM | Precio | Importe | Recibido
+//
+// Estados de una OC: PENDIENTE -> PARCIAL -> RECIBIDA, o PENDIENTE/PARCIAL -> CANCELADA.
+// Una orden NUNCA se borra, solo cambia de estado.
+//
+// El "precio" de cada línea se toma de MATRIZ columna R (costo unitario) —
+// el mismo campo que ya usamos para "Valor monetario del inventario".
+
+/**
+ * FASE 1: Centro de Reabastecimiento. Regresa los productos con ubicación
+ * válida cuya existencia está por debajo del mínimo, con la cantidad
+ * SUGERIDA a comprar (Máximo - Existencia).
+ */
 const SIN_PROVEEDOR_ETIQUETA_ = "Sin proveedor asignado";
 
 function obtenerProveedorProducto_(fila){
@@ -1413,12 +1601,47 @@ function calcularSugeridoCompra_(existencia, minimo, maximo){
 
 }
 
+// ============================================
+// Valor monetario del inventario — FUNCIÓN ÚNICA Y CENTRAL
+// ============================================
+//
+// El "Costo Unitario" de MATRIZ (columna R) NO siempre es el costo de UNA
+// unidad de inventario: cuando "Convertir" (columna S) = "SI", ese costo
+// es el de UNA PRESENTACIÓN de compra completa (columna T = cuántas
+// unidades trae esa presentación). Ejemplo: Manga de cartón — 1700 piezas
+// en existencia, Costo Unitario $77, Presentación 100 → son 17 paquetes
+// de $77 ($1,309), NO 1700×$77.
+//
+// TODO módulo que calcule el valor económico del inventario (Dashboard,
+// Inventario Mensual, Análisis de Costos, Compras, cualquier reporte)
+// DEBE usar esta función — no volver a multiplicar existencia×costo
+// directo en ningún lado nuevo.
+
+/**
+ * Valor monetario de una cantidad de producto (existencia, una diferencia
+ * de conteo, lo recibido en una OC, etc.), respetando la conversión por
+ * presentación cuando aplica.
+ *
+ * @param {number} cantidad     Cantidad en unidades de inventario (kg, pza...)
+ * @param {number} costoUnitario Costo Unitario tal cual está en MATRIZ col. R
+ * @param {string} convertir     Valor de MATRIZ col. S ("SI"/"NO"/vacío)
+ * @param {number} presentacion  Valor de MATRIZ col. T
+ */
+/**
+ * Formatea una CANTIDAD (kg, piezas, existencia, diferencia...) para
+ * mostrar en pantalla o PDF: máximo 2 decimales, sin ceros de más
+ * (5 se ve "5", no "5.00"), y sin el ruido típico de la aritmética de
+ * punto flotante (1.000000002 se ve "1").
+ */
 function formatearCantidad_(valor){
   const num = Number(valor);
   if(!isFinite(num)) return "0";
   return num.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+/**
+ * Formatea un MONTO en pesos: siempre exactamente 2 decimales.
+ */
 function formatearMoneda_(valor){
   const num = Number(valor) || 0;
   return num.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1444,6 +1667,16 @@ function calcularValorInventario_(cantidad, costoUnitario, convertir, presentaci
 
 }
 
+/**
+ * Costo real de UNA unidad de inventario (una pieza, un kg...), despejando
+ * el costo de la presentación cuando Convertir="SI". Útil para mostrar
+ * "costo por unidad" en Dashboard/reportes, o para calcular el impacto
+ * económico de una diferencia de conteo sin tener que repetir la
+ * conversión en cada módulo.
+ *
+ * Ejemplos: Manga de cartón → 77/100 = $0.77 por pieza.
+ *           Pimienta negra   → 148.33/0.36 = $411.97 por kg.
+ */
 function obtenerCostoUnitarioReal_(costoUnitario, convertir, presentacion){
 
   const costo = Number(costoUnitario) || 0;
@@ -1455,6 +1688,76 @@ function obtenerCostoUnitarioReal_(costoUnitario, convertir, presentacion){
   }
 
   return costo;
+
+}
+
+/**
+ * Lista de proveedores (columna Q de MATRIZ) con cuántos productos tiene
+ * cada uno y cuántos están bajo mínimo — para la pantalla de entrada del
+ * Centro de Reabastecimiento.
+ */
+/**
+ * Búsqueda libre en TODO el catálogo (sin filtrar por proveedor) — para
+ * poder agregar a una orden un producto que normalmente se compra con
+ * otro proveedor, si ese día se consiguió con éste.
+ */
+/**
+ * Búsqueda global del header: además de productos por nombre/código,
+ * detecta si el texto coincide con un RACK o un PROVEEDOR y agrupa los
+ * productos que están ahí — así "A01" muestra qué hay en ese rack, y
+ * "LYCONTT" muestra qué le compras a ese proveedor, sin entrar a otro módulo.
+ */
+function busquedaGlobalHeaderApp(texto){
+
+  const busqueda = normalizarTexto_(texto);
+  if(!busqueda) return { productos: [], racks: [], proveedores: [] };
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 18).getValues(); // A..R
+
+  const productos = [];
+  const racksEncontrados = {};
+  const proveedoresEncontrados = {};
+
+  datos.forEach(f => {
+
+    const ubicacion = String(f[9]||"").trim();
+    if(ubicacionVacia_(ubicacion)) return;
+
+    const nombre = f[0], codigo = f[4], rack = String(f[6]||"").trim();
+    const proveedor = obtenerProveedorProducto_(f);
+    const existencia = Number(f[10]) || 0;
+
+    const infoProducto = { codigo: codigo, producto: nombre, existencia: existencia, udm: f[1], rack: rack, proveedor: proveedor };
+
+    // 1) coincidencia directa de producto (nombre o código)
+    if(productos.length < 8 && (normalizarTexto_(nombre).indexOf(busqueda) !== -1 || normalizarTexto_(codigo).indexOf(busqueda) !== -1)){
+      productos.push(infoProducto);
+    }
+
+    // 2) coincidencia de rack
+    if(rack && normalizarTexto_(rack).indexOf(busqueda) !== -1){
+      if(!racksEncontrados[rack]) racksEncontrados[rack] = [];
+      racksEncontrados[rack].push(infoProducto);
+    }
+
+    // 3) coincidencia de proveedor
+    if(proveedor && normalizarTexto_(proveedor).indexOf(busqueda) !== -1){
+      if(!proveedoresEncontrados[proveedor]) proveedoresEncontrados[proveedor] = [];
+      proveedoresEncontrados[proveedor].push(infoProducto);
+    }
+
+  });
+
+  const racks = Object.keys(racksEncontrados).slice(0,3).map(r => ({
+    rack: r, total: racksEncontrados[r].length, productos: racksEncontrados[r].slice(0,10)
+  }));
+
+  const proveedores = Object.keys(proveedoresEncontrados).slice(0,3).map(p => ({
+    proveedor: p, total: proveedoresEncontrados[p].length, productos: proveedoresEncontrados[p].slice(0,10)
+  }));
+
+  return { productos: productos, racks: racks, proveedores: proveedores };
 
 }
 
@@ -1527,7 +1830,11 @@ function obtenerProveedoresReabastecimientoApp(){
 
 }
 
-
+/**
+ * TODOS los productos (con ubicación) de un proveedor específico —
+ * estén o no bajo mínimo — para poder agregarlos manualmente a la orden.
+ * "sugerido" = punto medio entre Mínimo y Máximo, no el Máximo completo.
+ */
 function obtenerProductosPorProveedorApp(proveedor){
 
   const proveedorBuscado = normalizarProveedor_(proveedor);
@@ -3836,6 +4143,13 @@ function obtenerPDFRequisicionApp(folio){
   return generarYGuardarPDFRequisicion_(folio);
 }
 
+
+/**
+ * Productos que un Área pide más seguido, según su propio historial en
+ * SALIDA (columna H = Área). Se usa como sugerencia rápida al abrir una
+ * Nueva Requisición — no es una lista fija, sale de lo que de verdad ha
+ * consumido esa área antes.
+ */
 function obtenerProductosSugeridosAreaApp(area){
 
   if(!area) return [];
@@ -3863,6 +4177,7 @@ function obtenerProductosSugeridosAreaApp(area){
 
   });
 
+  // Existencia actual, para que se vea disponible al sugerir.
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow()-1, 11).getValues();
   const existenciaPorCodigo = {};
