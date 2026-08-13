@@ -1034,32 +1034,38 @@ function generarConteoRacksApp(racks, token){
   const fecha = new Date();
   const usuario = obtenerNombreDesdeToken(token);
 
-  let salida = [];
-  const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
+  let folioConteo, salida;
 
-  let consecutivo = 1;
+  conBloqueoApp_(function(){
 
-  if(conteo.getLastRow() > 1){
-    const folios = conteo.getRange(2,1,conteo.getLastRow()-1,1).getValues().flat();
-    const conteosHoy = folios.filter(f => f.toString().includes("CC-"+fechaCodigo));
-    consecutivo = conteosHoy.length + 1;
-  }
+    salida = [];
+    const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
 
-  const folioConteo = "CC-"+fechaCodigo+"-"+Utilities.formatString("%03d", consecutivo);
+    let consecutivo = 1;
 
-  datos.forEach(fila=>{
-    let rackProducto = fila[6];
-
-    if(racks.includes(rackProducto) && fila[4] && fila[9]){
-      salida.push([
-        folioConteo, fecha, usuario, fila[4], fila[0], fila[9], fila[10], "", "", "PENDIENTE", rackProducto
-      ]);
+    if(conteo.getLastRow() > 1){
+      const folios = conteo.getRange(2,1,conteo.getLastRow()-1,1).getValues().flat();
+      const conteosHoy = folios.filter(f => f.toString().includes("CC-"+fechaCodigo));
+      consecutivo = conteosHoy.length + 1;
     }
-  });
 
-  if(salida.length > 0){
-    conteo.getRange(conteo.getLastRow()+1, 1, salida.length, 11).setValues(salida);
-  }
+    folioConteo = "CC-"+fechaCodigo+"-"+Utilities.formatString("%03d", consecutivo);
+
+    datos.forEach(fila=>{
+      let rackProducto = fila[6];
+
+      if(racks.includes(rackProducto) && fila[4] && fila[9]){
+        salida.push([
+          folioConteo, fecha, usuario, fila[4], fila[0], fila[9], fila[10], "", "", "PENDIENTE", rackProducto
+        ]);
+      }
+    });
+
+    if(salida.length > 0){
+      conteo.getRange(conteo.getLastRow()+1, 1, salida.length, 11).setValues(salida);
+    }
+
+  });
 
   registrarControlConteo(folioConteo, fecha, usuario, racks, salida.length);
 
@@ -1894,63 +1900,74 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
   const usuario = obtenerNombreDesdeToken(token);
   const fecha = new Date();
 
-  // Folio consecutivo del día: OC-YYYYMMDD-001
-  const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
-  let consecutivo = 1;
+  // El folio consecutivo del día y la reserva del encabezado (appendRow
+  // en ORDENES_COMPRA) quedan protegidos por un lock: así dos compras
+  // generadas al mismo tiempo no pueden terminar con el mismo folio. El
+  // resto (detalle, auditoría, PDF) no depende de esa sección compartida
+  // y queda igual que antes, fuera del lock.
+  let folioOC, total, filasDetalle;
 
-  if(ordenes.getLastRow() > 1){
-    const folios = ordenes.getRange(2, 1, ordenes.getLastRow()-1, 1).getValues().flat();
-    const deHoy = folios.filter(f => f.toString().includes("OC-"+fechaCodigo));
-    consecutivo = deHoy.length + 1;
-  }
+  conBloqueoApp_(function(){
 
-  const folioOC = "OC-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
+    // Folio consecutivo del día: OC-YYYYMMDD-001
+    const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
+    let consecutivo = 1;
 
-  let total = 0;
-  const filasDetalle = [];
+    if(ordenes.getLastRow() > 1){
+      const folios = ordenes.getRange(2, 1, ordenes.getLastRow()-1, 1).getValues().flat();
+      const deHoy = folios.filter(f => f.toString().includes("OC-"+fechaCodigo));
+      consecutivo = deHoy.length + 1;
+    }
 
-  items.forEach(item=>{
-    const cantidad = Number(item.cantidad) || 0;
-    if(cantidad <= 0) return;
+    folioOC = "OC-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
 
-    const precio = Number(item.precio) || 0;
-    const presentacion = Number(item.presentacion) || 0;
-    const piezasOrdenadas = Number(item.piezasOrdenadas) || 0;
+    total = 0;
+    filasDetalle = [];
 
-    // Si el producto se compra por presentación, "precio" es el costo de
-    // UNA presentación (no de 1 kg/pza) — la función central ya lo maneja.
-    const importe = calcularValorInventario_(cantidad, precio, presentacion > 0 ? "SI" : "NO", presentacion);
-    total += importe;
+    items.forEach(item=>{
+      const cantidad = Number(item.cantidad) || 0;
+      if(cantidad <= 0) return;
 
-    filasDetalle.push([
+      const precio = Number(item.precio) || 0;
+      const presentacion = Number(item.presentacion) || 0;
+      const piezasOrdenadas = Number(item.piezasOrdenadas) || 0;
+
+      // Si el producto se compra por presentación, "precio" es el costo de
+      // UNA presentación (no de 1 kg/pza) — la función central ya lo maneja.
+      const importe = calcularValorInventario_(cantidad, precio, presentacion > 0 ? "SI" : "NO", presentacion);
+      total += importe;
+
+      filasDetalle.push([
+        folioOC,
+        item.codigo,
+        item.producto,
+        cantidad,
+        item.udm || "",
+        precio,
+        importe,
+        0, // Recibido, arranca en 0
+        presentacion || "",
+        piezasOrdenadas || ""
+      ]);
+    });
+
+    if(!filasDetalle.length){
+      throw new Error("Ninguna cantidad capturada es mayor a cero.");
+    }
+
+    total = Math.round(total * 100) / 100;
+
+    ordenes.appendRow([
       folioOC,
-      item.codigo,
-      item.producto,
-      cantidad,
-      item.udm || "",
-      precio,
-      importe,
-      0, // Recibido, arranca en 0
-      presentacion || "",
-      piezasOrdenadas || ""
+      fecha,
+      proveedor,
+      usuario,
+      "PENDIENTE",
+      total,
+      observaciones || ""
     ]);
+
   });
-
-  if(!filasDetalle.length){
-    throw new Error("Ninguna cantidad capturada es mayor a cero.");
-  }
-
-  total = Math.round(total * 100) / 100;
-
-  ordenes.appendRow([
-    folioOC,
-    fecha,
-    proveedor,
-    usuario,
-    "PENDIENTE",
-    total,
-    observaciones || ""
-  ]);
 
   // Si DETALLE_OC todavía no tiene las columnas de presentación (de una
   // versión anterior), les ponemos encabezado la primera vez que se usan.
@@ -2588,6 +2605,33 @@ function buscarFilaMatrizPorCodigo_(codigo){
 // (de KARDEX/ENTRADA/SALIDA/HISTORIAL_*), nunca escribir aquí.
 
 /**
+ * FASE DE CONCURRENCIA: helper único para proteger con LockService las
+ * secciones que antes hacían "leer valor actual -> calcular -> escribir"
+ * sin ningún bloqueo (existencia de MATRIZ, folios consecutivos de OC/
+ * requisiciones/conteos). Con dos usuarios operando al mismo tiempo esto
+ * podía producir folios duplicados o existencias mal calculadas.
+ *
+ * `funcion` se ejecuta solo cuando se consigue el lock de script (uno a
+ * la vez, para TODO el proyecto). Si no se consigue en `esperaMs`, se
+ * lanza un error claro en vez de dejar avanzar una operación insegura.
+ * No cambia ningún resultado ni mensaje de las funciones que ya
+ * funcionaban — solo agrega esta protección alrededor.
+ */
+function conBloqueoApp_(funcion, esperaMs){
+  const lock = LockService.getScriptLock();
+  try{
+    lock.waitLock(esperaMs || 10000);
+  }catch(e){
+    throw new Error("El sistema está ocupado procesando otro movimiento, intenta de nuevo en unos segundos.");
+  }
+  try{
+    return funcion();
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+/**
  * ÚNICA función autorizada para modificar la Existencia (columna K) de
  * MATRIZ. Recibe el valor FINAL que debe quedar (no un delta) — quien
  * llama ya hizo la suma/resta o ya tiene el conteo físico.
@@ -2601,15 +2645,19 @@ function actualizarExistenciaMatriz_(codigo, nuevaExistencia){
   const fila = buscarFilaMatrizPorCodigo_(codigo);
   if(fila === -1) return null;
 
-  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const celda = matriz.getRange(fila, 11); // K = Existencia
+  return conBloqueoApp_(function(){
 
-  const existenciaAnterior = Number(celda.getValue()) || 0;
-  const existenciaNueva = Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000;
+    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+    const celda = matriz.getRange(fila, 11); // K = Existencia
 
-  celda.setValue(existenciaNueva);
+    const existenciaAnterior = Number(celda.getValue()) || 0;
+    const existenciaNueva = Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000;
 
-  return existenciaAnterior;
+    celda.setValue(existenciaNueva);
+
+    return existenciaAnterior;
+
+  });
 
 }
 
@@ -2624,15 +2672,19 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
   const fila = buscarFilaMatrizPorCodigo_(codigo);
   if(fila === -1) return null;
 
-  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const celda = matriz.getRange(fila, 11);
+  return conBloqueoApp_(function(){
 
-  const anterior = Number(celda.getValue()) || 0;
-  const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+    const celda = matriz.getRange(fila, 11);
 
-  celda.setValue(nueva);
+    const anterior = Number(celda.getValue()) || 0;
+    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
 
-  return { anterior: anterior, nueva: nueva };
+    celda.setValue(nueva);
+
+    return { anterior: anterior, nueva: nueva };
+
+  });
 
 }
 
@@ -2986,42 +3038,48 @@ function generarInventarioMensualApp(token){
   const control = obtenerHojaControlInventario_();
 
   const fecha = new Date();
-  const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
-
-  let consecutivo = 1;
-  if(control.getLastRow() > 1){
-    const folios = control.getRange(2,1,control.getLastRow()-1,1).getValues().flat();
-    consecutivo = folios.filter(f => f.toString().includes("IM-"+fechaCodigo)).length + 1;
-  }
-  const folio = "IM-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
-
   const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow()-1, 18).getValues(); // A..R
 
-  const filas = [];
-  datosMatriz.forEach(f=>{
-    const ubicacion = String(f[9]||"").trim();
-    if(ubicacionVacia_(ubicacion)) return;
-    if(!f[4]) return; // sin código
+  let folio, filas;
 
-    filas.push([
-      folio, fecha, usuario,
-      f[4], f[0], ubicacion, f[1] || "", f[2] || "",
-      Number(f[10]) || 0, // existencia teórica
-      "", // existencia física, pendiente
-      "", // diferencia, pendiente
-      "PENDIENTE"
+  conBloqueoApp_(function(){
+
+    const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
+
+    let consecutivo = 1;
+    if(control.getLastRow() > 1){
+      const folios = control.getRange(2,1,control.getLastRow()-1,1).getValues().flat();
+      consecutivo = folios.filter(f => f.toString().includes("IM-"+fechaCodigo)).length + 1;
+    }
+    folio = "IM-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
+
+    filas = [];
+    datosMatriz.forEach(f=>{
+      const ubicacion = String(f[9]||"").trim();
+      if(ubicacionVacia_(ubicacion)) return;
+      if(!f[4]) return; // sin código
+
+      filas.push([
+        folio, fecha, usuario,
+        f[4], f[0], ubicacion, f[1] || "", f[2] || "",
+        Number(f[10]) || 0, // existencia teórica
+        "", // existencia física, pendiente
+        "", // diferencia, pendiente
+        "PENDIENTE"
+      ]);
+    });
+
+    if(!filas.length){
+      throw new Error("No hay productos con ubicación en MATRIZ para generar el inventario.");
+    }
+
+    inventario.getRange(inventario.getLastRow()+1, 1, filas.length, 12).setValues(filas);
+
+    control.appendRow([
+      folio, fecha, usuario, filas.length, 0, 0, "ABIERTO", "", "", 0, 0, 0
     ]);
+
   });
-
-  if(!filas.length){
-    throw new Error("No hay productos con ubicación en MATRIZ para generar el inventario.");
-  }
-
-  inventario.getRange(inventario.getLastRow()+1, 1, filas.length, 12).setValues(filas);
-
-  control.appendRow([
-    folio, fecha, usuario, filas.length, 0, 0, "ABIERTO", "", "", 0, 0, 0
-  ]);
 
   registrarAuditoria(usuario, "INVENTARIO_MENSUAL", "INICIO INVENTARIO", folio, "", "", 0, 0, "Inventario mensual iniciado con " + filas.length + " producto(s)");
 
@@ -3939,12 +3997,15 @@ function crearRequisicionApp(observaciones, items, token){
     throw new Error("Captura al menos una cantidad solicitada.");
   }
 
-  const folio = generarFolioRequisicion_();
   const fecha = new Date();
+  let folio;
 
-  obtenerHojaRequisiciones_().appendRow([
-    folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
-  ]);
+  conBloqueoApp_(function(){
+    folio = generarFolioRequisicion_();
+    obtenerHojaRequisiciones_().appendRow([
+      folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
+    ]);
+  });
 
   const filasDetalle = validos.map(it => [
     folio, it.codigo, it.producto, it.unidad || "", Number(it.solicitado), ""
