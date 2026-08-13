@@ -1871,6 +1871,8 @@ function obtenerProductosPorProveedorApp(proveedor){
  */
 function generarOrdenCompraApp(proveedor, observaciones, items, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   proveedor = String(proveedor||"").trim();
 
   if(!proveedor){
@@ -2075,6 +2077,8 @@ function obtenerDetalleOCApp(oc){
  */
 function registrarRecepcionOCApp(oc, recepciones, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   oc = String(oc||"").trim().toUpperCase();
 
   if(!recepciones || !recepciones.length){
@@ -2213,6 +2217,8 @@ function registrarRecepcionOCApp(oc, recepciones, token){
  * cancelar si sigue PENDIENTE o PARCIAL.
  */
 function cancelarOrdenCompraApp(oc, token){
+
+  requerirAccesoAlmacenApp_(token);
 
   oc = String(oc||"").trim().toUpperCase();
 
@@ -3273,6 +3279,8 @@ function aprobarDiscrepanciasLoteInventarioMensualApp(filas, token){
 
 function cerrarInventarioMensualApp(folio, supervisor, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const ss = SpreadsheetApp.getActive();
   const inventario = obtenerHojaInventarioMensual_();
@@ -3853,6 +3861,27 @@ function obtenerAccesoRequisicionesApp(token){
   const areaNorm = String(area||"").trim().toUpperCase();
   const esAdmin = String(rol||"").toUpperCase() === "ADMIN" || areaNorm === "ALMACÉN" || areaNorm === "ALMACEN";
   return { area: area, esAdmin: esAdmin };
+}
+
+/**
+ * Verificación de servidor para operaciones sensibles de Compras e
+ * Inventario mensual (generar/cancelar OC, recibir mercancía, cerrar
+ * un inventario mensual). Antes estas funciones solo usaban el token
+ * para poner el nombre en la bitácora — nunca revisaban si la sesión
+ * seguía siendo válida ni si el usuario tenía permiso. Ahora, si la
+ * sesión no es válida o el usuario no es Admin / del área Almacén, la
+ * función que llama a esto se detiene con un error ANTES de escribir
+ * nada — mismo criterio que ya usa Requisiciones
+ * (obtenerAccesoRequisicionesApp), no se inventa un permiso nuevo.
+ */
+function requerirAccesoAlmacenApp_(token){
+  if(!obtenerSesion_(token)){
+    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
+  }
+  const acceso = obtenerAccesoRequisicionesApp(token);
+  if(!acceso.esAdmin){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
 }
 
 function generarFolioRequisicion_(){
