@@ -55,6 +55,11 @@
 box-sizing:border-box;
 }
 
+html{
+overflow-x:hidden;
+width:100%;
+}
+
 body{
 margin:0;
 font-family:'Segoe UI',Arial,sans-serif;
@@ -63,6 +68,7 @@ color:var(--text);
 display:flex;
 height:100vh;
 height:100dvh;
+width:100%;
 overflow:hidden;
 transition:background .2s ease,color .2s ease;
 }
@@ -285,6 +291,7 @@ align-items:center;
 padding:0 20px;
 box-shadow:0 1px 0 var(--border);
 gap:14px;
+min-width:0;
 }
 
 header .tituloHeader{
@@ -294,6 +301,7 @@ display:none;
 .buscadorHeader{
 flex:1;
 max-width:900px;
+min-width:0;
 position:relative;
 display:flex;
 align-items:center;
@@ -1606,14 +1614,14 @@ const PERMISOS_ROL = {
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
-    "btnNuevaRequisicion","btnMisRequisiciones","btnRequisicionesPendientes",
+    "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
   ],
   "OPERADOR": [
     "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnCapturarConteo","btnRecetas",
-    "btnNuevaRequisicion","btnMisRequisiciones","btnRequisicionesPendientes",
+    "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
   ],
   "CONSULTA": [
@@ -1624,7 +1632,7 @@ const PERMISOS_ROL = {
     // no por rol (ver aplicarAccesoRequisicionesMenu()).
     // Recetas: puede consultar/buscar (crear/editar se oculta aparte, por rol real).
     "btnInicio","btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnRecetas",
-    "btnNuevaRequisicion","btnMisRequisiciones","btnRequisicionesPendientes",
+    "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
   ]
 };
@@ -1683,9 +1691,214 @@ function ejecutarMigracionExistencia(){
 
 }
 
+function ejecutarMigracionCostoUnitario(){
+
+  if(!confirm(
+    "Esto cambia el significado de Costo Unitario en MATRIZ para los productos con Convertir=\"SI\":\n\n" +
+    "Antes: precio de la presentación completa (ej. $300 la caja de 1000 pz)\n" +
+    "Después: precio de UNA unidad real (ej. $0.30 por pz)\n\n" +
+    "Se calcula dividiendo el Costo Unitario actual entre la Presentación de cada producto. Los productos con Convertir=\"NO\" no se tocan.\n\n" +
+    "Solo debe correrse UNA vez. ¿Continuar?"
+  )) return;
+
+  if(!confirm("Confirma otra vez: ¿ya revisaste que la Presentación esté bien capturada para todos tus productos con Convertir=\"SI\"? Si está mal, el precio por unidad saldría mal.")) return;
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      alert("✅ Listo — se revisaron " + resultado.filas + " producto(s), se migraron " + resultado.migrados + " (los que tenían Convertir=\"SI\" y Presentación capturada).");
+    })
+    .withFailureHandler(function(e){
+      alert("⚠️ " + e.message);
+    })
+    .migrarCostoUnitarioAPorUnidadApp();
+
+}
+
 // ================================================================
 // REQUISICIONES INTERNAS
 // ================================================================
+
+function abrirNuevaRequisicionReceta(){
+
+  marcarActivo("btnNuevaRequisicionReceta");
+
+  const contenedor = document.querySelector(".contenedor");
+  window.itemsNuevaRequisicionReceta = [];
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <h2>🍳 Requisición de Recetas</h2>
+  <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Pide por número de tandas de receta (ej. "3 recetas de Aceite Mediterráneo") — el sistema calcula los insumos según cuántas veces se va a preparar.</p>
+
+  <div class="cardProducto">
+
+    <p style="font-size:12.5px;color:var(--text-muted)">El área se toma de tu usuario automáticamente.</p>
+
+    <label>Observaciones (opcional)</label>
+    <input id="observacionesRequisicionReceta" placeholder="Notas para almacén">
+
+    <div style="position:relative;max-width:500px;margin:14px 0">
+      <label>Buscar receta para agregar</label>
+      <input id="buscarRecetaRequisicion" placeholder="Nombre o código de receta..." oninput="buscarRecetaParaAgregarRequisicion()" autocomplete="off">
+      <div id="resultadosRecetaRequisicion" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+
+    <div id="tablaNuevaRequisicionReceta" style="overflow:auto;max-height:45vh"></div>
+
+    <div id="mensajeRequisicionReceta" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" style="margin-top:16px" onclick="enviarNuevaRequisicionReceta()">📨 Enviar requisición</div>
+
+  </div>
+
+  </div>
+
+  `;
+
+  dibujarTablaNuevaRequisicionReceta();
+
+}
+
+let temporizadorBuscarRecetaRequisicion = null;
+
+function buscarRecetaParaAgregarRequisicion(){
+
+  clearTimeout(temporizadorBuscarRecetaRequisicion);
+
+  const texto = document.getElementById("buscarRecetaRequisicion").value.trim();
+  const cont = document.getElementById("resultadosRecetaRequisicion");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarRecetaRequisicion = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados (solo aparecen recetas activas)</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = lista.map(r => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarRecetaARequisicion(${JSON.stringify(r).replace(/'/g,"&apos;")})'>
+            🧪 ${r.nombre} <span style="color:var(--text-muted);font-size:11px">(${r.codigo}) — Rendimiento: ${r.rendimiento}</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        cont.innerHTML = "⚠️ " + e.message;
+        cont.style.display = "block";
+      })
+      .buscarRecetaParaRequisicionApp(texto);
+
+  }, 300);
+
+}
+
+function sincronizarCantidadesRequisicionReceta(){
+  (window.itemsNuevaRequisicionReceta || []).forEach((it,i) => {
+    const input = document.getElementById("cantidadRecetaReq"+i);
+    if(input) it.cantidadSolicitada = Number(input.value) || 0;
+  });
+}
+
+function agregarRecetaARequisicion(receta){
+
+  sincronizarCantidadesRequisicionReceta();
+
+  if(window.itemsNuevaRequisicionReceta.some(it => it.codigoReceta === receta.codigo)){
+    mostrarMensajeTemporal("mensajeRequisicionReceta", "Esa receta ya está en la lista", "error");
+  } else {
+    window.itemsNuevaRequisicionReceta.push({
+      codigoReceta: receta.codigo, nombreReceta: receta.nombre,
+      rendimiento: receta.rendimiento, cantidadSolicitada: 1
+    });
+    dibujarTablaNuevaRequisicionReceta();
+  }
+
+  document.getElementById("buscarRecetaRequisicion").value = "";
+  document.getElementById("resultadosRecetaRequisicion").innerHTML = "";
+  document.getElementById("resultadosRecetaRequisicion").style.display = "none";
+
+}
+
+function quitarRecetaDeRequisicion(indice){
+  sincronizarCantidadesRequisicionReceta();
+  window.itemsNuevaRequisicionReceta.splice(indice, 1);
+  dibujarTablaNuevaRequisicionReceta();
+}
+
+function dibujarTablaNuevaRequisicionReceta(){
+
+  const cont = document.getElementById("tablaNuevaRequisicionReceta");
+  if(!cont) return;
+
+  const lista = window.itemsNuevaRequisicionReceta || [];
+
+  if(!lista.length){
+    cont.innerHTML = "<p style='color:var(--text-muted);font-size:13px'>Agrega recetas con el buscador de arriba.</p>";
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Receta</th><th>Rendimiento por tanda</th><th style="text-align:right">¿Cuántas veces prepararla?</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((it,i) => `
+          <tr>
+            <td>${it.nombreReceta}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigoReceta}</span></td>
+            <td>${it.rendimiento}</td>
+            <td style="text-align:right">
+              <input type="number" id="cantidadRecetaReq${i}" value="${it.cantidadSolicitada}" min="1" step="1"
+                style="width:100px;max-width:100px;text-align:right;margin:0;padding:6px"> recetas
+            </td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarRecetaDeRequisicion(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function enviarNuevaRequisicionReceta(){
+
+  sincronizarCantidadesRequisicionReceta();
+
+  const observaciones = document.getElementById("observacionesRequisicionReceta").value.trim();
+  const items = (window.itemsNuevaRequisicionReceta || []).filter(it => it.cantidadSolicitada > 0);
+
+  if(!items.length){
+    mostrarMensajeTemporal("mensajeRequisicionReceta", "Agrega al menos una receta con cantidad mayor a cero", "error");
+    return;
+  }
+
+  if(!confirm("¿Enviar esta requisición con " + items.length + " receta(s) a Almacén?")) return;
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      mostrarMensajeTemporal("mensajeRequisicionReceta", "✅ Requisición " + resultado.folio + " enviada", "ok");
+      window.itemsNuevaRequisicionReceta = [];
+      setTimeout(abrirMisRequisiciones, 900);
+    })
+    .withFailureHandler(function(e){
+      mostrarMensajeTemporal("mensajeRequisicionReceta", "⚠️ " + e.message, "error");
+    })
+    .crearRequisicionRecetaApp(observaciones, items.map(it => ({
+      codigoReceta: it.codigoReceta, nombreReceta: it.nombreReceta, cantidadSolicitada: it.cantidadSolicitada
+    })), obtenerTokenSesion());
+
+}
 
 function abrirNuevaRequisicion(){
 
@@ -1937,6 +2150,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td>${r.fecha}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
             <td style="white-space:nowrap">
+              <span style="cursor:pointer" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">🔍</span>
               ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">🧰</span>` : ""}
               ${r.estado === "ENTREGADA" ? `<span style="cursor:pointer" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">📄</span>` : ""}
             </td>
@@ -2047,7 +2261,230 @@ function abrirPreparacionRequisicion(){
 
 }
 
+function verDetalleRequisicionSegunTipo(folio){
+
+  google.script.run
+    .withSuccessHandler(function(tipo){
+      if(tipo === "RECETA"){
+        verDetalleRequisicionReceta(folio);
+      } else {
+        verDetalleRequisicionProducto(folio);
+      }
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .obtenerTipoRequisicionApp(folio);
+
+}
+
+function verDetalleRequisicionProducto(folio){
+
+  document.getElementById("modalListaTitulo").innerText = "Requisición — " + folio;
+  document.getElementById("modalListaSubtitulo").innerText = "";
+  document.querySelector("#modalLista .modalListaBuscar").style.display = "none";
+  document.getElementById("modalListaBody").innerHTML = "Cargando...";
+  document.getElementById("modalLista").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      const filas = datos.items.map(it => `
+        <tr>
+          <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}</span></td>
+          <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
+          <td style="text-align:right">${it.entregado===""?"—":it.entregado}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("modalListaBody").innerHTML = `
+        <p style="font-size:12.5px;color:var(--text-muted)">${datos.area} — ${datos.solicitante} — ${datos.fecha} — ${dibujarBadgeEstadoRequisicion(datos.estado)}</p>
+        ${datos.observaciones ? `<p style="font-size:12.5px"><b>Observaciones:</b> ${datos.observaciones}</p>` : ""}
+        <table class="tablaActividad">
+          <thead><tr><th>Producto</th><th>Solicitado</th><th>Entregado</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+      `;
+
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerDetalleRequisicionApp(folio);
+
+}
+
+function verDetalleRequisicionReceta(folio){
+
+  document.getElementById("modalListaTitulo").innerText = "Requisición de recetas — " + folio;
+  document.getElementById("modalListaSubtitulo").innerText = "";
+  document.querySelector("#modalLista .modalListaBuscar").style.display = "none";
+  document.getElementById("modalListaBody").innerHTML = "Cargando...";
+  document.getElementById("modalLista").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      const filasRecetas = datos.recetas.map(r => `
+        <tr>
+          <td>🧪 ${r.nombreReceta}<br><span style="font-size:10.5px;color:var(--text-muted)">${r.codigoReceta}</span></td>
+          <td>${r.rendimiento}</td>
+          <td style="text-align:right">${formatearCantidadJS(r.cantidadSolicitada)} ${r.udm}</td>
+        </tr>
+      `).join("");
+
+      const filasInsumos = datos.ingredientes.map(ing => `
+        <tr>
+          <td>${ing.nombre}${!ing.encontrado ? ' <span style="color:var(--terracota);font-size:11px">⚠️ no está en el catálogo</span>' : ''}</td>
+          <td style="text-align:right">${formatearCantidadJS(ing.necesario)} ${ing.udm||""}</td>
+          <td style="text-align:right">${ing.encontrado ? formatearCantidadJS(ing.existencia) + " " + (ing.udm||"") : "—"}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("modalListaBody").innerHTML = `
+        <p style="font-size:12.5px;color:var(--text-muted)">${datos.area} — ${datos.solicitante} — ${datos.fecha} — ${dibujarBadgeEstadoRequisicion(datos.estado)}</p>
+        ${datos.observaciones ? `<p style="font-size:12.5px"><b>Observaciones:</b> ${datos.observaciones}</p>` : ""}
+
+        <p style="font-weight:700;margin:10px 0 4px">Recetas solicitadas</p>
+        <table class="tablaActividad">
+          <thead><tr><th>Receta</th><th>Rendimiento por tanda</th><th>Tandas pedidas</th></tr></thead>
+          <tbody>${filasRecetas}</tbody>
+        </table>
+
+        <p style="font-weight:700;margin:16px 0 4px">Insumos necesarios (calculados)</p>
+        <table class="tablaActividad">
+          <thead><tr><th>Insumo</th><th>Necesario</th><th>Existencia</th></tr></thead>
+          <tbody>${filasInsumos}</tbody>
+        </table>
+      `;
+
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerCalculoIngredientesRequisicionApp(folio);
+
+}
+
 function cargarPreparacionRequisicion(folio){
+
+  const cont = document.getElementById("contenedorPreparacionDetalle");
+  if(!cont) return;
+  cont.innerHTML = "<div class='cardProducto'>Cargando " + folio + "...</div>";
+
+  google.script.run
+    .withSuccessHandler(function(tipo){
+
+      if(tipo === "RECETA"){
+        cargarPreparacionRequisicionReceta_(folio);
+        return;
+      }
+
+      cargarPreparacionRequisicionProducto_(folio);
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
+    })
+    .obtenerTipoRequisicionApp(folio);
+
+}
+
+function cargarPreparacionRequisicionReceta_(folio){
+
+  const cont = document.getElementById("contenedorPreparacionDetalle");
+  if(!cont) return;
+  cont.innerHTML = "<div class='cardProducto'>Calculando insumos de " + folio + "...</div>";
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      window.preparacionRecetaActual = datos;
+
+      cont.innerHTML = `
+        <div class="cardProducto">
+          <h3>${datos.folio} — ${datos.area}</h3>
+          <p style="font-size:12.5px;color:var(--text-muted)">Solicitó: ${datos.solicitante} — ${datos.fecha}</p>
+          ${datos.observaciones ? `<p style="font-size:12.5px"><b>Observaciones:</b> ${datos.observaciones}</p>` : ""}
+
+          <label>Recetas solicitadas</label>
+          <table class="tablaTop" style="font-size:12.5px;margin-bottom:14px">
+            <thead><tr><th>Receta</th><th>Rendimiento por tanda</th><th style="text-align:right">Tandas pedidas</th></tr></thead>
+            <tbody>
+              ${datos.recetas.map(r => `
+                <tr><td>🧪 ${r.nombreReceta}</td><td>${r.rendimiento}</td><td style="text-align:right">${formatearCantidadJS(r.cantidadSolicitada)} ${r.udm}</td></tr>
+              `).join("")}
+            </tbody>
+          </table>
+
+          <label>Insumos necesarios (calculados automáticamente)</label>
+          <table class="tablaTop" style="font-size:13px">
+            <thead><tr><th>Insumo</th><th style="text-align:right">Necesario</th><th style="text-align:right">Existencia</th><th style="text-align:right">Entregar</th></tr></thead>
+            <tbody>
+              ${datos.ingredientes.map((ing,i) => `
+                <tr style="${!ing.encontrado ? 'background:rgba(196,82,42,.1)' : (ing.existencia < ing.necesario ? 'background:rgba(196,82,42,.06)' : '')}">
+                  <td>${ing.nombre}${!ing.encontrado ? ' <span style="color:var(--terracota);font-size:11px">⚠️ no está en el catálogo</span>' : ''}</td>
+                  <td style="text-align:right">${formatearCantidadJS(ing.necesario)} ${ing.udm||""}</td>
+                  <td style="text-align:right">${ing.encontrado ? formatearCantidadJS(ing.existencia) + " " + (ing.udm||"") : "—"}</td>
+                  <td style="text-align:right">
+                    ${ing.encontrado ? `<input type="number" id="entregarIngrediente${i}" value="${ing.entregarSugerido}" min="0" max="${ing.existencia}"
+                      style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">` : "—"}
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+
+          <p style="font-size:11.5px;color:var(--text-muted);margin-top:8px">Puedes ajustar la cantidad a entregar de cada insumo antes de confirmar — igual que en requisiciones de productos.</p>
+
+          <div id="mensajePreparacionReceta" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+          <div class="boton" style="margin-top:14px;background:var(--oliva)" onclick="confirmarEntregaRequisicionReceta()">✅ Confirmar Entrega</div>
+        </div>
+      `;
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
+    })
+    .obtenerCalculoIngredientesRequisicionApp(folio);
+
+}
+
+function confirmarEntregaRequisicionReceta(){
+
+  const datos = window.preparacionRecetaActual;
+  if(!datos) return;
+
+  const entregas = [];
+  datos.ingredientes.forEach((ing, i) => {
+    if(!ing.encontrado) return;
+    const input = document.getElementById("entregarIngrediente"+i);
+    const cantidad = input ? Number(input.value) || 0 : 0;
+    if(cantidad > 0){
+      entregas.push({ codigo: ing.codigo, nombre: ing.nombre, udm: ing.udm, cantidadEntregada: cantidad });
+    }
+  });
+
+  if(!entregas.length){
+    mostrarMensajeTemporal("mensajePreparacionReceta", "Captura al menos una cantidad a entregar", "error");
+    return;
+  }
+
+  if(!confirm("¿Confirmar la entrega de insumos para " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.")) return;
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      alert("✅ Entrega confirmada — " + resultado.insumosEntregados + " insumo(s)");
+      if(resultado.pdf) window.open(resultado.pdf.verUrl, "_blank");
+      abrirPreparacionRequisicion();
+    })
+    .withFailureHandler(function(e){
+      mostrarMensajeTemporal("mensajePreparacionReceta", "⚠️ " + e.message, "error");
+    })
+    .confirmarEntregaRequisicionRecetaApp(datos.folio, entregas, obtenerTokenSesion());
+
+}
+
+function cargarPreparacionRequisicionProducto_(folio){
 
   const cont = document.getElementById("contenedorPreparacionDetalle");
   if(!cont) return;
@@ -2131,12 +2568,21 @@ function descargarPDFRequisicion(folio){
   if(ventana){ ventana.document.write("<div style='font-family:sans-serif;padding:60px;text-align:center;color:#6B2737'>Abriendo PDF...</div>"); }
 
   google.script.run
-    .withSuccessHandler(function(res){
-      if(!ventana){ alert("Tu navegador bloqueó la ventana emergente."); return; }
-      ventana.location.href = res.verUrl;
+    .withSuccessHandler(function(tipo){
+
+      const llamada = tipo === "RECETA" ? "obtenerPDFRequisicionRecetaApp" : "obtenerPDFRequisicionApp";
+
+      google.script.run
+        .withSuccessHandler(function(res){
+          if(!ventana){ alert("Tu navegador bloqueó la ventana emergente."); return; }
+          ventana.location.href = res.verUrl;
+        })
+        .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
+        [llamada](folio);
+
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerPDFRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio);
 
 }
 
@@ -2883,12 +3329,14 @@ function dibujarTablaReabasto(){
         <tr>
           <th></th><th>Producto</th><th style="text-align:right">Existencia</th>
           <th style="text-align:right">Mínimo</th><th style="text-align:right">Máximo</th>
-          <th style="text-align:right">Sugerido</th><th>Presentación</th><th style="text-align:right">Comprar</th><th></th>
+          <th style="text-align:right">Sugerido</th><th>Presentación</th><th style="text-align:right">Comprar</th>
+          <th style="text-align:right">Precio</th><th></th>
         </tr>
       </thead>
       <tbody>
         ${lista.map((p,i)=>{
           const valorInicial = p.convertir ? p.sugeridoPiezas : p.sugerido;
+          const precioPresentacionInicial = p.convertir ? Math.round(p.precio * p.presentacion * 100) / 100 : p.precio;
           return `
           <tr style="${p.bajoMinimo?'background:rgba(196,82,42,.06)':''}">
             <td><input type="checkbox" id="chkReabasto${i}" ${(p.bajoMinimo || p.agregadoManual)?"checked":""}></td>
@@ -2899,9 +3347,15 @@ function dibujarTablaReabasto(){
             <td style="text-align:right">${p.sugerido}</td>
             <td style="font-size:12px;color:var(--text-soft)">${p.convertir ? (p.presentacion + " " + p.udm + "/pz") : "—"}</td>
             <td style="text-align:right">
-              <input type="number" id="cantReabasto${i}" value="${valorInicial}" min="0"
+              <input type="number" id="cantReabasto${i}" value="${valorInicial}" min="0" oninput="actualizarPreviewPrecioReabasto(${i})"
                 style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
               ${p.convertir ? `<div style="font-size:10.5px;color:var(--text-muted)">pz</div>` : ""}
+            </td>
+            <td style="text-align:right">
+              <input type="number" id="precioReabasto${i}" value="${precioPresentacionInicial}" min="0" step="0.01" oninput="actualizarPreviewPrecioReabasto(${i})"
+                style="width:100px;max-width:100px;text-align:right;margin:0;padding:6px">
+              <div style="font-size:10px;color:var(--text-muted)">${p.convertir ? "por presentación" : "por " + (p.udm||"unidad")}</div>
+              ${p.convertir ? `<div id="previewPrecioReabasto${i}" style="font-size:10.5px;color:var(--guinda);font-weight:600"></div>` : ""}
             </td>
             <td><span style="cursor:pointer;color:var(--terracota)" title="Quitar de la orden" onclick="quitarProductoReabasto(${i})">✕</span></td>
           </tr>
@@ -2910,6 +3364,25 @@ function dibujarTablaReabasto(){
       </tbody>
     </table>
   `;
+
+  lista.forEach((p,i) => { if(p.convertir) actualizarPreviewPrecioReabasto(i); });
+
+}
+
+function actualizarPreviewPrecioReabasto(indice){
+
+  const p = (window.reabastoLista || [])[indice];
+  const preview = document.getElementById("previewPrecioReabasto"+indice);
+  if(!p || !p.convertir || !preview) return;
+
+  const piezas = Number(document.getElementById("cantReabasto"+indice).value) || 0;
+  const precioPresentacion = Number(document.getElementById("precioReabasto"+indice).value) || 0;
+
+  const kgEquivalentes = Math.round(piezas * p.presentacion * 1000) / 1000;
+  const total = Math.round(piezas * precioPresentacion * 100) / 100;
+  const precioPorUnidad = p.presentacion > 0 ? Math.round((precioPresentacion / p.presentacion) * 10000) / 10000 : 0;
+
+  preview.innerHTML = `⚖️ ${kgEquivalentes} ${p.udm} · 💰 $${total.toLocaleString("es-MX",{minimumFractionDigits:2})} · 💵 $${precioPorUnidad}/${p.udm}`;
 
 }
 
@@ -3011,20 +3484,27 @@ function generarOrdenDesdeReabasto(){
   lista.forEach((p,i)=>{
     const chk = document.getElementById("chkReabasto"+i);
     const cantidadInput = document.getElementById("cantReabasto"+i);
+    const precioInput = document.getElementById("precioReabasto"+i);
     if(!chk || !chk.checked) return;
 
     const valorCapturado = Number(cantidadInput.value) || 0;
     if(valorCapturado <= 0) return;
 
+    const precioCapturado = precioInput ? (Number(precioInput.value) || 0) : p.precio;
+
     if(p.convertir){
       // valorCapturado son PIEZAS de la presentación (ej. 1 pz de 2.5 kg).
-      // La cantidad que entra a inventario/Kardex es en la unidad base (kg).
+      // precioCapturado es lo que cobra el proveedor POR PRESENTACIÓN
+      // (ej. $300 la caja) — se convierte a precio por unidad real
+      // (ej. $/kg o $/pz) antes de guardarlo, porque así es como MATRIZ
+      // y DETALLE_OC guardan el costo desde la migración.
+      const precioPorUnidad = p.presentacion > 0 ? Math.round((precioCapturado / p.presentacion) * 10000) / 10000 : precioCapturado;
       items.push({
         codigo: p.codigo,
         producto: p.producto,
         udm: p.udm,
         cantidad: Math.round(valorCapturado * p.presentacion * 1000) / 1000,
-        precio: p.precio,
+        precio: precioPorUnidad,
         presentacion: p.presentacion,
         piezasOrdenadas: valorCapturado
       });
@@ -3034,7 +3514,7 @@ function generarOrdenDesdeReabasto(){
         producto: p.producto,
         udm: p.udm,
         cantidad: valorCapturado,
-        precio: p.precio
+        precio: precioCapturado
       });
     }
   });
@@ -3780,6 +4260,7 @@ function buscarOCParaRecepcion(){
               const piezasPedidas = it.piezasOrdenadas > 0 ? it.piezasOrdenadas : Math.round(it.cantidad / it.presentacion);
               const piezasRecibidas = it.recibido / it.presentacion;
               const piezasPendientes = piezasPedidas - piezasRecibidas;
+              const precioPresentacionOC = Math.round(it.precio * it.presentacion * 100) / 100;
               return `
                 <tr>
                   <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">Presentación: ${it.presentacion} ${it.udm}/pz</span></td>
@@ -3789,10 +4270,11 @@ function buscarOCParaRecepcion(){
                     <input type="number" id="recibir${i}" value="${piezasPendientes > 0 ? piezasPendientes : 0}" min="0"
                       style="width:80px;max-width:80px;text-align:right;margin:0;padding:6px" ${piezasPendientes<=0?"disabled":""}> pz
                   </td>
-                  <td style="text-align:right">$${Number(it.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+                  <td style="text-align:right">$${precioPresentacionOC.toLocaleString("es-MX",{minimumFractionDigits:2})}<div style="font-size:9.5px;color:var(--text-muted)">por presentación</div></td>
                   <td style="text-align:right">
-                    <input type="number" id="precioFactura${i}" value="${it.precio}" min="0" step="0.01"
+                    <input type="number" id="precioFactura${i}" data-presentacion="${it.presentacion}" data-udm="${it.udm}" value="${precioPresentacionOC}" min="0" step="0.01" oninput="actualizarPreviewPrecioFactura(${i})"
                       style="width:100px;max-width:100px;text-align:right;margin:0;padding:6px" ${piezasPendientes<=0?"disabled":""}>
+                    <div id="previewPrecioFactura${i}" style="font-size:9.5px;color:var(--guinda);font-weight:600"></div>
                   </td>
                   <td>
                     <input id="lote${i}" placeholder="Opcional"
@@ -3836,6 +4318,8 @@ function buscarOCParaRecepcion(){
       <div class="boton" style="margin-top:16px;max-width:900px" onclick="confirmarRecepcion()">✅ Registrar Recepción</div>
     `;
 
+    datos.items.forEach((it,i) => { if(it.presentacion > 0) actualizarPreviewPrecioFactura(i); });
+
   })
 
   .withFailureHandler(function(e){
@@ -3844,6 +4328,23 @@ function buscarOCParaRecepcion(){
   })
 
   .obtenerDetalleOCApp(oc);
+
+}
+
+function actualizarPreviewPrecioFactura(indice){
+
+  const input = document.getElementById("precioFactura"+indice);
+  const preview = document.getElementById("previewPrecioFactura"+indice);
+  if(!input || !preview) return;
+
+  const presentacion = Number(input.getAttribute("data-presentacion")) || 0;
+  const udm = input.getAttribute("data-udm") || "";
+  const precioPresentacion = Number(input.value) || 0;
+
+  if(presentacion <= 0) return;
+
+  const precioPorUnidad = Math.round((precioPresentacion / presentacion) * 10000) / 10000;
+  preview.innerText = "💵 $" + precioPorUnidad + "/" + udm;
 
 }
 
@@ -3870,12 +4371,23 @@ function confirmarRecepcion(){
         ? Math.round(valorCapturado * it.presentacion * 1000) / 1000
         : valorCapturado;
 
+      // El precio capturado en pantalla es "por presentación" (como viene
+      // en la factura) — se convierte a precio por unidad real antes de
+      // guardarlo, que es como MATRIZ/DETALLE_OC guardan el costo.
+      let precioFacturaPorUnidad = it.precio;
+      if(precioInput){
+        const precioCapturado = Number(precioInput.value) || 0;
+        precioFacturaPorUnidad = it.presentacion > 0
+          ? Math.round((precioCapturado / it.presentacion) * 10000) / 10000
+          : (precioCapturado || it.precio);
+      }
+
       recepciones.push({
         codigo: it.codigo,
         cantidadRecibida: cantidadRecibida,
         lote: loteInput ? loteInput.value.trim() : "",
         caducidad: caducidadInput ? caducidadInput.value : "",
-        precioFactura: precioInput ? Number(precioInput.value) || it.precio : it.precio
+        precioFactura: precioFacturaPorUnidad
       });
     }
   });
@@ -7576,6 +8088,7 @@ function aplicarFiltros(){
   </button>
   <div class="submenu" id="grupoRequisiciones">
     <button class="menuLateralBtn sub" id="btnNuevaRequisicion" onclick="abrirNuevaRequisicion()" title="Nueva requisición"><span class="icono">➕</span><span class="textoMenu">Nueva requisición</span></button>
+    <button class="menuLateralBtn sub" id="btnNuevaRequisicionReceta" onclick="abrirNuevaRequisicionReceta()" title="Nueva requisición de recetas"><span class="icono">🍳</span><span class="textoMenu">Requisición de recetas</span></button>
     <button class="menuLateralBtn sub" id="btnMisRequisiciones" onclick="abrirMisRequisiciones()" title="Mis requisiciones"><span class="icono">📋</span><span class="textoMenu">Mis requisiciones</span></button>
     <button class="menuLateralBtn sub" id="btnRequisicionesPendientes" onclick="abrirRequisicionesPendientes()" title="Requisiciones pendientes"><span class="icono">🟡</span><span class="textoMenu">Requisiciones pendientes</span></button>
     <button class="menuLateralBtn sub" id="btnPreparacionRequisicion" onclick="abrirPreparacionRequisicion()" title="Preparación"><span class="icono">🧰</span><span class="textoMenu">Preparación</span></button>
@@ -7628,6 +8141,7 @@ function aplicarFiltros(){
   <div class="submenu" id="grupoConfig">
     <button class="menuLateralBtn sub" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
     <button class="menuLateralBtn sub" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
+    <button class="menuLateralBtn sub" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
   </div>
 </div>
 

@@ -1649,19 +1649,14 @@ function formatearMoneda_(valor){
 
 function calcularValorInventario_(cantidad, costoUnitario, convertir, presentacion){
 
+  // A partir de la migración de precios (ver migrarCostoUnitarioAPorUnidadApp),
+  // Costo Unitario en MATRIZ ya representa el costo de UNA unidad de
+  // inventario (ej. $/kg, $/pz) — sin importar Convertir/Presentación,
+  // el valor siempre es cantidad × costo directo. Se dejan los
+  // parámetros convertir/presentacion en la firma para no romper a
+  // quien ya llama esta función, pero ya no se usan para dividir.
   const cant = Number(cantidad) || 0;
   const costo = Number(costoUnitario) || 0;
-  const seConvierte = String(convertir||"").trim().toUpperCase() === "SI";
-  const present = Number(presentacion) || 0;
-
-  // Solo se convierte si Convertir="SI" Y hay una presentación válida
-  // (>0) capturada — si falta la presentación, no hay forma de saber
-  // cuántas unidades trae cada paquete, así que se usa el costo tal cual
-  // en vez de dividir entre 0.
-  if(seConvierte && present > 0){
-    const cantidadPresentaciones = cant / present;
-    return Math.round(cantidadPresentaciones * costo * 100) / 100;
-  }
 
   return Math.round(cant * costo * 100) / 100;
 
@@ -1678,17 +1673,9 @@ function calcularValorInventario_(cantidad, costoUnitario, convertir, presentaci
  *           Pimienta negra   → 148.33/0.36 = $411.97 por kg.
  */
 function obtenerCostoUnitarioReal_(costoUnitario, convertir, presentacion){
-
-  const costo = Number(costoUnitario) || 0;
-  const seConvierte = String(convertir||"").trim().toUpperCase() === "SI";
-  const present = Number(presentacion) || 0;
-
-  if(seConvierte && present > 0){
-    return Math.round((costo / present) * 10000) / 10000;
-  }
-
-  return costo;
-
+  // Igual que calcularValorInventario_: desde la migración, Costo Unitario
+  // ya ES el costo por unidad real — ya no se divide entre presentación.
+  return Number(costoUnitario) || 0;
 }
 
 /**
@@ -2650,6 +2637,45 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
  * sin cambiar ningún valor. Después de correr esto, actualizarExistenciaMatriz_
  * es la única forma de que ese número cambie.
  */
+/**
+ * MIGRACIÓN — ejecutar UNA sola vez. Convierte Costo Unitario de MATRIZ
+ * de "precio de la presentación completa" a "precio de una unidad de
+ * inventario real" para los productos con Convertir="SI" y Presentación
+ * capturada. Ejemplo: si Costo Unitario decía $300 (precio de la caja
+ * de 1000 pz), después de correr esto queda en $0.30 (precio por pz).
+ * Los productos con Convertir="NO" no se tocan (ya estaban correctos).
+ */
+function migrarCostoUnitarioAPorUnidadApp(){
+
+  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  if(matriz.getLastRow() < 2) return { filas: 0, migrados: 0 };
+
+  const rango = matriz.getRange(2, 18, matriz.getLastRow() - 1, 3); // R,S,T
+  const datos = rango.getValues();
+
+  let migrados = 0;
+
+  const nuevos = datos.map(f => {
+
+    const costoActual = Number(f[0]) || 0;
+    const convertir = String(f[1]||"").trim().toUpperCase() === "SI";
+    const presentacion = Number(f[2]) || 0;
+
+    if(convertir && presentacion > 0 && costoActual > 0){
+      migrados++;
+      return [Math.round((costoActual / presentacion) * 10000) / 10000, f[1], f[2]];
+    }
+
+    return f; // sin cambios (Convertir="NO", sin presentación, o sin costo)
+
+  });
+
+  rango.setValues(nuevos);
+
+  return { filas: datos.length, migrados: migrados };
+
+}
+
 function congelarFormulasExistenciaMatrizApp(){
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
