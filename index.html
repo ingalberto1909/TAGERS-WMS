@@ -6760,8 +6760,10 @@ function dibujarTablaImportacion(){
     `<span style="color:var(--terracota)">${sinStock} sin stock suficiente</span>`;
 
   let html = `<table class="tablaImportar"><thead><tr>
-    <th></th><th>Producto (documento)</th><th>Cantidad</th><th>Encontrado en catálogo</th>
-    <th>Código</th><th>Existencia</th><th>Estado</th><th>Observaciones</th>
+    <th></th><th>Producto (documento)</th><th>Cant. pedida</th><th>Presentación</th>
+    <th>Encontrado en catálogo</th><th>Código</th>
+    <th>Cant. a descontar</th><th>Existencia</th><th>Existencia resultante</th>
+    <th>Estado</th><th>Observaciones</th>
   </tr></thead><tbody>`;
 
   importacionResultados.forEach((r, i)=>{
@@ -6772,10 +6774,13 @@ function dibujarTablaImportacion(){
     html += `<tr>
       <td><input type="checkbox" id="chkImport${i}" ${marcado} ${seleccionable?"":"disabled"}></td>
       <td>${r.productoDocumento}</td>
-      <td>${r.cantidad}</td>
+      <td>${r.cantidadPedida}</td>
+      <td>${r.presentacionTexto || "—"}</td>
       <td>${r.encontrado || "—"}</td>
       <td>${r.codigo || "—"}</td>
-      <td>${r.existencia !== "" ? r.existencia : "—"}</td>
+      <td>${r.cantidadADescontar !== "" ? r.cantidadADescontar + " " + (r.udm||"") : "—"}</td>
+      <td>${r.existencia !== "" ? r.existencia + " " + (r.udm||"") : "—"}</td>
+      <td>${r.existenciaResultante !== "" ? r.existenciaResultante + " " + (r.udm||"") : "—"}</td>
       <td><span class="badgeEstado ${r.estado}">${etiquetaEstadoImportar(r.estado)}</span></td>
       <td>`;
 
@@ -6819,31 +6824,28 @@ function asignarCodigoManual(indice){
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(producto){
+  const r = importacionResultados[indice];
 
-      if(!producto){
+  google.script.run
+    .withSuccessHandler(function(recalculo){
+
+      if(!recalculo){
         alert("No existe ese código en MATRIZ");
         return;
       }
 
-      const r = importacionResultados[indice];
-      const cantidad = Number(r.cantidad) || 0;
-
-      r.encontrado = producto.producto;
-      r.codigo = producto.codigo;
-      r.existencia = producto.existencia;
-      r.udm = producto.udm;
-      r.ubicacion = producto.ubicacion;
-      r.score = 1;
-
-      if(cantidad > producto.existencia){
-        r.estado = "STOCK_INSUFICIENTE";
-        r.observaciones = "Existencia disponible: " + producto.existencia;
-      } else {
-        r.estado = "OK";
-        r.observaciones = "Asignado manualmente";
-      }
+      r.encontrado = recalculo.encontrado;
+      r.codigo = recalculo.codigo;
+      r.existencia = recalculo.existencia;
+      r.existenciaResultante = recalculo.existenciaResultante;
+      r.udm = recalculo.udm;
+      r.ubicacion = recalculo.ubicacion;
+      r.presentacionTexto = recalculo.presentacionTexto;
+      r.factorPresentacion = recalculo.factorPresentacion;
+      r.cantidadADescontar = recalculo.cantidadADescontar;
+      r.score = recalculo.score;
+      r.estado = recalculo.estado;
+      r.observaciones = recalculo.observaciones;
 
       dibujarTablaImportacion();
 
@@ -6851,7 +6853,7 @@ function asignarCodigoManual(indice){
     .withFailureHandler(function(error){
       alert("Error: " + error.message);
     })
-    .buscarProductoApp(codigo);
+    .recalcularFilaImportacionManualApp(codigo, r.cantidadPedida);
 
 }
 
@@ -6865,7 +6867,7 @@ function registrarImportacionSalidas(){
       filas.push({
         codigo: r.codigo,
         producto: r.encontrado,
-        cantidad: r.cantidad,
+        cantidad: r.cantidadADescontar, // YA convertida: cantidad pedida × presentación, en UDM base
         udm: r.udm,
         ubicacion: r.ubicacion
       });
@@ -6877,7 +6879,9 @@ function registrarImportacionSalidas(){
     return;
   }
 
-  if(!confirm("¿Registrar " + filas.length + " salida(s)? Esto descuenta existencia de inmediato.")){
+  const resumenConfirmacion = filas.map(f => "- " + f.producto + ": " + f.cantidad + " " + f.udm).join("\n");
+
+  if(!confirm("¿Registrar " + filas.length + " salida(s)? Esto descuenta existencia de inmediato:\n\n" + resumenConfirmacion)){
     return;
   }
 

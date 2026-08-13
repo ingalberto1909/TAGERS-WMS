@@ -15,13 +15,6 @@ function obtenerHojaProduccion_(){
   return hoja;
 }
 
-/**
- * Folio de lote PROD-YYYYMMDD-NNN, consecutivo del día — mismo patrón
- * que ya usan OC/Requisiciones/Conteos/Inventario mensual. Se llama
- * SIEMPRE dentro de conBloqueoApp_ (definida en 📁 App.gs.gs) para que
- * dos producciones registradas al mismo tiempo no terminen con el
- * mismo folio.
- */
 function generarFolioLote_(hoja, fecha){
   const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
   let consecutivo = 1;
@@ -32,12 +25,6 @@ function generarFolioLote_(hoja, fecha){
   return "PROD-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
 }
 
-/**
- * Trae el detalle de una requisición de receta y valida que ya esté
- * ENTREGADA (los insumos ya se descontaron de inventario) — producción
- * solo tiene sentido después de eso. Reutiliza
- * obtenerDetalleRequisicionRecetaApp tal cual está, sin tocarla.
- */
 function obtenerRequisicionListaParaProduccionApp(folio){
   const detalle = obtenerDetalleRequisicionRecetaApp(folio);
   if(detalle.estado !== "ENTREGADA"){
@@ -46,19 +33,6 @@ function obtenerRequisicionListaParaProduccionApp(folio){
   return detalle;
 }
 
-/**
- * Registra un lote de producción:
- *  1. Valida contra la requisición de receta de origen (ya entregada).
- *  2. Genera el folio del lote y lo escribe en PRODUCCION.
- *  3. Da entrada al producto terminado en MATRIZ/KARDEX reutilizando
- *     registrarEntradaInterna_ — la MISMA función que usan Entradas
- *     manuales, recepción de OC y entrega de requisiciones.
- *
- * datos = {
- *   folioRequisicion, nombreReceta, codigoProducto, cantidadProducida,
- *   udm, fechaCaducidad, ubicacion, observaciones
- * }
- */
 function registrarProduccionApp(datos, token){
 
   requerirAccesoAlmacenApp_(token);
@@ -113,11 +87,6 @@ function registrarProduccionApp(datos, token){
 
   });
 
-  // Entrada del producto terminado a inventario — reutiliza la MISMA
-  // función central que usa el resto del sistema (Entradas, recepción
-  // de OC, entrega de requisiciones). El folio del Kardex queda como
-  // el folio del lote, para poder rastrear de dónde salió esa
-  // existencia.
   registrarEntradaInterna_(
     {
       codigo: codigoProducto, producto: nombreProducto, cantidad: cantidadProducida,
@@ -135,11 +104,6 @@ function registrarProduccionApp(datos, token){
 
 }
 
-/**
- * Consulta de lotes — para pantallas de listado/trazabilidad. Filtro
- * opcional por código de producto y/o por estado ("ACTIVO"/"AGOTADO").
- * Más recientes primero.
- */
 function obtenerLotesProduccionApp(filtros){
   const hoja = obtenerHojaProduccion_();
   if(hoja.getLastRow() < 2) return [];
@@ -166,12 +130,6 @@ function obtenerLotesProduccionApp(filtros){
     .reverse();
 }
 
-/**
- * Cierra manualmente un lote (lo marca AGOTADO y su cantidad
- * disponible en 0). Ver la nota al inicio del archivo: hoy es la única
- * forma de cerrar un lote, porque las Salidas todavía no descuentan
- * por lote automáticamente.
- */
 function cerrarLoteProduccionApp(folioLote, token){
 
   requerirAccesoAlmacenApp_(token);

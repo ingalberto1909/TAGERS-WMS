@@ -372,31 +372,145 @@ function similitudTexto_(a, b){
 }
 
 /**
- * Busca en el catálogo (ya normalizado) el producto más parecido a un
- * nombre libre proveniente de un documento externo (requerimiento, Excel).
- * Orden de intento: exacto normalizado -> contiene -> similitud (Levenshtein).
+ * Normaliza una unidad de presentación a una forma estándar (KG, G, L,
+ * ML, PZ...) para que "KG"/"KGS", "PZ"/"PZA"/"PZAS"/"PIEZA", etc. se
+ * traten como la misma unidad al comparar. Solo se usa para comparar
+ * durante el matching — no cambia lo que hay guardado en ningún lado.
+ */
+function normalizarUDM_(udm){
+  const u = String(udm||"").trim().toUpperCase();
+  const mapa = {
+    "KG":"KG", "KGS":"KG", "KILO":"KG", "KILOS":"KG",
+    "G":"G", "GR":"G", "GRS":"G", "GRAMO":"G", "GRAMOS":"G",
+    "L":"L", "LT":"L", "LTS":"L", "LITRO":"L", "LITROS":"L",
+    "ML":"ML",
+    "PZ":"PZ", "PZA":"PZ", "PZAS":"PZ", "PIEZA":"PZ", "PIEZAS":"PZ",
+    "UND":"PZ", "UNIDAD":"PZ", "UNIDADES":"PZ", "PC":"PZ", "PCS":"PZ"
+  };
+  return mapa[u] || u;
+}
+
+/**
+ * Separa "NOMBRE" y "PRESENTACIÓN" (número + unidad) de un texto libre
+ * — un renglón del PDF de Marketman o el nombre de un producto de
+ * MATRIZ (en tu catálogo el nombre completo ya trae el tamaño, ej.
+ * "SALSA MACHA 0.5 KG"). Ejemplos:
+ *   "SALSA MORITA 2 KG"                  -> SALSA MORITA | 2 KG
+ *   "SALSA MACHA 0.5 KG"                 -> SALSA MACHA  | 0.5 KG
+ *   "SALSA COUNTRY 0.5 KG (1 * 0.5 Kg)"  -> SALSA COUNTRY | 0.5 KG
+ *     (la aclaración entre paréntesis que agrega Marketman se ignora
+ *      para el matching — no es parte del nombre, solo lo confirma)
+ * Si el texto no trae un patrón número+unidad reconocible (insumos que
+ * en tu catálogo no manejan tamaño en el nombre), presentacionUDM
+ * queda "" y presentacionNumero null — esos productos se siguen
+ * comparando solo por nombre completo, igual que antes.
+ */
+function extraerNombreYPresentacion_(textoOriginal){
+
+  let texto = String(textoOriginal || "").trim();
+  texto = texto.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+
+  const patronPresentacion = /(\d+(?:[.,]\d+)?)\s*(KGS?|GRS?|G|LTS?|L|ML|PZAS?|PZ|PIEZAS?|UNIDADES?|UND)\b/gi;
+
+  let ultimo = null;
+  let match;
+  while((match = patronPresentacion.exec(texto)) !== null){
+    ultimo = match; // nos quedamos con la ÚLTIMA (el tamaño casi siempre va al final)
+  }
+
+  if(!ultimo){
+    return { nombre: normalizarTexto_(texto), presentacionNumero: null, presentacionUDM: "", presentacionTexto: "" };
+  }
+
+  const nombreCrudo = texto.substring(0, ultimo.index).trim();
+  const numero = parseFloat(String(ultimo[1]).replace(",", "."));
+  const udm = normalizarUDM_(ultimo[2]);
+
+  return {
+    nombre: normalizarTexto_(nombreCrudo),
+    presentacionNumero: isNaN(numero) ? null : numero,
+    presentacionUDM: udm,
+    presentacionTexto: (isNaN(numero) ? "" : formatearCantidad_(numero)) + " " + udm
+  };
+
+}
+
+/**
+ * ¿Misma presentación EXACTA? (nivel 1). Mismas unidades y mismo
+ * número (con tolerancia mínima por redondeo). Si a alguno de los dos
+ * lados no se le detectó presentación, solo se consideran iguales
+ * cuando NINGUNO de los dos la tiene (producto sin tamaño en el
+ * nombre en ambos lados).
+ */
+function mismaPresentacionExacta_(a, b){
+  if(a.presentacionUDM !== b.presentacionUDM) return false;
+  if(a.presentacionNumero === null && b.presentacionNumero === null) return true;
+  if(a.presentacionNumero === null || b.presentacionNumero === null) return false;
+  return Math.abs(a.presentacionNumero - b.presentacionNumero) < 0.001;
+}
+
+/**
+ * ¿Presentaciones COMPATIBLES? (nivel 3, fuzzy — más permisivo que la
+ * exacta). Sirven para no comparar nombres entre tamaños distintos
+ * (SALSA MORITA 0.5 KG nunca debe salir como candidato de SALSA
+ * MORITA 2 KG), pero si a alguno de los dos lados no se le detectó
+ * presentación, se deja pasar como candidato (por eso esto es solo
+ * para SUGERIR — nunca para confirmar solo).
+ */
+function presentacionesCompatibles_(a, b){
+  if(a.presentacionNumero === null || b.presentacionNumero === null) return true;
+  if(a.presentacionUDM !== b.presentacionUDM) return false;
+  return Math.abs(a.presentacionNumero - b.presentacionNumero) < 0.001;
+}
+
+/**
+ * Matching de un texto libre (renglón del PDF/Excel) contra el
+ * catálogo de MATRIZ ya normalizado (con nombre+presentación
+ * separados, ver extraerNombreYPresentacion_).
+ *
+ * NIVEL 1 — EXACTA: nombre normalizado Y presentación (número+unidad)
+ *           idénticos -> score 1. Es la ÚNICA forma de quedar 🟢 LISTO
+ *           automáticamente.
+ * NIVEL 2 — ALIAS: no existe todavía un catálogo de alias en TAGERS
+ *           WMS (no se agregó ninguna hoja nueva para esto — se
+ *           respetó no tocar la estructura). Este es el lugar exacto
+ *           donde engancharlo el día que se implemente: antes del
+ *           fuzzy, buscando el texto normalizado en una tabla de
+ *           alias que apunte a un único código.
+ * NIVEL 3 — FUZZY: solo entre candidatos con presentación compatible
+ *           (mismo tamaño, o alguno de los dos sin tamaño detectable).
+ *           Nunca se marca como lista sola — analizarImportacionSalidasApp
+ *           siempre la manda a 🟡 REVISAR.
+ *
+ * IMPORTANTE — esto es lo que se quitó: la versión anterior tenía un
+ * nivel intermedio que aceptaba como coincidencia "buscado.includes(
+ * catalogo) || catalogo.includes(buscado)" y luego se quedaba con el
+ * nombre de catálogo MÁS CORTO entre los que cumplían. Como CUALQUIER
+ * "SALSA ..." normalizado contiene la subcadena "SAL", y "SAL" (si
+ * existe como nombre corto/categoría en tu MATRIZ) es más corto que
+ * "SALSA MORITA" o "SALSA MACHA", ese nivel SIEMPRE terminaba
+ * eligiendo "SAL" para cualquier salsa del pedido. Ese nivel ya no
+ * existe: aquí solo hay coincidencia EXACTA (nombre+presentación) o
+ * FUZZY-para-revisar — nunca un fragmento/abreviatura/categoría.
  */
 function buscarCoincidenciaProducto_(nombreBuscado, catalogoNormalizado){
 
-  const buscado = normalizarTexto_(nombreBuscado);
-  if(!buscado) return null;
+  const buscado = extraerNombreYPresentacion_(nombreBuscado);
+  if(!buscado.nombre) return null;
 
-  const exacto = catalogoNormalizado.find(p => p.normalizado === buscado);
-  if(exacto) return { producto: exacto, score: 1 };
-
-  let parciales = catalogoNormalizado.filter(p =>
-    p.normalizado.includes(buscado) || buscado.includes(p.normalizado)
+  // NIVEL 1 — exacto
+  const exacto = catalogoNormalizado.find(p =>
+    p.nombre === buscado.nombre && mismaPresentacionExacta_(p, buscado)
   );
-  if(parciales.length){
-    parciales.sort((x,y) => x.normalizado.length - y.normalizado.length);
-    return { producto: parciales[0], score: 0.9 };
-  }
+  if(exacto) return { producto: exacto, score: 1, presentacionBuscada: buscado };
 
+  // NIVEL 3 — fuzzy, solo candidatos con presentación compatible
   let mejorScore = 0;
   let mejorProducto = null;
 
   catalogoNormalizado.forEach(p=>{
-    const score = similitudTexto_(buscado, p.normalizado);
+    if(!presentacionesCompatibles_(p, buscado)) return; // tamaño distinto: nunca es el mismo producto
+    const score = similitudTexto_(buscado.nombre, p.nombre);
     if(score > mejorScore){
       mejorScore = score;
       mejorProducto = p;
@@ -404,17 +518,22 @@ function buscarCoincidenciaProducto_(nombreBuscado, catalogoNormalizado){
   });
 
   if(mejorProducto && mejorScore >= 0.6){
-    return { producto: mejorProducto, score: mejorScore };
+    return { producto: mejorProducto, score: mejorScore, presentacionBuscada: buscado };
   }
 
   return null;
+
 }
 
 /**
- * items = [{ productoDocumento, cantidad }, ...] ya extraídos del Excel en
- * el navegador (fase 3). Aquí se hace la búsqueda de coincidencias contra
- * MATRIZ (fase 4) y se deja un respaldo en la hoja IMPORTAR_SALIDAS para
- * quien quiera revisarlo directamente en Sheets.
+ * items = [{ productoDocumento, cantidad }, ...] ya extraídos del PDF
+ * (OCR) o del Excel en el navegador. Aquí se hace la búsqueda de
+ * coincidencias contra MATRIZ, se calcula CANTIDAD A DESCONTAR =
+ * cantidad pedida × factor de presentación (el factor sale del
+ * producto ya identificado en MATRIZ, nunca de un número suelto del
+ * nombre) y se valida contra la existencia real en UDM base. Se deja
+ * un respaldo en IMPORTAR_SALIDAS para quien quiera revisarlo
+ * directamente en Sheets.
  */
 function analizarImportacionSalidasApp(items){
 
@@ -422,56 +541,84 @@ function analizarImportacionSalidasApp(items){
   const matriz = ss.getSheetByName("MATRIZ");
   const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow() - 1, 17).getValues();
 
-  const catalogo = datosMatriz.map(f => ({
-    normalizado: normalizarTexto_(f[0]),
-    producto: f[0],
-    codigo: f[4],
-    existencia: Number(f[10]) || 0,
-    udm: f[1],
-    ubicacion: f[9] || ""
-  }));
+  const catalogo = datosMatriz.map(f => {
+    const info = extraerNombreYPresentacion_(f[0]);
+    return {
+      nombre: info.nombre,
+      presentacionNumero: info.presentacionNumero,
+      presentacionUDM: info.presentacionUDM,
+      presentacionTexto: info.presentacionTexto,
+      producto: f[0],
+      codigo: f[4],
+      existencia: Number(f[10]) || 0,
+      udm: f[1],
+      ubicacion: f[9] || ""
+    };
+  });
 
   const resultados = (items || []).map(item=>{
 
-    const cantidad = Number(item.cantidad) || 0;
+    const cantidadPedida = Number(item.cantidad) || 0;
     const coincidencia = buscarCoincidenciaProducto_(item.productoDocumento, catalogo);
 
     if(!coincidencia){
       return {
         productoDocumento: item.productoDocumento,
-        cantidad: cantidad,
+        cantidadPedida: cantidadPedida,
+        presentacionTexto: "",
+        factorPresentacion: "",
+        cantidadADescontar: "",
         encontrado: "",
         codigo: "",
         existencia: "",
+        existenciaResultante: "",
         udm: "",
         ubicacion: "",
         score: 0,
         estado: "SIN_COINCIDENCIA",
-        observaciones: "No se encontró un producto parecido en MATRIZ"
+        observaciones: "No se encontró un producto con ese nombre y presentación en MATRIZ"
       };
     }
 
     const p = coincidencia.producto;
+
+    // El factor SIEMPRE sale del producto ya identificado en MATRIZ
+    // (nunca de un número suelto tomado del texto del documento). Si
+    // ese producto no tiene presentación detectable en su nombre, el
+    // factor es 1 (se descuenta tal cual, como antes).
+    const factor = p.presentacionNumero !== null ? p.presentacionNumero : 1;
+    const cantidadADescontar = Math.round(cantidadPedida * factor * 1000) / 1000;
+
     let estado = "OK";
     let observaciones = "";
 
-    if(cantidad <= 0){
+    if(cantidadPedida <= 0){
       estado = "SIN_COINCIDENCIA";
       observaciones = "Cantidad inválida en el documento";
-    } else if(cantidad > p.existencia){
+    } else if(cantidadADescontar > p.existencia){
       estado = "STOCK_INSUFICIENTE";
-      observaciones = "Existencia disponible: " + p.existencia;
-    } else if(coincidencia.score < 0.9){
+      observaciones = "Solicitado: " + cantidadPedida + (p.presentacionUDM ? " PZ" : "") +
+        (p.presentacionTexto ? " — Presentación: " + p.presentacionTexto : "") +
+        " — Necesario: " + cantidadADescontar + " " + p.udm +
+        " — Disponible: " + p.existencia + " " + p.udm +
+        " — Faltante: " + Math.round((cantidadADescontar - p.existencia) * 1000) / 1000 + " " + p.udm;
+    } else if(coincidencia.score < 1){
       estado = "REVISAR";
-      observaciones = "Coincidencia aproximada (" + Math.round(coincidencia.score*100) + "%), verifica que sea el producto correcto";
+      observaciones = "Coincidencia aproximada (" + Math.round(coincidencia.score*100) + "%), verifica que sea el producto y presentación correctos";
     }
 
     return {
       productoDocumento: item.productoDocumento,
-      cantidad: cantidad,
+      cantidadPedida: cantidadPedida,
+      presentacionTexto: p.presentacionTexto || "—",
+      factorPresentacion: factor,
+      cantidadADescontar: cantidadADescontar,
       encontrado: p.producto,
       codigo: p.codigo,
       existencia: p.existencia,
+      existenciaResultante: (estado === "OK" || estado === "REVISAR")
+        ? Math.round((p.existencia - cantidadADescontar) * 1000) / 1000
+        : "",
       udm: p.udm,
       ubicacion: p.ubicacion,
       score: coincidencia.score,
@@ -485,14 +632,14 @@ function analizarImportacionSalidasApp(items){
   const hojaImport = ss.getSheetByName("IMPORTAR_SALIDAS");
   if(hojaImport){
     if(hojaImport.getLastRow() > 1){
-      hojaImport.getRange(2, 1, hojaImport.getLastRow()-1, 7).clearContent();
+      hojaImport.getRange(2, 1, hojaImport.getLastRow()-1, 9).clearContent();
     }
     if(resultados.length){
       const filas = resultados.map(r => [
-        r.productoDocumento, r.cantidad, r.encontrado, r.codigo, r.existencia,
-        r.estado, r.observaciones
+        r.productoDocumento, r.cantidadPedida, r.presentacionTexto, r.cantidadADescontar,
+        r.encontrado, r.codigo, r.existencia, r.estado, r.observaciones
       ]);
-      hojaImport.getRange(2, 1, filas.length, 7).setValues(filas);
+      hojaImport.getRange(2, 1, filas.length, 9).setValues(filas);
     }
   }
 
@@ -723,6 +870,51 @@ function buscarProductoApp(codigo){
   }
 
   return null;
+}
+
+/**
+ * Recalcula una fila de importación cuando el usuario asigna el
+ * código manualmente (filas SIN_COINCIDENCIA o STOCK_INSUFICIENTE).
+ * Aplica la MISMA lógica de presentación que el matching automático de
+ * analizarImportacionSalidasApp — el factor de conversión sale del
+ * nombre del producto ya identificado en MATRIZ, nunca de un número
+ * suelto tomado del documento.
+ */
+function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
+
+  const producto = buscarProductoApp(codigo);
+  if(!producto) return null;
+
+  const cantidad = Number(cantidadPedida) || 0;
+  const info = extraerNombreYPresentacion_(producto.producto);
+  const factor = info.presentacionNumero !== null ? info.presentacionNumero : 1;
+  const cantidadADescontar = Math.round(cantidad * factor * 1000) / 1000;
+
+  let estado = "OK";
+  let observaciones = "Asignado manualmente";
+
+  if(cantidadADescontar > producto.existencia){
+    estado = "STOCK_INSUFICIENTE";
+    observaciones = "Asignado manualmente — Necesario: " + cantidadADescontar + " " + producto.udm +
+      " — Disponible: " + producto.existencia + " " + producto.udm +
+      " — Faltante: " + Math.round((cantidadADescontar - producto.existencia) * 1000) / 1000 + " " + producto.udm;
+  }
+
+  return {
+    encontrado: producto.producto,
+    codigo: String(codigo).trim(),
+    existencia: producto.existencia,
+    existenciaResultante: (estado === "OK") ? Math.round((producto.existencia - cantidadADescontar) * 1000) / 1000 : "",
+    udm: producto.udm,
+    ubicacion: producto.ubicacion,
+    presentacionTexto: info.presentacionTexto || "—",
+    factorPresentacion: factor,
+    cantidadADescontar: cantidadADescontar,
+    score: 1,
+    estado: estado,
+    observaciones: observaciones
+  };
+
 }
 
 function obtenerProductosBajoMinimo(){

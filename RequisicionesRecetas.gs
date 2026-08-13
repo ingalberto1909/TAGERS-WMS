@@ -1,51 +1,8 @@
-// ================================================================
-// FASE 3 — REQUISICIONES INTERNAS CON RECETAS
-// Archivo independiente — no modifica Codigo.gs, Principal.gs,
-// Usuarios.gs, Sesiones.gs, Recetas.gs ni AnalisisCompras.gs.
-//
-// Reutiliza SIN DUPLICAR: obtenerHojaRequisiciones_, obtenerHojaDetalleRequisiciones_,
-// obtenerAreaUsuarioPorCorreo_, obtenerCorreoDesdeToken_, generarFolioRequisicion_,
-// obtenerNombreDesdeToken, registrarAuditoria (de Codigo.gs/Sesiones.gs) y
-// obtenerRecetasApp/obtenerDetalleRecetaApp (de Recetas.gs).
-//
-// REGLA MAESTRA de esta fase: una requisición de receta NUNCA modifica
-// RECETAS, ni descuenta existencia, ni genera SALIDA, ni escribe en
-// KARDEX — solo registra la solicitud. Por eso las funciones de aquí
-// jamás llaman a ajustarExistenciaMatrizPorDelta_, registrarKardex ni
-// registrarSalidaInterna_.
-//
-// Para no crear una hoja paralela (tal como pide el documento), se
-// reutilizan las MISMAS hojas REQUISICIONES y DETALLE_REQUISICIONES que
-// ya usa el módulo de requisiciones de productos. Se le agrega UNA
-// columna nueva a DETALLE_REQUISICIONES: G = "Tipo" ("PRODUCTO" o
-// "RECETA"). Las filas viejas (sin esa columna) se siguen leyendo como
-// "PRODUCTO" por default, así que el flujo actual de Preparación/Entrega
-// de productos sigue funcionando exactamente igual que antes.
-// ================================================================
 
-/**
- * Catálogo de recetas para elegir en una requisición — reutiliza el
- * mismo catálogo de Recetas BOM, solo activas (regla: la receta debe
- * estar activa para poder solicitarse).
- */
 function buscarRecetaParaRequisicionApp(texto){
   return buscarRecetasApp(texto).filter(r => r.estado === "ACTIVA");
 }
 
-/**
- * FASE 3: Nueva requisición de RECETAS. El usuario pide producto
- * TERMINADO (ej. "9 KG de Aceite Mediterráneo"), no ingredientes.
- * items = [{codigoReceta, nombreReceta, rendimiento, udm, cantidadSolicitada}]
- *
- * Esta función NO toca existencia, NO genera SALIDA y NO escribe en
- * KARDEX — únicamente registra la solicitud (regla 14 del documento).
- */
-/**
- * Folio propio para requisiciones de RECETAS — prefijo distinto (RIR-)
- * al de productos (RI-) para diferenciarlas de un vistazo en las listas.
- * Cuenta de forma independiente, buscando el número más alto ya usado
- * con este prefijo.
- */
 function generarFolioRequisicionReceta_(){
 
   const hoja = obtenerHojaRequisiciones_();
@@ -76,10 +33,6 @@ function crearRequisicionRecetaApp(observaciones, items, token){
     throw new Error("Tu usuario no tiene un Área asignada en USUARIOS — pide al administrador que la capture.");
   }
 
-  // Validaciones 1-5 del documento: área (ya validada arriba), al menos
-  // una receta, cantidad capturada, cantidad > 0, y receta activa (el
-  // catálogo de búsqueda ya solo ofrece activas, pero se revalida aquí
-  // por si el catálogo cambió entre que se buscó y se envió).
   const activas = {};
   obtenerRecetasApp().forEach(r => { if(r.estado === "ACTIVA") activas[r.codigo] = r; });
 
@@ -106,9 +59,6 @@ function crearRequisicionRecetaApp(observaciones, items, token){
   conBloqueoApp_(function(){
     folio = generarFolioRequisicionReceta_();
 
-    // Cabecera: mismo esquema y mismo estado inicial ("PENDIENTE") que ya
-    // usa Requisiciones de productos — así reaparece sola en las mismas
-    // pantallas de "Mis requisiciones" / "Historial" que ya existen.
     obtenerHojaRequisiciones_().appendRow([
       folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
     ]);
@@ -116,9 +66,6 @@ function crearRequisicionRecetaApp(observaciones, items, token){
 
   const detalle = obtenerHojaDetalleRequisiciones_();
 
-  // Si la hoja todavía no tiene el encabezado de la columna G (Tipo),
-  // se pone la primera vez — sin tocar A-F, que ya usa el flujo de
-  // productos.
   if(detalle.getRange(1, 7).getValue() === ""){
     detalle.getRange(1, 7).setValue("Tipo");
     detalle.getRange(1, 7).setFontWeight("bold");
@@ -137,12 +84,6 @@ function crearRequisicionRecetaApp(observaciones, items, token){
 
 }
 
-/**
- * Indica si una requisición ya existente es de tipo RECETA o PRODUCTO,
- * revisando la columna G del primer renglón de su detalle. Las filas
- * viejas (sin columna G) se toman como "PRODUCTO" — así el flujo actual
- * de Preparación/Entrega de productos no se ve afectado.
- */
 function obtenerTipoRequisicionApp(folio){
 
   const detalle = obtenerHojaDetalleRequisiciones_();
@@ -162,11 +103,6 @@ function obtenerTipoRequisicionApp(folio){
 
 }
 
-/**
- * Detalle de una requisición de recetas — para consultarla (regla 7:
- * "Receta | Rendimiento | Cantidad solicitada | UDM"). Todavía NO
- * calcula ingredientes (eso es Fase 4).
- */
 function obtenerDetalleRequisicionRecetaApp(folio){
 
   const req = obtenerHojaRequisiciones_();
@@ -207,22 +143,6 @@ function obtenerDetalleRequisicionRecetaApp(folio){
 
 }
 
-
-// ================================================================
-// FASE 4-8 — CÁLCULO DE INGREDIENTES, SURTIDO Y ENTREGA REAL
-// La receta NUNCA se modifica (se lee con obtenerDetalleRecetaApp cada
-// vez). El cálculo (factor = solicitado ÷ rendimiento) vive únicamente
-// en esta función, nunca se guarda en RECETAS ni en DETALLE_REQUISICIONES.
-// La entrega SÍ descuenta inventario — pero usando la MISMA función
-// (registrarSalidaInterna_) que ya usa el flujo de Salidas/Requisiciones
-// de productos, así queda igual de registrado en SALIDA, existencia y
-// KARDEX — nada nuevo que mantener por separado.
-// ================================================================
-
-/**
- * "4.5 KG" -> {valor:4.5, udm:"KG"}. El rendimiento de una receta se
- * captura como texto libre en RECETAS, así que se interpreta aquí.
- */
 function parsearRendimiento_(rendimientoTexto){
   const texto = String(rendimientoTexto||"").trim();
   const match = texto.match(/^([\d.,]+)\s*(.*)$/);
@@ -230,11 +150,6 @@ function parsearRendimiento_(rendimientoTexto){
   return { valor: Number(match[1].replace(",", "")) || 0, udm: (match[2]||"").trim() };
 }
 
-/**
- * Busca en MATRIZ un producto por NOMBRE exacto (normalizado) — los
- * ingredientes de RECETAS son texto libre, no tienen código propio, así
- * que se cruzan por nombre contra tu catálogo real.
- */
 function buscarProductoEnMatrizPorNombre_(nombre){
 
   const buscado = normalizarTexto_(nombre);
@@ -255,12 +170,6 @@ function buscarProductoEnMatrizPorNombre_(nombre){
 
 }
 
-/**
- * FASE 4: calcula qué insumos se necesitan para surtir una requisición
- * de recetas — junta los ingredientes de TODAS las recetas de la
- * requisición (si dos recetas piden el mismo insumo, se suman), y para
- * cada uno busca su existencia actual en MATRIZ.
- */
 function obtenerCalculoIngredientesRequisicionApp(folio){
 
   const detalleReceta = obtenerDetalleRequisicionRecetaApp(folio);
@@ -270,9 +179,7 @@ function obtenerCalculoIngredientesRequisicionApp(folio){
   detalleReceta.recetas.forEach(r => {
 
     const receta = obtenerDetalleRecetaApp(r.nombreReceta);
-    // El usuario ahora pide por número de TANDAS de la receta (ej. "3
-    // recetas de Aceite Mediterráneo"), no por cantidad de rendimiento —
-    // el factor es directamente ese número, sin dividir entre rendimiento.
+    
     const factor = r.cantidadSolicitada;
 
     receta.ingredientes.forEach(ing => {
@@ -312,13 +219,6 @@ function obtenerCalculoIngredientesRequisicionApp(folio){
 
 }
 
-/**
- * FASES 6-8: confirma la entrega — AQUÍ SÍ se descuenta inventario, se
- * registra SALIDA (con el Área, igual que Requisiciones de productos) y
- * KARDEX, usando la misma función central que ya usa toda la app. Solo
- * hasta este paso se toca inventario — crear la requisición y calcular
- * ingredientes nunca lo tocó.
- */
 function confirmarEntregaRequisicionRecetaApp(folio, entregas, token){
 
   const acceso = obtenerAccesoRequisicionesApp(token);
@@ -341,9 +241,6 @@ function confirmarEntregaRequisicionRecetaApp(folio, entregas, token){
     const cantidad = Number(e.cantidadEntregada) || 0;
     if(cantidad <= 0 || !e.codigo) return;
 
-    // Misma función que usa Salidas/Requisiciones de productos — así
-    // queda igual de registrado en SALIDA (con el Área), existencia y
-    // Kardex, sin lógica nueva que mantener por separado.
     registrarSalidaInterna_({
       codigo: e.codigo,
       producto: e.nombre || e.codigo,
@@ -376,8 +273,6 @@ function confirmarEntregaRequisicionRecetaApp(folio, entregas, token){
   return { insumosEntregados: insumosEntregados, pdf: pdf };
 
 }
-
-// ---------------- PDF de la requisición de recetas ----------------
 
 function construirHtmlRequisicionReceta_(folio){
 
