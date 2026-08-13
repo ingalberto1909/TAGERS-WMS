@@ -100,15 +100,19 @@ function crearRequisicionRecetaApp(observaciones, items, token){
     throw new Error("Agrega al menos una receta con cantidad solicitada mayor a cero.");
   }
 
-  const folio = generarFolioRequisicionReceta_();
   const fecha = new Date();
+  let folio;
 
-  // Cabecera: mismo esquema y mismo estado inicial ("PENDIENTE") que ya
-  // usa Requisiciones de productos — así reaparece sola en las mismas
-  // pantallas de "Mis requisiciones" / "Historial" que ya existen.
-  obtenerHojaRequisiciones_().appendRow([
-    folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
-  ]);
+  conBloqueoApp_(function(){
+    folio = generarFolioRequisicionReceta_();
+
+    // Cabecera: mismo esquema y mismo estado inicial ("PENDIENTE") que ya
+    // usa Requisiciones de productos — así reaparece sola en las mismas
+    // pantallas de "Mis requisiciones" / "Historial" que ya existen.
+    obtenerHojaRequisiciones_().appendRow([
+      folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
+    ]);
+  });
 
   const detalle = obtenerHojaDetalleRequisiciones_();
 
