@@ -2748,6 +2748,39 @@ function congelarFormulasExistenciaMatrizApp(){
 
 }
 
+/**
+ * FASE 4 — diagnóstico de consistencia entre Existencia y Kardex. NO
+ * modifica nada, solo revisa: si alguna celda de Existencia (columna K
+ * de MATRIZ) todavía tuviera una fórmula en vez de un valor congelado,
+ * la próxima vez que ese producto tenga un movimiento
+ * (ajustarExistenciaMatrizPorDelta_ / actualizarExistenciaMatriz_) esa
+ * fórmula se sobrescribiría con un número plano sin avisar — dejando
+ * ese producto potencialmente desincronizado hasta ese momento. Se
+ * pensó para correrlo manualmente de vez en cuando, o justo antes de
+ * ejecutar congelarFormulasExistenciaMatrizApp() por primera vez, para
+ * saber exactamente cuántas filas van a cambiar.
+ */
+function verificarConsistenciaExistenciaApp(){
+
+  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  if(matriz.getLastRow() < 2) return { productosConFormula: [], total: 0 };
+
+  const filas = matriz.getLastRow() - 1;
+  const formulas = matriz.getRange(2, 11, filas, 1).getFormulas().flat(); // K = Existencia
+  const codigos = matriz.getRange(2, 5, filas, 1).getValues().flat();
+  const nombres = matriz.getRange(2, 1, filas, 1).getValues().flat();
+
+  const productosConFormula = [];
+  formulas.forEach(function(f, i){
+    if(f){ // getFormulas() regresa "" en las celdas que ya son valor plano
+      productosConFormula.push({ codigo: codigos[i], producto: nombres[i], fila: i + 2 });
+    }
+  });
+
+  return { productosConFormula: productosConFormula, total: productosConFormula.length };
+
+}
+
 function obtenerHojaHistorialPrecios_(){
 
   const ss = SpreadsheetApp.getActive();
