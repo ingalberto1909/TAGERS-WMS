@@ -12,19 +12,57 @@
   function ajustarViewport(){
     var vp = document.getElementById('viewportMeta');
     if(!vp) return;
-    var ancho = document.documentElement.clientWidth || window.innerWidth;
+    // OJO: clientWidth/innerWidth miden el viewport de LAYOUT actual, que ya
+    // está determinado por el propio <meta viewport> — si ese valor quedó
+    // mal puesto (por el wrapper de Google), clientWidth solo confirma el
+    // valor malo en vez de corregirlo. screen.width es el ancho físico real
+    // de la pantalla del dispositivo y no depende de lo que ya se haya
+    // aplicado, así que rompe ese círculo.
+    var anchoPantalla = (window.screen && window.screen.width) || 0;
+    var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
     vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no');
   }
+  // Cuando la app corre dentro del iframe que arma script.google.com (el que
+  // muestra el aviso "Un usuario de Google Apps Script creó esta
+  // aplicación"), el <meta viewport> de ESTA página no tiene ningún efecto:
+  // los @media (max-width:...) del CSS evalúan el ancho real del iframe que
+  // Google decide, no el de la pantalla del celular. Como screen.width sí
+  // conoce el ancho real del dispositivo (ver ajustarViewport arriba), aquí
+  // se usa ese dato para forzar a "siempre aplican" las reglas @media que
+  // deberían estar activas según el tamaño real de pantalla, aunque el
+  // iframe reporte un ancho de escritorio.
+  function forzarResponsiveSiHaceFalta(){
+    if(!window.screen || !window.screen.width) return;
+    var anchoReal = window.screen.width;
+    try{
+      for (var s = 0; s < document.styleSheets.length; s++){
+        var reglas;
+        try{ reglas = document.styleSheets[s].cssRules; } catch(e){ continue; }
+        if(!reglas) continue;
+        for (var r = 0; r < reglas.length; r++){
+          var regla = reglas[r];
+          if(regla.type !== CSSRule.MEDIA_RULE) continue;
+          var texto = regla.media.mediaText;
+          var coincide = texto.match(/max-width:\s*(\d+)px/);
+          if(coincide && anchoReal <= parseInt(coincide[1], 10)){
+            regla.media.mediaText = 'all';
+          }
+        }
+      }
+    }catch(e){ /* si el navegador no deja tocar cssRules, se queda como estaba */ }
+  }
+
   ajustarViewport();
-  window.addEventListener('load', ajustarViewport);
+  window.addEventListener('load', function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); });
   window.addEventListener('resize', ajustarViewport);
   window.addEventListener('orientationchange', ajustarViewport);
   // El wrapper de Google (script.google.com) a veces monta el iframe con un
   // ancho de layout equivocado (~980px) antes de asentarse — se reintenta
   // unas veces más después de cargar, por si el primer cálculo fue el malo.
-  setTimeout(ajustarViewport, 150);
-  setTimeout(ajustarViewport, 600);
-  setTimeout(ajustarViewport, 1500);
+  setTimeout(function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); }, 150);
+  setTimeout(function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); }, 600);
+  setTimeout(function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); }, 1500);
+  setTimeout(function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); }, 3000);
 })();
 </script>
 
