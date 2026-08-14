@@ -1913,6 +1913,76 @@ display:flex;
 padding-bottom:calc(20px + 58px + env(safe-area-inset-bottom));
 }
 
+/* TABLAS → TARJETAS (Fase 4). No cambia datos ni columnas: cada <td> se
+   apila como fila "etiqueta: valor" dentro de una tarjeta por registro.
+   La etiqueta sale del <th> correspondiente vía atributo data-label, que
+   aplicarDataLabelsResponsive() copia automáticamente al renderizar —
+   no requiere tocar ninguna de las funciones que arman estas tablas. */
+
+.tablaTop, .tablaActividad, .tablaImportar{
+display:block;
+width:100%;
+}
+
+.tablaTop thead, .tablaActividad thead, .tablaImportar thead{
+display:none;
+}
+
+.tablaTop tbody, .tablaActividad tbody, .tablaImportar tbody{
+display:block;
+width:100%;
+}
+
+.tablaTop tr, .tablaActividad tr, .tablaImportar tr{
+display:block;
+border:1px solid var(--border);
+border-radius:var(--radius-md);
+margin-bottom:10px;
+padding:4px 12px;
+background:var(--bg-panel);
+box-shadow:var(--shadow-sm);
+}
+
+.tablaTop td, .tablaActividad td, .tablaImportar td{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:14px;
+padding:8px 0;
+border-bottom:1px solid var(--border);
+text-align:right;
+white-space:normal;
+}
+
+.tablaTop td:last-child, .tablaActividad td:last-child, .tablaImportar td:last-child{
+border-bottom:none;
+}
+
+.tablaTop td::before, .tablaActividad td::before, .tablaImportar td::before{
+content:attr(data-label);
+font-weight:700;
+font-size:11px;
+text-transform:uppercase;
+letter-spacing:.3px;
+color:var(--text-muted);
+text-align:left;
+flex-shrink:0;
+}
+
+.tablaTop td:empty::before, .tablaActividad td:empty::before, .tablaImportar td:empty::before{
+content:none;
+}
+
+.tablaTop td[colspan], .tablaActividad td[colspan], .tablaImportar td[colspan]{
+display:block;
+text-align:center;
+padding:18px 0;
+}
+
+.tablaTop td[colspan]::before, .tablaActividad td[colspan]::before, .tablaImportar td[colspan]::before{
+content:none;
+}
+
 }
 
 /* ===================== */
@@ -2106,6 +2176,17 @@ grid-template-columns:1fr;
 grid-template-columns:1fr;
 }
 
+.cardProducto{
+padding:14px;
+margin:12px 0;
+}
+
+.panelesInicio,
+.panelesInicio2,
+.panelesInicio3{
+gap:12px;
+}
+
 }
 
 /* Objetivos táctiles: en pantallas táctiles los botones de solo ícono del
@@ -2294,6 +2375,53 @@ function sincronizarNavInferiorConPermisos(){
     const visible = !!ref && ref.style.display !== "none";
     btn.style.display = visible ? "" : "none";
   });
+}
+
+// ===============================
+// TABLAS → TARJETAS EN MÓVIL — Fase 4
+// Copia el texto de cada <th> a un atributo data-label en su columna de
+// <td> correspondiente. Es solo decoración para el CSS de @media
+// (max-width:768px) que convierte cada fila en tarjeta — no lee, no
+// cambia y no reordena ningún dato; si una tabla no tiene <thead>/<th>
+// (poco común) simplemente no se le agregan etiquetas y se ve igual que
+// antes. Corre automáticamente cada vez que una vista arma una tabla
+// nueva, sin tener que tocar ninguna de las funciones que las generan.
+// ===============================
+
+function aplicarDataLabelsTabla(tabla){
+  const encabezados = [...tabla.querySelectorAll(":scope > thead th")].map(function(th){
+    return th.textContent.trim();
+  });
+  if(!encabezados.length) return;
+  tabla.querySelectorAll(":scope > tbody > tr").forEach(function(tr){
+    [...tr.children].forEach(function(td, i){
+      if(td.hasAttribute("colspan")) return;
+      if(encabezados[i] && !td.hasAttribute("data-label")){
+        td.setAttribute("data-label", encabezados[i]);
+      }
+    });
+  });
+}
+
+function aplicarDataLabelsResponsive(raiz){
+  (raiz || document).querySelectorAll(".tablaTop, .tablaActividad, .tablaImportar").forEach(aplicarDataLabelsTabla);
+}
+
+function inicializarObservadorTablasResponsive(){
+  if(typeof MutationObserver === "undefined") return;
+  const contenedor = document.querySelector(".contenedor");
+  if(!contenedor) return;
+  let pendiente = false;
+  const observer = new MutationObserver(function(){
+    if(pendiente) return;
+    pendiente = true;
+    requestAnimationFrame(function(){
+      pendiente = false;
+      aplicarDataLabelsResponsive(contenedor);
+    });
+  });
+  observer.observe(contenedor, { childList:true, subtree:true });
+  aplicarDataLabelsResponsive(contenedor);
 }
 
 function actualizarIconoTema(){
@@ -9756,6 +9884,8 @@ window.addEventListener("load", function(){
   inicializarAnclajeSidebar();
 
   inicializarIndicadorSidebar();
+
+  inicializarObservadorTablasResponsive();
 
   verificarSesionTAGERS(function(){
     volverInicio();
