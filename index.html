@@ -3,6 +3,7 @@
 
 <head>
 
+<meta charset="UTF-8">
 <base target="_top">
 
 <meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1">
@@ -151,10 +152,30 @@ padding:0 6px;
 color:var(--text);
 }
 
+.btnAnclarSidebar{
+display:none;
+margin-left:auto;
+width:26px;
+height:26px;
+border:none;
+background:none;
+color:var(--text-muted);
+border-radius:var(--radius-sm);
+cursor:pointer;
+align-items:center;
+justify-content:center;
+flex-shrink:0;
+transition:background .15s ease, color .15s ease;
+}
+
+.btnAnclarSidebar:hover{ background:var(--bg); color:var(--text); }
+
+.btnAnclarSidebar.activo{ color:var(--color-primary); }
+
 #sidebar .logoLateral .logoIcono{
 width:38px;
 height:38px;
-border-radius:11px;
+border-radius:var(--radius-sm);
 background:var(--guinda);
 color:#fff;
 display:flex;
@@ -178,7 +199,7 @@ margin-top:1px;
 .menuLateralBtn{
 background:none;
 border:none;
-border-radius:11px;
+border-radius:var(--radius-sm);
 color:var(--text);
 text-align:left;
 padding:11px 14px;
@@ -196,12 +217,21 @@ margin-bottom:2px;
 .menuLateralBtn .icono{
 font-size:17px;
 width:20px;
-text-align:center;
+height:20px;
+display:flex;
+align-items:center;
+justify-content:center;
 flex-shrink:0;
+color:var(--text-muted);
+transition:color .15s ease;
 }
 
 .menuLateralBtn:hover{
 background:var(--bg);
+}
+
+.menuLateralBtn:hover .icono{
+color:var(--color-primary);
 }
 
 .menuLateralBtn.activo{
@@ -211,8 +241,12 @@ font-weight:600;
 box-shadow:0 4px 12px rgba(107,39,55,.28);
 }
 
+.menuLateralBtn.activo .icono{
+color:#fff;
+}
+
 .menuLateralBtn.sub{
-padding-left:38px;
+padding-left:10px;
 font-size:13.5px;
 }
 
@@ -224,6 +258,8 @@ justify-content:flex-start;
 margin-left:auto;
 font-size:12px;
 opacity:.6;
+display:flex;
+align-items:center;
 transition:transform .2s ease;
 }
 
@@ -235,6 +271,9 @@ transform:rotate(90deg);
 max-height:0;
 overflow:hidden;
 transition:max-height .25s ease;
+margin-left:24px;
+padding-left:8px;
+border-left:1px solid var(--border);
 }
 
 .submenu.abierto{
@@ -252,8 +291,9 @@ display:flex;
 align-items:center;
 gap:10px;
 padding:8px 6px;
-border-radius:12px;
+border-radius:var(--radius-sm);
 background:var(--bg);
+transition:background .15s ease;
 }
 
 .avatarUsuario{
@@ -295,9 +335,10 @@ background:rgba(196,82,42,.12);
 border:none;
 color:var(--terracota);
 padding:9px;
-border-radius:10px;
+border-radius:var(--radius-sm);
 font-size:13px;
 font-weight:600;
+font-family:inherit;
 cursor:pointer;
 display:flex;
 align-items:center;
@@ -346,12 +387,18 @@ display:flex;
 align-items:center;
 background:var(--bg);
 border:1px solid var(--border);
-border-radius:12px;
+border-radius:var(--radius-sm);
 padding:0 12px;
 height:40px;
+transition:border-color .15s ease, box-shadow .15s ease;
 }
 
-.buscadorHeader .iconoLupa{ font-size:15px; opacity:.55; flex-shrink:0; }
+.buscadorHeader:focus-within{
+border-color:var(--color-primary);
+box-shadow:0 0 0 3px rgba(196,82,42,.12);
+}
+
+.buscadorHeader .iconoLupa{ display:flex; align-items:center; opacity:.55; flex-shrink:0; color:var(--text-muted); }
 
 .buscadorHeader input{
 border:none;
@@ -380,12 +427,13 @@ left:0;
 right:0;
 background:var(--bg-panel);
 border:1px solid var(--border);
-border-radius:12px;
-box-shadow:0 12px 30px rgba(0,0,0,.15);
+border-radius:var(--radius-md);
+box-shadow:var(--shadow-md);
 max-height:340px;
 overflow:auto;
 z-index:40;
 display:none;
+animation:fadeInUp .15s ease;
 }
 
 .accionesHeader{
@@ -401,9 +449,11 @@ display:flex;
 align-items:center;
 gap:9px;
 padding:5px 10px 5px 5px;
-border-radius:30px;
+border-radius:var(--radius-pill);
 border:1px solid var(--border);
 cursor:pointer;
+position:relative;
+transition:background .15s ease;
 }
 
 .chipUsuarioHeader:hover{ background:var(--bg); }
@@ -411,6 +461,43 @@ cursor:pointer;
 .chipUsuarioHeader .avatarUsuario{ width:30px; height:30px; font-size:13px; }
 .chipUsuarioHeader .nombreUsuario{ font-size:12.5px; max-width:130px; }
 .chipUsuarioHeader .rolUsuario{ font-size:10.5px; }
+
+.menuUsuarioHeader{
+position:absolute;
+top:50px;
+right:0;
+min-width:180px;
+background:var(--bg-panel);
+color:var(--text);
+border-radius:var(--radius-md);
+box-shadow:var(--shadow-md);
+border:1px solid var(--border);
+display:none;
+z-index:200;
+padding:6px;
+animation:fadeInUp .15s ease;
+}
+
+.menuUsuarioHeader.mostrar{
+display:block;
+}
+
+.menuUsuarioHeader button{
+width:100%;
+background:none;
+display:flex;
+align-items:center;
+gap:8px;
+padding:9px 10px;
+border-radius:var(--radius-sm);
+font-size:13px;
+font-weight:600;
+color:var(--color-danger);
+cursor:pointer;
+font-family:inherit;
+}
+
+.menuUsuarioHeader button:hover{ background:var(--color-danger-bg); }
 
 .hamburguesa{
 display:none;
@@ -421,6 +508,8 @@ font-size:22px;
 cursor:pointer;
 padding:4px 8px;
 flex-shrink:0;
+align-items:center;
+justify-content:center;
 }
 
 .iconoHeaderBtn{
@@ -431,7 +520,11 @@ font-size:19px;
 cursor:pointer;
 position:relative;
 padding:7px;
-border-radius:10px;
+border-radius:var(--radius-sm);
+display:flex;
+align-items:center;
+justify-content:center;
+transition:background .15s ease;
 }
 
 .iconoHeaderBtn:hover{ background:var(--bg); }
@@ -440,13 +533,13 @@ border-radius:10px;
 position:absolute;
 top:-2px;
 right:-2px;
-background:var(--terracota);
+background:var(--color-primary);
 color:white;
 font-size:10px;
 font-weight:700;
 min-width:16px;
 height:16px;
-border-radius:8px;
+border-radius:var(--radius-pill);
 display:none;
 align-items:center;
 justify-content:center;
@@ -462,11 +555,12 @@ max-height:380px;
 overflow-y:auto;
 background:var(--bg-panel);
 color:var(--text);
-border-radius:14px;
-box-shadow:0 10px 30px rgba(0,0,0,.25);
+border-radius:var(--radius-md);
+box-shadow:var(--shadow-md);
 display:none;
 z-index:200;
 border:1px solid var(--border);
+animation:fadeInUp .15s ease;
 }
 
 .panelDropdown.mostrar{
@@ -1584,6 +1678,32 @@ padding:9px 0;
 justify-content:center;
 }
 
+.btnAnclarSidebar{
+display:flex;
+}
+
+/* Anclado manual: fuerza el menú expandido sin depender del hover (persistido en localStorage) */
+#sidebar.sidebar-anclado{
+width:250px;
+}
+
+#sidebar.sidebar-anclado .textoMenu{
+opacity:1;
+}
+
+#sidebar.sidebar-anclado .flechaGrupo{
+opacity:.6;
+}
+
+#sidebar.sidebar-anclado .btnCerrarSesion{
+justify-content:center;
+padding:9px;
+}
+
+#sidebar.sidebar-anclado .usuarioInfo{
+justify-content:flex-start;
+}
+
 .indicadorSidebarHover{
 position:absolute;
 left:14px;
@@ -1768,7 +1888,14 @@ const TG_ICONOS = {
   reloj: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   usuarios: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   carrito: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
-  receta: '<path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 2 20 20"/><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65"/><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92"/>'
+  receta: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+  casa: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  carpeta: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  balanza: '<path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/><path d="M4 16.5v-9.75A2.75 2.75 0 0 1 6.75 4H8"/><path d="M8 4h8"/><path d="M12 4v12"/>',
+  camara: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  calendario: '<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/>',
+  salirIcono: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  panelIzquierdo: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>'
 };
 
 function tgIcon(nombre, tamano){
@@ -1778,6 +1905,78 @@ function tgIcon(nombre, tamano){
   return '<svg xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s +
     '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
     'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0">' + path + '</svg>';
+}
+
+// Mapa id-de-botón → ícono. Solo cambia el contenido visual del <span class="icono">
+// de cada botón; no toca id, onclick ni ninguna clase usada por aplicarPermisosPorRol()
+// o marcarActivo(). Los botones de grupo (sin id) se resuelven por su atributo data-icono.
+const ICONOS_MENU = {
+  btnInicio:"casa", btnEntradas:"entrada", btnSalidas:"salida", btnImportarSalidas:"documento",
+  btnAjustes:"balanza", btnKardex:"kardex", btnMapa:"ubicacion", btnInventarioLista:"paquete",
+  btnUbicaciones:"buscar", btnGenerarConteo:"documento", btnCapturarConteo:"camara",
+  btnRevisarDiscrepancias:"buscar", btnAprobarDiscrepancias:"checkCirculo", btnCerrarConteo:"recibo",
+  btnNuevaRequisicion:"mas", btnNuevaRequisicionReceta:"receta", btnMisRequisiciones:"documento",
+  btnRequisicionesPendientes:"reloj", btnPreparacionRequisicion:"paquete", btnEntregasRequisicion:"checkCirculo",
+  btnHistorialRequisicion:"reloj", btnCentroReabastecimiento:"refrescar", btnOrdenesCompra:"recibo",
+  btnRecepcionMercancia:"camion", btnHistorialCompras:"reloj", btnAnalisisCostos:"dinero",
+  btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
+  btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
+  btnHistorialInventarioMensual:"reloj", btnDashboardInventarioMensual:"tendenciaSube",
+  btnDashboard:"tendenciaSube", btnRecetas:"receta"
+};
+
+function aplicarIconosSidebar(){
+
+  Object.keys(ICONOS_MENU).forEach(function(id){
+    const btn = document.getElementById(id);
+    if(!btn) return;
+    const icono = btn.querySelector(".icono");
+    if(icono) icono.innerHTML = tgIcon(ICONOS_MENU[id], 17);
+  });
+
+  document.querySelectorAll("[data-icono]").forEach(function(el){
+    const icono = el.querySelector(".icono");
+    if(icono) icono.innerHTML = tgIcon(el.getAttribute("data-icono"), 17);
+  });
+
+  document.querySelectorAll(".flechaGrupo").forEach(function(fl){
+    fl.innerHTML = tgIcon("chevronDerecha", 13);
+  });
+
+  const logo = document.querySelector("#sidebar .logoIcono");
+  if(logo) logo.innerHTML = tgIcon("paquete", 19);
+
+  const lupa = document.querySelector(".buscadorHeader .iconoLupa");
+  if(lupa) lupa.innerHTML = tgIcon("buscar", 15);
+
+  const hamburguesa = document.querySelector(".hamburguesa");
+  if(hamburguesa) hamburguesa.innerHTML = tgIcon("menu", 20);
+
+  const campana = document.getElementById("btnNotificacionesHeader");
+  if(campana){
+    const badge = campana.querySelector(".badge");
+    campana.innerHTML = tgIcon("campana", 18);
+    if(badge) campana.appendChild(badge);
+  }
+
+  const cerrarSesion = document.querySelector(".btnCerrarSesion");
+  if(cerrarSesion){
+    cerrarSesion.innerHTML = tgIcon("salirIcono", 15) + '<span class="textoMenu"> Cerrar sesión</span>';
+  }
+
+  const iconoMenuUsuario = document.querySelector("#menuUsuarioHeader .icono");
+  if(iconoMenuUsuario) iconoMenuUsuario.innerHTML = tgIcon("salirIcono", 15);
+
+  actualizarIconoTema();
+
+}
+
+function actualizarIconoTema(){
+  const esOscuro = document.documentElement.getAttribute("data-theme") === "dark";
+  const iconoSidebar = document.getElementById("iconoTema");
+  const iconoHeader = document.getElementById("btnTemaHeader");
+  if(iconoSidebar) iconoSidebar.innerHTML = tgIcon(esOscuro ? "sol" : "luna", 17);
+  if(iconoHeader) iconoHeader.innerHTML = tgIcon(esOscuro ? "sol" : "luna", 18);
 }
 
 // ===============================
@@ -3453,8 +3652,7 @@ function alternarModoOscuro(){
 
   localStorage.setItem("tagers-tema", nuevo);
 
-  const icono = document.getElementById("iconoTema");
-  if(icono){ icono.innerText = nuevo === "dark" ? "☀️" : "🌙"; }
+  actualizarIconoTema();
 
 }
 
@@ -3472,6 +3670,27 @@ function cerrarSidebarMovilSiAplica(){
     document.getElementById("sidebar").classList.remove("abierto");
     document.getElementById("overlaySidebar").classList.remove("mostrar");
   }
+}
+
+// Fija el sidebar expandido en escritorio (independiente del hover), se recuerda entre sesiones.
+function toggleAnclarSidebar(){
+  const anclado = document.getElementById("sidebar").classList.toggle("sidebar-anclado");
+  localStorage.setItem("tagers-sidebar-anclado", anclado ? "1" : "0");
+  pintarBotonAnclarSidebar(anclado);
+}
+
+function pintarBotonAnclarSidebar(anclado){
+  const btn = document.getElementById("btnAnclarSidebar");
+  if(!btn) return;
+  btn.classList.toggle("activo", anclado);
+  btn.innerHTML = tgIcon("panelIzquierdo", 15);
+  btn.title = anclado ? "Liberar menú (expandir solo al pasar el mouse)" : "Fijar menú expandido";
+}
+
+function inicializarAnclajeSidebar(){
+  const anclado = localStorage.getItem("tagers-sidebar-anclado") === "1";
+  if(anclado) document.getElementById("sidebar").classList.add("sidebar-anclado");
+  pintarBotonAnclarSidebar(anclado);
 }
 
 function irAMapa(){
@@ -5672,6 +5891,18 @@ function actualizarNotificaciones(){
 function toggleNotificaciones(){
   document.getElementById("panelNotificaciones").classList.toggle("mostrar");
 }
+
+function toggleMenuUsuarioHeader(){
+  document.getElementById("menuUsuarioHeader").classList.toggle("mostrar");
+}
+
+document.addEventListener("click", function(e){
+  const chip = document.getElementById("chipUsuarioHeader");
+  const menu = document.getElementById("menuUsuarioHeader");
+  if(menu && chip && !chip.contains(e.target)){
+    menu.classList.remove("mostrar");
+  }
+});
 
 function dibujarNotificaciones(){
 
@@ -8413,6 +8644,7 @@ function aplicarFiltros(){
 <div class="logoLateral">
 <div class="logoIcono">📦</div>
 <div class="textoMenu"><b>TAGERS</b><span>WMS</span></div>
+<button class="btnAnclarSidebar textoMenu" id="btnAnclarSidebar" onclick="toggleAnclarSidebar()" title="Fijar menú expandido"></button>
 </div>
 
 <button class="menuLateralBtn activo" id="btnInicio" onclick="volverInicio()" title="Inicio">
@@ -8420,7 +8652,7 @@ function aplicarFiltros(){
 </button>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoOperaciones')" title="Operaciones">
+  <button class="menuLateralBtn grupoBtn" data-icono="carpeta" onclick="toggleGrupo('grupoOperaciones')" title="Operaciones">
   <span class="icono">🗂️</span><span class="textoMenu">Operaciones</span> <span class="flechaGrupo" id="flecha-grupoOperaciones">▸</span>
   </button>
   <div class="submenu" id="grupoOperaciones">
@@ -8432,7 +8664,7 @@ function aplicarFiltros(){
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoInventario')" title="Inventario">
+  <button class="menuLateralBtn grupoBtn" data-icono="paquete" onclick="toggleGrupo('grupoInventario')" title="Inventario">
   <span class="icono">📦</span><span class="textoMenu">Inventario</span> <span class="flechaGrupo" id="flecha-grupoInventario">▸</span>
   </button>
   <div class="submenu" id="grupoInventario">
@@ -8444,7 +8676,7 @@ function aplicarFiltros(){
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoControl')" title="Control">
+  <button class="menuLateralBtn grupoBtn" data-icono="kardex" onclick="toggleGrupo('grupoControl')" title="Control">
   <span class="icono">📋</span><span class="textoMenu">Control</span> <span class="flechaGrupo" id="flecha-grupoControl">▸</span>
   </button>
   <div class="submenu" id="grupoControl">
@@ -8457,7 +8689,7 @@ function aplicarFiltros(){
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoRequisiciones')" title="Requisiciones internas">
+  <button class="menuLateralBtn grupoBtn" data-icono="carrito" onclick="toggleGrupo('grupoRequisiciones')" title="Requisiciones internas">
   <span class="icono">📦</span><span class="textoMenu">Requisiciones internas</span> <span class="flechaGrupo" id="flecha-grupoRequisiciones">▸</span>
   </button>
   <div class="submenu" id="grupoRequisiciones">
@@ -8472,7 +8704,7 @@ function aplicarFiltros(){
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoCompras')" title="Compras">
+  <button class="menuLateralBtn grupoBtn" data-icono="carrito" onclick="toggleGrupo('grupoCompras')" title="Compras">
   <span class="icono">🛒</span><span class="textoMenu">Compras</span> <span class="flechaGrupo" id="flecha-grupoCompras">▸</span>
   </button>
   <div class="submenu" id="grupoCompras">
@@ -8487,7 +8719,7 @@ function aplicarFiltros(){
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoInventarioMensual')" title="Inventario mensual">
+  <button class="menuLateralBtn grupoBtn" data-icono="calendario" onclick="toggleGrupo('grupoInventarioMensual')" title="Inventario mensual">
   <span class="icono">🗓️</span><span class="textoMenu">Inventario mensual</span> <span class="flechaGrupo" id="flecha-grupoInventarioMensual">▸</span>
   </button>
   <div class="submenu" id="grupoInventarioMensual">
@@ -8509,13 +8741,13 @@ function aplicarFiltros(){
 </button>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" onclick="toggleGrupo('grupoConfig')" title="Configuración">
+  <button class="menuLateralBtn grupoBtn" data-icono="configuracion" onclick="toggleGrupo('grupoConfig')" title="Configuración">
   <span class="icono">⚙️</span><span class="textoMenu">Configuración</span> <span class="flechaGrupo" id="flecha-grupoConfig">▸</span>
   </button>
   <div class="submenu" id="grupoConfig">
     <button class="menuLateralBtn sub" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
-    <button class="menuLateralBtn sub" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
-    <button class="menuLateralBtn sub" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
+    <button class="menuLateralBtn sub" data-icono="configuracion" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
+    <button class="menuLateralBtn sub" data-icono="dinero" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
   </div>
 </div>
 
@@ -8549,7 +8781,7 @@ function aplicarFiltros(){
 <div class="accionesHeader">
 
 <div style="position:relative">
-<button class="iconoHeaderBtn" onclick="toggleNotificaciones()" title="Alertas de inventario">
+<button class="iconoHeaderBtn" id="btnNotificacionesHeader" onclick="toggleNotificaciones()" title="Alertas de inventario">
 🔔
 <span class="badge" id="badgeNotificaciones">0</span>
 </button>
@@ -8564,11 +8796,14 @@ function aplicarFiltros(){
 
 <button class="iconoHeaderBtn" onclick="alternarModoOscuro()" title="Cambiar tema" id="btnTemaHeader">🌙</button>
 
-<div class="chipUsuarioHeader" id="chipUsuarioHeader">
+<div class="chipUsuarioHeader" id="chipUsuarioHeader" onclick="toggleMenuUsuarioHeader()">
   <div class="avatarUsuario" id="avatarUsuarioHeader">?</div>
   <div class="datosUsuario">
     <div class="nombreUsuario" id="nombreUsuarioHeader">Cargando...</div>
     <div class="rolUsuario" id="rolUsuarioHeader"></div>
+  </div>
+  <div class="menuUsuarioHeader" id="menuUsuarioHeader">
+    <button onclick="event.stopPropagation();cerrarSesionTAGERS()"><span class="icono"></span> Cerrar sesión</button>
   </div>
 </div>
 
@@ -8696,11 +8931,9 @@ function aplicarFiltros(){
 
 window.addEventListener("load", function(){
 
-  const icono = document.getElementById("iconoTema");
+  aplicarIconosSidebar();
 
-  if(icono){
-    icono.innerText = document.documentElement.getAttribute("data-theme") === "dark" ? "☀️" : "🌙";
-  }
+  inicializarAnclajeSidebar();
 
   inicializarIndicadorSidebar();
 
