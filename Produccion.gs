@@ -108,43 +108,34 @@ function registrarProduccionApp(datos, token){
  * Autocompletar "Código de producto terminado" al elegir una receta en
  * el formulario de Registrar Producción: RECETAS no guarda ningún
  * vínculo hacia el producto terminado en MATRIZ (columnas A-G, ver
- * Recetas.gs), así que se reutiliza el historial de PRODUCCION — la
- * hoja ya guarda "Receta" y "Código producto" juntos cada vez que se
- * registra un lote. Se toma la fila MÁS RECIENTE de esa receta y se
- * revalida el código contra MATRIZ (via buscarProductoApp, la misma
- * función que ya usa el escaneo manual) para traer producto/UDM/
- * ubicación siempre actuales. Si la receta nunca se ha producido, o el
- * código guardado ya no existe en MATRIZ, regresa null y el usuario
+ * Recetas.gs), pero el producto terminado de cada receta ya existe en
+ * MATRIZ con el MISMO nombre (confirmado por el usuario) — así que se
+ * busca directo por nombre, sin depender de si esa receta ya se produjo
+ * antes. Usa normalizarTexto_ (mayúsculas, sin acentos, sin espacios de
+ * más) para que un match exacto no falle por diferencias de formato. Si
+ * ningún producto de MATRIZ tiene ese nombre, regresa null y el usuario
  * sigue pudiendo escanear/escribir el código a mano, como ya funcionaba.
  */
-function obtenerUltimoProductoTerminadoPorRecetaApp(nombreReceta){
+function obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta){
 
-  const nombre = String(nombreReceta || "").trim();
-  if(!nombre) return null;
+  const nombreNormalizado = normalizarTexto_(nombreReceta);
+  if(!nombreNormalizado) return null;
 
-  const hoja = obtenerHojaProduccion_();
-  if(hoja.getLastRow() < 2) return null;
+  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const datos = matriz.getDataRange().getValues();
 
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getValues(); // A..G
-
-  let codigoProducto = "";
-  datos.forEach(function(f){
-    if(String(f[4]||"").trim() === nombre && String(f[5]||"").trim()){
-      codigoProducto = String(f[5]).trim(); // se recorre en orden -> se queda con la más reciente
+  for(let i = 1; i < datos.length; i++){
+    if(normalizarTexto_(datos[i][0]) === nombreNormalizado){
+      return {
+        codigoProducto: String(datos[i][4] || "").trim(),
+        producto: datos[i][0],
+        udm: datos[i][1],
+        ubicacion: datos[i][9]
+      };
     }
-  });
+  }
 
-  if(!codigoProducto) return null;
-
-  const producto = buscarProductoApp(codigoProducto);
-  if(!producto) return null;
-
-  return {
-    codigoProducto: codigoProducto,
-    producto: producto.producto,
-    udm: producto.udm,
-    ubicacion: producto.ubicacion
-  };
+  return null;
 
 }
 

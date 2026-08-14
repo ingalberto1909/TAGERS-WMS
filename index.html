@@ -4475,11 +4475,11 @@ function buscarProductoTerminadoProduccion(){
 }
 
 // Al elegir (o cargar por primera vez) una receta en el formulario de
-// Registrar Producción, busca si esa receta ya se produjo antes y, si
-// sí, rellena código/producto/UDM/ubicación solas — así solo queda
-// capturar cantidad, caducidad y observaciones. Si la receta nunca se
-// produjo (o el código guardado ya no existe en MATRIZ), deja los campos
-// vacíos para escanear/escribir el código como siempre.
+// Registrar Producción, busca en MATRIZ un producto con el mismo nombre
+// de la receta y, si lo encuentra, rellena código/producto/UDM/ubicación
+// solas — así solo queda capturar cantidad, caducidad y observaciones.
+// Si ningún producto de MATRIZ tiene ese nombre, deja los campos vacíos
+// para escanear/escribir el código como siempre.
 function autocompletarProductoTerminadoProduccion(){
 
   const selectReceta = document.getElementById("recetaProduccion");
@@ -4512,7 +4512,7 @@ function autocompletarProductoTerminadoProduccion(){
       // sigue pudiendo escanear/escribir el código a mano, igual que antes.
       document.getElementById("codigoProduccion").focus();
     })
-    .obtenerUltimoProductoTerminadoPorRecetaApp(nombreReceta);
+    .obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta);
 
 }
 
