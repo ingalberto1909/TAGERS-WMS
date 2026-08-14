@@ -30,16 +30,48 @@
 <style>
 
 :root{
+  /* Colores de marca */
   --bg:#F2EBE0;
   --bg-panel:#ffffff;
   --text:#3a2e2a;
   --text-muted:#7a6d68;
+  --text-soft:var(--text-muted);
   --border:#ddccc4;
   --guinda:#6B2737;
   --guinda-dark:#4E1C28;
   --oliva:#5C6B2A;
   --terracota:#C4522A;
   --sombra:rgba(0,0,0,.08);
+
+  /* Design tokens — Fase 2 (Sistema de diseño) */
+  /* Colores semánticos: mapean a la paleta de marca ya existente, no introducen colores nuevos */
+  --color-primary:var(--terracota);
+  --color-primary-hover:#a8431f;
+  --color-secondary:var(--bg);
+  --color-secondary-text:var(--text);
+  --color-success:var(--oliva);
+  --color-success-bg:rgba(92,107,42,.14);
+  --color-warning:#a87a1f;
+  --color-warning-bg:rgba(217,164,65,.2);
+  --color-danger:var(--guinda);
+  --color-danger-bg:rgba(107,39,55,.14);
+  --color-info:#2A6B8C;
+  --color-info-bg:rgba(42,107,140,.14);
+
+  --radius-sm:10px;
+  --radius-md:14px;
+  --radius-lg:18px;
+  --radius-pill:999px;
+
+  --shadow-sm:0 2px 10px var(--sombra);
+  --shadow-md:0 10px 30px rgba(0,0,0,.18);
+  --shadow-lg:0 25px 60px rgba(0,0,0,.4);
+
+  --space-xs:4px;
+  --space-sm:8px;
+  --space-md:16px;
+  --space-lg:24px;
+  --space-xl:32px;
 }
 
 [data-theme="dark"]{
@@ -49,6 +81,13 @@
   --text-muted:#b5a49c;
   --border:#4a3a34;
   --sombra:rgba(0,0,0,.35);
+
+  --color-success-bg:rgba(92,107,42,.22);
+  --color-warning-bg:rgba(217,164,65,.22);
+  --color-danger-bg:rgba(107,39,55,.24);
+  --color-info-bg:rgba(42,107,140,.22);
+  --shadow-md:0 10px 30px rgba(0,0,0,.5);
+  --shadow-lg:0 25px 60px rgba(0,0,0,.6);
 }
 
 *{
@@ -519,9 +558,15 @@ margin-bottom:20px;
 .kpiCard{
 background:var(--bg-panel);
 padding:16px;
-border-radius:16px;
+border-radius:var(--radius-lg);
 border:1px solid var(--border);
-box-shadow:0 2px 10px var(--sombra);
+box-shadow:var(--shadow-sm);
+transition:box-shadow .2s ease, transform .2s ease;
+}
+
+.kpiCard:hover{
+box-shadow:var(--shadow-md);
+transform:translateY(-1px);
 }
 
 .kpiCard .kpiIcono{
@@ -698,9 +743,11 @@ border-bottom:1px solid var(--border);
 
 .pillTipo{
 padding:3px 10px;
-border-radius:20px;
+border-radius:var(--radius-pill);
 font-size:11px;
 font-weight:700;
+letter-spacing:.2px;
+display:inline-block;
 }
 
 .pillTipo.ENTRADA{ background:rgba(92,107,42,.15); color:var(--oliva); }
@@ -723,16 +770,33 @@ margin-top:10px;
 
 .badgeEstado{
 padding:3px 10px;
-border-radius:20px;
+border-radius:var(--radius-pill);
 font-size:11px;
 font-weight:700;
 white-space:nowrap;
+letter-spacing:.2px;
+display:inline-block;
 }
 
 .badgeEstado.OK{ background:rgba(92,107,42,.15); color:var(--oliva); }
 .badgeEstado.REVISAR{ background:rgba(217,164,65,.2); color:#a87a1f; }
 .badgeEstado.SIN_COINCIDENCIA{ background:rgba(107,39,55,.15); color:var(--guinda); }
 .badgeEstado.STOCK_INSUFICIENTE{ background:rgba(196,82,42,.15); color:var(--terracota); }
+
+/* Sistema de estados unificado (Fase 2) — mismas clases .badgeEstado, nuevos modificadores
+   disponibles para usarse en próximas fases sin tocar la lógica que arma el HTML */
+.badgeEstado.ACTIVO,
+.badgeEstado.APROBADO,
+.badgeEstado.COMPLETADO{ background:var(--color-success-bg); color:var(--color-success); }
+
+.badgeEstado.INACTIVO,
+.badgeEstado.CANCELADO,
+.badgeEstado.RECHAZADO,
+.badgeEstado.SIN_EXISTENCIA{ background:var(--color-danger-bg); color:var(--color-danger); }
+
+.badgeEstado.PENDIENTE,
+.badgeEstado.BAJO_MINIMO,
+.badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
 
 .tablaImportar{
 width:100%;
@@ -837,19 +901,22 @@ max-width:none;
 /* BOTONES */
 
 .boton{
-background:var(--terracota);
+background:var(--color-primary);
 color:white;
 margin:14px 0;
 padding:16px;
-border-radius:16px;
+border:none;
+border-radius:var(--radius-lg);
 font-size:16px;
+font-family:inherit;
 font-weight:600;
 display:flex;
 align-items:center;
 justify-content:center;
+gap:8px;
 box-shadow:0 6px 15px rgba(196,82,42,.25);
 cursor:pointer;
-transition:.2s;
+transition:background .2s ease, transform .1s ease, box-shadow .2s ease, opacity .2s ease;
 max-width:640px;
 }
 
@@ -858,7 +925,73 @@ transform:scale(.97);
 }
 
 .boton:hover{
-background:#a8431f;
+background:var(--color-primary-hover);
+}
+
+.boton:disabled,
+.boton[disabled]{
+opacity:.55;
+cursor:not-allowed;
+box-shadow:none;
+transform:none;
+}
+
+.boton:disabled:hover,
+.boton[disabled]:hover{
+background:var(--color-primary);
+}
+
+/* Variantes semánticas del botón — se agregan como clase adicional, ej: class="boton secundario" */
+.boton.secundario{
+background:var(--bg-panel);
+color:var(--text);
+border:1px solid var(--border);
+box-shadow:none;
+}
+
+.boton.secundario:hover{ background:var(--bg); }
+
+.boton.success{
+background:var(--color-success);
+box-shadow:0 6px 15px rgba(92,107,42,.25);
+}
+
+.boton.success:hover{ background:#4a5622; }
+
+.boton.warning{
+background:var(--color-warning);
+box-shadow:0 6px 15px rgba(168,122,31,.25);
+}
+
+.boton.warning:hover{ background:#8a651a; }
+
+.boton.danger{
+background:var(--color-danger);
+box-shadow:0 6px 15px rgba(107,39,55,.25);
+}
+
+.boton.danger:hover{ background:var(--guinda-dark); }
+
+/* Estado de carga — se agrega/quita por JS junto con disabled, ej: btn.classList.add('cargando') */
+.boton.cargando{
+color:transparent;
+pointer-events:none;
+position:relative;
+}
+
+.boton.cargando::after{
+content:"";
+position:absolute;
+width:18px;
+height:18px;
+border-radius:50%;
+border:2.5px solid rgba(255,255,255,.4);
+border-top-color:#fff;
+animation:girar .7s linear infinite;
+}
+
+@keyframes girar{
+to{ transform:rotate(360deg); }
 }
 
 .filaConEscaner{
@@ -922,9 +1055,10 @@ opacity:.9;
 background:var(--bg-panel);
 padding:18px;
 margin:15px 0;
-border-radius:16px;
+border-radius:var(--radius-lg);
 border:1px solid var(--border);
-box-shadow:0 2px 10px var(--sombra);
+box-shadow:var(--shadow-sm);
+transition:box-shadow .2s ease;
 }
 
 .panelesInicio .cardProducto,
@@ -937,9 +1071,15 @@ margin:0;
 .kpiCardNueva{
 background:var(--bg-panel);
 border:1px solid var(--border);
-border-radius:16px;
+border-radius:var(--radius-lg);
 padding:16px;
-box-shadow:0 2px 10px var(--sombra);
+box-shadow:var(--shadow-sm);
+transition:box-shadow .2s ease, transform .2s ease;
+}
+
+.kpiCardNueva:hover{
+box-shadow:var(--shadow-md);
+transform:translateY(-1px);
 }
 
 .kpiIconoBadge{
@@ -1016,18 +1156,30 @@ color:var(--guinda-dark);
 input,select{
 width:100%;
 padding:14px;
-border-radius:14px;
+border-radius:var(--radius-md);
 border:1px solid var(--border);
 font-size:15px;
 margin-top:8px;
 background:var(--bg-panel);
 color:var(--text);
 max-width:640px;
+transition:border-color .15s ease, box-shadow .15s ease;
 }
 
 input:focus,select:focus{
 outline:none;
-border-color:var(--terracota);
+border-color:var(--color-primary);
+box-shadow:0 0 0 3px rgba(196,82,42,.15);
+}
+
+input:disabled,select:disabled{
+opacity:.6;
+cursor:not-allowed;
+}
+
+input::placeholder{
+color:var(--text-muted);
+opacity:.8;
 }
 
 label{
@@ -1067,12 +1219,75 @@ font-size:22px;
 margin-top:0;
 }
 
+h3,h4{
+color:var(--guinda);
+font-weight:700;
+margin-top:0;
+}
+
 button{
 border:none;
 font-family:inherit;
 }
 
+/* ===================== */
+/* TIPOGRAFÍA — Fase 2 (escala de referencia para próximas fases) */
+/* ===================== */
+
+:root{
+  --font-xs:11px;
+  --font-sm:13px;
+  --font-md:15px;
+  --font-lg:18px;
+  --font-xl:22px;
+  --font-2xl:28px;
+  --font-numero:26px;
+}
+
+/* Énfasis para cifras clave de inventario (existencias, totales, KPIs) */
+.tgNumero{
+font-size:var(--font-numero);
+font-weight:800;
+color:var(--text);
+font-variant-numeric:tabular-nums;
+}
+
+.tgNumeroSm{
+font-size:18px;
+font-weight:800;
+color:var(--text);
+font-variant-numeric:tabular-nums;
+}
+
+.tgTextoSecundario{
+font-size:var(--font-sm);
+color:var(--text-muted);
+}
+
+/* ===================== */
+/* TABLAS — Fase 2 (base compartida, no altera clases con estilos propios) */
+/* ===================== */
+
+table{
+font-variant-numeric:tabular-nums;
+}
+
+table td.num,
+table th.num{
+text-align:right;
+}
+
 /* ESCANER */
+
+@keyframes modalFadeIn{
+from{ opacity:0; }
+to{ opacity:1; }
+}
+
+@keyframes modalScaleIn{
+from{ opacity:0; transform:scale(.96) translateY(6px); }
+to{ opacity:1; transform:scale(1) translateY(0); }
+}
 
 .modalEscaner{
 display:none;
@@ -1082,6 +1297,7 @@ background:rgba(0,0,0,.65);
 z-index:300;
 align-items:center;
 justify-content:center;
+animation:modalFadeIn .15s ease;
 }
 
 .modalEscaner.mostrar{
@@ -1091,9 +1307,11 @@ display:flex;
 .modalEscanerCaja{
 background:var(--bg-panel);
 padding:20px;
-border-radius:18px;
+border-radius:var(--radius-lg);
 text-align:center;
 max-width:90vw;
+box-shadow:var(--shadow-lg);
+animation:modalScaleIn .18s ease;
 }
 
 .modalEscanerCaja h3{
@@ -1112,6 +1330,7 @@ z-index:300;
 align-items:center;
 justify-content:center;
 padding:20px;
+animation:modalFadeIn .15s ease;
 }
 
 .modalLista.mostrar{
@@ -1120,13 +1339,14 @@ display:flex;
 
 .modalListaCaja{
 background:var(--bg-panel);
-border-radius:18px;
+border-radius:var(--radius-lg);
 width:100%;
 max-width:760px;
 max-height:85vh;
 display:flex;
 flex-direction:column;
-box-shadow:0 25px 60px rgba(0,0,0,.4);
+box-shadow:var(--shadow-lg);
+animation:modalScaleIn .18s ease;
 }
 
 .modalListaHead{
@@ -1161,6 +1381,13 @@ border-radius:50%;
 cursor:pointer;
 font-size:16px;
 flex-shrink:0;
+transition:background .15s ease, transform .15s ease;
+}
+
+.cerrarModalLista:hover{
+background:var(--color-danger-bg);
+color:var(--color-danger);
+transform:rotate(90deg);
 }
 
 .modalListaBuscar{
@@ -1230,15 +1457,20 @@ padding:20px;
 display:flex;
 }
 
+.modalDetalle{
+animation:modalFadeIn .15s ease;
+}
+
 .modalDetalleCaja{
 background:var(--bg-panel);
-border-radius:18px;
+border-radius:var(--radius-lg);
 width:100%;
 max-width:420px;
 max-height:85vh;
 overflow-y:auto;
-box-shadow:0 25px 60px rgba(0,0,0,.4);
+box-shadow:var(--shadow-lg);
 padding:24px;
+animation:modalScaleIn .18s ease;
 }
 
 .modalDetalleHead{
@@ -1410,12 +1642,143 @@ flex-direction:row;
 
 }
 
+/* ===================== */
+/* LOADING / SKELETON — Fase 2 */
+/* ===================== */
+
+@keyframes skeletonPulso{
+0%,100%{ opacity:1; }
+50%{ opacity:.55; }
+}
+
+.skeleton{
+background:var(--border);
+border-radius:var(--radius-sm);
+animation:skeletonPulso 1.3s ease-in-out infinite;
+}
+
+.skeletonLinea{
+height:14px;
+margin:6px 0;
+border-radius:var(--radius-sm);
+}
+
+.skeletonTitulo{
+height:20px;
+width:40%;
+margin-bottom:10px;
+}
+
+.skeletonCard{
+background:var(--bg-panel);
+border:1px solid var(--border);
+border-radius:var(--radius-lg);
+padding:16px;
+box-shadow:var(--shadow-sm);
+}
+
+.spinner{
+width:22px;
+height:22px;
+border-radius:50%;
+border:3px solid var(--border);
+border-top-color:var(--color-primary);
+animation:girar .7s linear infinite;
+display:inline-block;
+}
+
+.spinnerCentro{
+display:flex;
+align-items:center;
+justify-content:center;
+padding:40px 0;
+}
+
+/* ===================== */
+/* TOAST / MENSAJE TEMPORAL — Fase 2 */
+/* Estiliza el contenedor que ya usa mostrarMensajeTemporal(idElemento, texto, tipo) */
+/* ===================== */
+
+.tgMensaje{
+display:flex;
+align-items:center;
+gap:8px;
+padding:10px 14px;
+border-radius:var(--radius-md);
+font-size:13.5px;
+font-weight:600;
+animation:fadeInUp .2s ease;
+}
+
+.tgMensaje.ok{ background:var(--color-success-bg); color:var(--color-success); }
+.tgMensaje.error{ background:var(--color-danger-bg); color:var(--color-danger); }
+.tgMensaje.warning{ background:var(--color-warning-bg); color:var(--color-warning); }
+.tgMensaje.info{ background:var(--color-info-bg); color:var(--color-info); }
+
 </style>
 
 </head>
 <script>
 
 const URL_APP = "<?= urlApp ?>";
+
+// ===============================
+// ICONOGRAFÍA — Fase 2 (Design System)
+// Set de iconos SVG inline, estilo Lucide, sin depender de CDN externo.
+// Uso: tgIcon("nombre") devuelve el string SVG listo para insertar en innerHTML.
+// Este módulo es solo infraestructura: el reemplazo de emojis por estos iconos
+// en cada vista se hace de forma incremental en las siguientes fases.
+// ===============================
+
+const TG_ICONOS = {
+  paquete: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  entrada: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  salida: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+  kardex: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+  ubicacion: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  campana: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  usuario: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  configuracion: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  luna: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  checkCirculo: '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  xCirculo: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+  alertaTriangulo: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  alertaCirculo: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  tendenciaSube: '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  tendenciaBaja: '<polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/>',
+  dinero: '<line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  camion: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 8.38a1 1 0 0 0-.78-.38H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  fabrica: '<path d="M17 18h1a2 2 0 0 0 2-2v-5.16a1 1 0 0 0-.29-.71l-4-3.99A1 1 0 0 0 15 6h-1v12h1"/><path d="M2 12h5"/><path d="M2 18h1a2 2 0 0 0 2-2v-4"/><path d="M4 18v-4h5v4"/><path d="M9 22V12"/><path d="M15 22v-4"/><rect x="2" y="4" width="9" height="8" rx="1"/>',
+  recibo: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/>',
+  documento: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  chevronAbajo: '<path d="m6 9 6 6 6-6"/>',
+  chevronDerecha: '<path d="m9 18 6-6-6-6"/>',
+  menu: '<line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/>',
+  mas: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  editar: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+  basura: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  descargar: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  refrescar: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  filtro: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  reloj: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  usuarios: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  carrito: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+  receta: '<path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 2 20 20"/><path d="M8.35 2.69A10 10 0 0 1 21.3 15.65"/><path d="M19.08 19.08A10 10 0 1 1 4.92 4.92"/>'
+};
+
+function tgIcon(nombre, tamano){
+  const path = TG_ICONOS[nombre];
+  if(!path) return "";
+  const s = tamano || 18;
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s +
+    '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0">' + path + '</svg>';
+}
 
 // ===============================
 // SESIÓN / USUARIO AUTENTICADO
@@ -6332,9 +6695,16 @@ function mostrarMensajeTemporal(idElemento, texto, tipo){
   const el = document.getElementById(idElemento);
   if(!el) return;
 
-  el.innerText = texto;
-  el.style.color = tipo === "error" ? "var(--terracota)" : "var(--oliva)";
-  el.style.display = "block";
+  const tipoValido = ["ok","error","warning","info"].includes(tipo) ? tipo : "ok";
+  const iconoPorTipo = { ok:"checkCirculo", error:"xCirculo", warning:"alertaTriangulo", info:"info" };
+
+  el.className = "tgMensaje " + tipoValido;
+  el.innerHTML = tgIcon(iconoPorTipo[tipoValido], 16);
+  const spanTexto = document.createElement("span");
+  spanTexto.textContent = texto;
+  el.appendChild(spanTexto);
+  el.style.color = "";
+  el.style.display = "flex";
 
   clearTimeout(el._timeoutId);
   el._timeoutId = setTimeout(()=>{ el.style.display = "none"; }, 3500);
