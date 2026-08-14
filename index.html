@@ -904,7 +904,9 @@ display:inline-block;
 .badgeEstado.COMPLETADO,
 .badgeEstado.COMPLETADA,
 .badgeEstado.ENTREGADO,
-.badgeEstado.ENTREGADA{ background:var(--color-success-bg); color:var(--color-success); }
+.badgeEstado.ENTREGADA,
+.badgeEstado.RECIBIDO,
+.badgeEstado.RECIBIDA{ background:var(--color-success-bg); color:var(--color-success); }
 
 .badgeEstado.INACTIVO,
 .badgeEstado.INACTIVA,
@@ -918,6 +920,7 @@ display:inline-block;
 
 .badgeEstado.PENDIENTE,
 .badgeEstado.BAJO_MINIMO,
+.badgeEstado.PARCIAL,
 .badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
 
 .tablaImportar{
@@ -1933,7 +1936,9 @@ const TG_ICONOS = {
   guardar: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
   candado: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   cajas: '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 8 10 5 10-5"/><path d="M12 13v8"/><path d="m22 8v8l-10 5-10-5V8"/>',
-  enviar: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>'
+  enviar: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+  chevronIzquierda: '<path d="m15 18-6-6 6-6"/>',
+  imprimir: '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>'
 };
 
 function tgIcon(nombre, tamano){
@@ -3483,8 +3488,8 @@ function abrirFormularioReceta(nombreExistente){
     <div class="vista-animada">
 
     <div style="display:flex;align-items:center;gap:10px">
-      <button class="boton" style="width:auto;padding:8px 14px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirRecetas()">← Recetas</button>
-      <h2 style="margin:0">${nombreExistente ? "✏️ Editar Receta" : "➕ Nueva Receta"}</h2>
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirRecetas()">${tgIcon("chevronIzquierda",15)} Recetas</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${nombreExistente ? tgIcon("editar",18) + " Editar Receta" : tgIcon("mas",18) + " Nueva Receta"}</h2>
     </div>
 
     <div class="cardProducto">
@@ -4116,11 +4121,11 @@ function abrirVistaProximamente(idBoton, titulo, icono, descripcion){
 
   <div class="vista-animada">
 
-  <h2>${icono} ${titulo}</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${icono} ${titulo}</h2>
 
   <div class="cardProducto" style="text-align:center;padding:50px 24px">
-    <div style="font-size:40px">🚧</div>
-    <h3 style="color:var(--guinda);margin:14px 0 6px">Próximamente</h3>
+    <div style="opacity:.5">${tgIcon("configuracion",40)}</div>
+    <h3 style="margin:14px 0 6px">Próximamente</h3>
     <p style="color:var(--text-soft);font-size:13.5px;max-width:480px;margin:0 auto">${descripcion}</p>
   </div>
 
@@ -4142,13 +4147,17 @@ function abrirCentroReabastecimiento(){
 
   <div class="vista-animada">
 
-  <h2>🧭 Centro de Reabastecimiento</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("refrescar",20)} Centro de Reabastecimiento</h2>
   <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">
     Elige un proveedor para armar su orden de compra.
   </p>
 
   <div class="cardProducto">
-    <div id="listaProveedoresReabasto">Cargando proveedores...</div>
+    <div id="listaProveedoresReabasto">
+      <div class="skeleton skeletonLinea" style="width:70%"></div>
+      <div class="skeleton skeletonLinea" style="width:55%"></div>
+      <div class="skeleton skeletonLinea" style="width:65%"></div>
+    </div>
   </div>
 
   </div>
@@ -4158,7 +4167,7 @@ function abrirCentroReabastecimiento(){
   google.script.run
     .withSuccessHandler(dibujarListaProveedoresReabasto)
     .withFailureHandler(function(e){
-      document.getElementById("listaProveedoresReabasto").innerHTML = "⚠️ " + e.message;
+      document.getElementById("listaProveedoresReabasto").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
     .obtenerProveedoresReabastecimientoApp();
 
@@ -4170,7 +4179,7 @@ function dibujarListaProveedoresReabasto(lista){
   if(!cont) return;
 
   if(!lista || !lista.length){
-    cont.innerHTML = "<p style='text-align:center;color:var(--text-muted)'>No hay productos con ubicación asignada todavía.</p>";
+    cont.innerHTML = tgEmptyState("fabrica", "No hay productos con ubicación asignada todavía");
     return;
   }
 
@@ -4183,7 +4192,7 @@ function dibujarListaProveedoresReabasto(lista){
             <td>${p.proveedor}</td>
             <td style="text-align:right">${p.totalProductos}</td>
             <td style="text-align:right;${p.bajoMinimo>0?'color:var(--terracota);font-weight:700':''}">${p.bajoMinimo}</td>
-            <td style="text-align:right;color:var(--guinda)">Ver →</td>
+            <td style="text-align:right;color:var(--guinda);display:flex;align-items:center;justify-content:flex-end;gap:4px">Ver ${tgIcon("chevronDerecha",13)}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -4213,8 +4222,8 @@ function abrirReabastoProveedor(proveedor){
   <div class="vista-animada">
 
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <button class="boton" style="width:auto;padding:8px 14px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirCentroReabastecimiento()">← Proveedores</button>
-    <h2 style="margin:0">🧭 ${proveedor}</h2>
+    <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirCentroReabastecimiento()">${tgIcon("chevronIzquierda",15)} Proveedores</button>
+    <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("fabrica",19)} ${proveedor}</h2>
   </div>
 
   <p style="color:var(--text-soft);font-size:13px">
@@ -4250,7 +4259,7 @@ function abrirReabastoProveedor(proveedor){
     <div id="mensajeOC" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
     <div class="boton" id="btnGenerarOrden" style="margin-top:16px;max-width:900px;display:none" onclick="generarOrdenDesdeReabasto()">
-      🧾 Generar Orden de Compra
+      ${tgIcon("recibo",17)} Generar Orden de Compra
     </div>
 
   </div>
@@ -4334,7 +4343,7 @@ function dibujarTablaReabasto(){
               <div style="font-size:10px;color:var(--text-muted)">${p.convertir ? "por presentación" : "por " + (p.udm||"unidad")}</div>
               ${p.convertir ? `<div id="previewPrecioReabasto${i}" style="font-size:10.5px;color:var(--guinda);font-weight:600"></div>` : ""}
             </td>
-            <td><span style="cursor:pointer;color:var(--terracota)" title="Quitar de la orden" onclick="quitarProductoReabasto(${i})">✕</span></td>
+            <td><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la orden" onclick="quitarProductoReabasto(${i})">${tgIcon("x",15)}</span></td>
           </tr>
         `;
         }).join("")}
@@ -4505,8 +4514,7 @@ function generarOrdenDesdeReabasto(){
     return;
   }
 
-  const btn = document.getElementById("btnGenerarOrden");
-  if(btn){ btn.disabled = true; btn.innerText = "Generando..."; }
+  activarCargaBoton("btnGenerarOrden", true);
 
   google.script.run
 
@@ -4517,7 +4525,7 @@ function generarOrdenDesdeReabasto(){
 
   .withFailureHandler(function(e){
     mostrarMensajeTemporal("mensajeOC", "⚠️ " + e.message, "error");
-    if(btn){ btn.disabled = false; btn.innerText = "🧾 Generar Orden de Compra"; }
+    activarCargaBoton("btnGenerarOrden", false);
   })
 
   .generarOrdenCompraApp(proveedor, observaciones, items, obtenerTokenSesion());
@@ -4542,7 +4550,7 @@ function abrirAnalisisCompras(){
 
   <div class="vista-animada">
 
-  <h2>🔎 Análisis de Compras</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("buscar",20)} Análisis de Compras</h2>
   <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Consulta rápida por producto: cuánto se ha comprado, y proyecta cuánto se necesitará.</p>
 
   <div class="cardProducto">
@@ -4551,7 +4559,7 @@ function abrirAnalisisCompras(){
       <input id="buscarAnalisisComprasInput" placeholder="Ej. Almeja 7x7..." oninput="buscarSugerenciasAnalisisCompras()" onkeydown="if(event.key==='Enter') consultarAnalisisCompras()">
       <div id="resultadosAnalisisComprasSugerencias" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
     </div>
-    <div class="boton" style="max-width:200px;margin-top:10px" onclick="consultarAnalisisCompras()">🔎 Consultar</div>
+    <div class="boton" style="max-width:200px;margin-top:10px" onclick="consultarAnalisisCompras()">${tgIcon("buscar",16)} Consultar</div>
   </div>
 
   <div id="resultadoAnalisisCompras"></div>
@@ -4799,7 +4807,7 @@ function abrirAnalisisCostos(){
   <div class="vista-animada">
 
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <h2>📊 Análisis de Costos</h2>
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("dinero",20)} Análisis de Costos</h2>
     <select id="selectPeriodoCostos" onchange="cargarAnalisisCostos()" style="width:auto;max-width:220px;margin:0;padding:8px 12px">
       <option value="30">Últimos 30 días</option>
       <option value="90">Últimos 90 días</option>
@@ -4807,11 +4815,16 @@ function abrirAnalisisCostos(){
     </select>
   </div>
 
-  <div id="kpisAnalisisCostos" class="cardProducto" style="text-align:center;padding:40px">Cargando...</div>
+  <div id="kpisAnalisisCostos" class="cardProducto" style="text-align:center;padding:40px">
+    <div class="spinnerCentro"><div class="spinner"></div></div>
+  </div>
 
   <div class="cardProducto">
     <h3>Movimientos de precio recientes</h3>
-    <div id="tablaAnalisisCostos" style="overflow:auto;max-height:55vh;margin-top:10px">Cargando...</div>
+    <div id="tablaAnalisisCostos" style="overflow:auto;max-height:55vh;margin-top:10px">
+      <div class="skeleton skeletonLinea" style="width:80%"></div>
+      <div class="skeleton skeletonLinea" style="width:65%"></div>
+    </div>
   </div>
 
   </div>
@@ -4909,10 +4922,14 @@ function abrirListaOrdenesCompra(idBoton, titulo, conAcciones){
 
   <div class="vista-animada">
 
-  <h2>🧾 ${titulo}</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("recibo",20)} ${titulo}</h2>
 
   <div class="cardProducto">
-    <div id="listaOrdenesCompra">Cargando...</div>
+    <div id="listaOrdenesCompra">
+      <div class="skeleton skeletonLinea" style="width:75%"></div>
+      <div class="skeleton skeletonLinea" style="width:60%"></div>
+      <div class="skeleton skeletonLinea" style="width:68%"></div>
+    </div>
   </div>
 
   </div>
@@ -4926,7 +4943,7 @@ function abrirListaOrdenesCompra(idBoton, titulo, conAcciones){
   })
 
   .withFailureHandler(function(e){
-    document.getElementById("listaOrdenesCompra").innerHTML = "⚠️ " + e.message;
+    document.getElementById("listaOrdenesCompra").innerHTML = tgEmptyState("alertaTriangulo", e.message);
   })
 
   .obtenerOrdenesCompraApp();
@@ -4939,16 +4956,9 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
   if(!cont) return;
 
   if(!lista || !lista.length){
-    cont.innerHTML = "<p style='text-align:center;color:var(--text-muted)'>Todavía no hay órdenes de compra.</p>";
+    cont.innerHTML = tgEmptyState("recibo", "Todavía no hay órdenes de compra");
     return;
   }
-
-  const colorEstado = (estado)=>{
-    if(estado==="RECIBIDA") return "var(--oliva)";
-    if(estado==="PARCIAL") return "#a87a1f";
-    if(estado==="CANCELADA") return "var(--text-muted)";
-    return "var(--terracota)"; // PENDIENTE
-  };
 
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
@@ -4961,14 +4971,14 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
             <td style="cursor:pointer" onclick="verDetalleOC('${o.oc}')"><b>${o.oc}</b></td>
             <td>${o.proveedor}</td>
             <td>${o.fecha}</td>
-            <td><span class="badgeEstado" style="background:${colorEstado(o.estado)}22;color:${colorEstado(o.estado)}">${o.estado}</span></td>
+            <td><span class="badgeEstado ${o.estado}">${o.estado}</span></td>
             <td style="text-align:right">$${Number(o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
-            <td style="white-space:nowrap">
-              <span style="cursor:pointer" title="Ver PDF" onclick="verPDFOrdenCompra('${o.oc}')">👁️</span>
-              <span style="cursor:pointer" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">⬇️</span>
-              <span style="cursor:pointer" title="Imprimir" onclick="imprimirOC('${o.oc}')">🖨️</span>
+            <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
+              <span style="cursor:pointer;color:var(--text-muted)" title="Ver PDF" onclick="verPDFOrdenCompra('${o.oc}')">${tgIcon("documento",15)}</span>
+              <span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
+              <span style="cursor:pointer;color:var(--text-muted)" title="Imprimir" onclick="imprimirOC('${o.oc}')">${tgIcon("imprimir",15)}</span>
             </td>
-            ${conAcciones ? `<td>${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton" style="width:auto;padding:6px 12px;font-size:12px;margin:0;background:var(--guinda)" onclick="cancelarOC('${o.oc}')">Cancelar</button>` : ""}</td>` : ""}
+            ${conAcciones ? `<td>${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}</td>` : ""}
           </tr>
         `).join("")}
       </tbody>
@@ -5134,7 +5144,7 @@ function abrirRecepcionMercancia(){
 
   <div class="vista-animada">
 
-  <h2>📦 Recepción de Mercancía</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("camion",20)} Recepción de Mercancía</h2>
 
   <div class="cardProducto">
 
@@ -5143,7 +5153,7 @@ function abrirRecepcionMercancia(){
         <label>Folio de la orden</label>
         <input id="folioBuscarOC" placeholder="OC-20260724-001" onchange="buscarOCParaRecepcion()">
       </div>
-      <button type="button" class="boton" style="width:auto;padding:14px 18px;margin:8px 0 0" onclick="buscarOCParaRecepcion()">🔍 Buscar</button>
+      <button type="button" class="boton" style="width:auto;padding:14px 18px;margin:8px 0 0" onclick="buscarOCParaRecepcion()">${tgIcon("buscar",16)} Buscar</button>
     </div>
 
     <label style="margin-top:16px">O elige una orden pendiente</label>
@@ -5292,7 +5302,7 @@ function buscarOCParaRecepcion(){
           }).join("")}
         </tbody>
       </table>
-      <div class="boton" style="margin-top:16px;max-width:900px" onclick="confirmarRecepcion()">✅ Registrar Recepción</div>
+      <div class="boton success" id="btnConfirmarRecepcion" style="margin-top:16px;max-width:900px" onclick="confirmarRecepcion()">${tgIcon("checkCirculo",17)} Registrar Recepción</div>
     `;
 
     datos.items.forEach((it,i) => { if(it.presentacion > 0) actualizarPreviewPrecioFactura(i); });
@@ -5378,6 +5388,8 @@ function confirmarRecepcion(){
     return;
   }
 
+  activarCargaBoton("btnConfirmarRecepcion", true);
+
   google.script.run
 
   .withSuccessHandler(function(resultado){
@@ -5389,6 +5401,7 @@ function confirmarRecepcion(){
   })
 
   .withFailureHandler(function(e){
+    activarCargaBoton("btnConfirmarRecepcion", false);
     mostrarMensajeTemporal("mensajeRecepcion", "⚠️ " + e.message, "error");
   })
 
@@ -5397,7 +5410,7 @@ function confirmarRecepcion(){
 }
 
 function abrirProveedores(){
-  abrirVistaProximamente("btnProveedores", "Proveedores", "🏭",
+  abrirVistaProximamente("btnProveedores", "Proveedores", tgIcon("fabrica",22),
     "Aquí vas a administrar tu catálogo de proveedores.");
 }
 
