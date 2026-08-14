@@ -6,7 +6,8 @@
 <meta charset="UTF-8">
 <base target="_top">
 
-<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#6B2737">
 <script>
 (function(){
   function ajustarViewport(){
@@ -20,7 +21,10 @@
     // aplicado, así que rompe ese círculo.
     var anchoPantalla = (window.screen && window.screen.width) || 0;
     var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
-    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no');
+    // viewport-fit=cover: permite que el contenido use el área completa en
+    // dispositivos con notch/Dynamic Island/barra de gestos; env(safe-area-inset-*)
+    // en el CSS se encarga de dejar espacio para no quedar debajo de esos elementos.
+    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
   }
   // Cuando la app corre dentro del iframe que arma script.google.com (el que
   // muestra el aviso "Un usuario de Google Apps Script creó esta
@@ -1744,6 +1748,8 @@ border-top:1px solid var(--border);
 box-shadow:0 -2px 10px rgba(0,0,0,.08);
 z-index:95;
 padding-bottom:env(safe-area-inset-bottom);
+padding-left:env(safe-area-inset-left);
+padding-right:env(safe-area-inset-right);
 }
 
 .navInferiorBtn{
@@ -1872,6 +1878,8 @@ top:0;
 height:100%;
 width:min(250px,80vw);
 box-shadow:var(--shadow-lg);
+padding-left:calc(14px + env(safe-area-inset-left));
+padding-top:calc(20px + env(safe-area-inset-top));
 }
 
 #sidebar.abierto{

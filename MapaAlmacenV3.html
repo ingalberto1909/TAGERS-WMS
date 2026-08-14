@@ -5,7 +5,8 @@
 
 <meta charset="UTF-8">
 
-<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#6B2737">
 <script>
 (function(){
   function ajustarViewport(){
@@ -13,7 +14,7 @@
     if(!vp) return;
     var anchoPantalla = (window.screen && window.screen.width) || 0;
     var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
-    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no');
+    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
   }
   // Cuando la app corre dentro del iframe que arma script.google.com, el
   // <meta viewport> de ESTA página no tiene ningún efecto sobre los
