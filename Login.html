@@ -8,14 +8,17 @@
 (function(){
   function ajustarViewport(){
     var vp = document.getElementById('viewportMeta');
-    if(vp){
-      vp.setAttribute('content','width=' + window.innerWidth + ', initial-scale=1, maximum-scale=1, user-scalable=no');
-    }
+    if(!vp) return;
+    var ancho = document.documentElement.clientWidth || window.innerWidth;
+    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no');
   }
   ajustarViewport();
   window.addEventListener('load', ajustarViewport);
   window.addEventListener('resize', ajustarViewport);
   window.addEventListener('orientationchange', ajustarViewport);
+  setTimeout(ajustarViewport, 150);
+  setTimeout(ajustarViewport, 600);
+  setTimeout(ajustarViewport, 1500);
 })();
 </script>
 

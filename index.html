@@ -6,19 +6,25 @@
 <meta charset="UTF-8">
 <base target="_top">
 
-<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1">
+<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <script>
 (function(){
   function ajustarViewport(){
     var vp = document.getElementById('viewportMeta');
-    if(vp){
-      vp.setAttribute('content','width=' + window.innerWidth + ', initial-scale=1');
-    }
+    if(!vp) return;
+    var ancho = document.documentElement.clientWidth || window.innerWidth;
+    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no');
   }
   ajustarViewport();
   window.addEventListener('load', ajustarViewport);
   window.addEventListener('resize', ajustarViewport);
   window.addEventListener('orientationchange', ajustarViewport);
+  // El wrapper de Google (script.google.com) a veces monta el iframe con un
+  // ancho de layout equivocado (~980px) antes de asentarse — se reintenta
+  // unas veces más después de cargar, por si el primer cálculo fue el malo.
+  setTimeout(ajustarViewport, 150);
+  setTimeout(ajustarViewport, 600);
+  setTimeout(ajustarViewport, 1500);
 })();
 </script>
 
