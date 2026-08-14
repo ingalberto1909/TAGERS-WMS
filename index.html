@@ -723,11 +723,7 @@ margin-top:16px;
 }
 
 .tablaTop{
-display:block;
 width:100%;
-max-width:100%;
-overflow-x:auto;
--webkit-overflow-scrolling:touch;
 border-collapse:collapse;
 font-size:12.5px;
 }
@@ -838,11 +834,7 @@ background:linear-gradient(to right, var(--bg), var(--terracota), var(--guinda-d
 }
 
 .tablaActividad{
-display:block;
 width:100%;
-max-width:100%;
-overflow-x:auto;
--webkit-overflow-scrolling:touch;
 border-collapse:collapse;
 font-size:13px;
 }
@@ -936,11 +928,7 @@ display:inline-block;
 .badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
 
 .tablaImportar{
-display:block;
 width:100%;
-max-width:100%;
-overflow-x:auto;
--webkit-overflow-scrolling:touch;
 border-collapse:collapse;
 font-size:12.5px;
 }
@@ -1890,24 +1878,7 @@ animation:fadeInUp .2s ease;
 
 /* ===================== */
 /* RESPONSIVE — Fase 8 */
-/* Las tablas (.tablaTop/.tablaActividad/.tablaImportar) ya son scrollables
-   horizontalmente (ver sus reglas base) para que ninguna acción quede
-   inaccesible en pantallas angostas — aquí solo se afina el indicador visual
-   y el resto de breakpoints. */
 /* ===================== */
-
-.tablaTop::-webkit-scrollbar,
-.tablaActividad::-webkit-scrollbar,
-.tablaImportar::-webkit-scrollbar{
-height:6px;
-}
-
-.tablaTop::-webkit-scrollbar-thumb,
-.tablaActividad::-webkit-scrollbar-thumb,
-.tablaImportar::-webkit-scrollbar-thumb{
-background:var(--border);
-border-radius:var(--radius-pill);
-}
 
 /* TABLET (769px–1024px): el sidebar sigue en modo mini-colapsado (ver el
    media query de min-width:769px), aquí solo se ajusta la densidad de
