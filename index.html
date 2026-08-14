@@ -1148,14 +1148,20 @@ grid-column:1 / -1;
 background:var(--oliva);
 color:white;
 border:none;
-border-radius:14px;
+border-radius:var(--radius-md);
 padding:0 16px;
 height:48px;
 margin-top:8px;
 cursor:pointer;
 font-size:18px;
 flex-shrink:0;
+display:flex;
+align-items:center;
+justify-content:center;
+transition:background .15s ease;
 }
+
+.btnEscaner:hover{ background:#4a5622; }
 
 .btnEscaner:hover{
 opacity:.9;
@@ -1913,7 +1919,10 @@ const TG_ICONOS = {
   camara: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
   calendario: '<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/>',
   salirIcono: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
-  panelIzquierdo: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>'
+  panelIzquierdo: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>',
+  guardar: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+  candado: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  cajas: '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 8 10 5 10-5"/><path d="M12 13v8"/><path d="m22 8v8l-10 5-10-5V8"/>'
 };
 
 function tgIcon(nombre, tamano){
@@ -5101,7 +5110,7 @@ function abrirCapturarInventarioMensual(){
   <label>Código</label>
   <input id="codigoInventarioMensual" placeholder="Escanear o escribir código" onchange="buscarCodigoParaInventarioMensual()">
   </div>
-  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoInventarioMensual')" title="Escanear con cámara">📷</button>
+  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoInventarioMensual')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
 
   <label>O buscar por nombre</label>
@@ -6850,7 +6859,7 @@ function abrirEntradas(){
 
   <div class="vista-animada">
 
-  <h2>📥 Nueva Entrada</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("entrada",20)} Nueva Entrada</h2>
 
   <div class="cardProducto">
 
@@ -6859,7 +6868,7 @@ function abrirEntradas(){
   <label>Código</label>
   <input id="codigoEntrada" placeholder="Escanear o escribir código" onchange="buscarProductoEntrada()">
   </div>
-  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoEntrada')" title="Escanear con cámara">📷</button>
+  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoEntrada')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
 
   <label>Producto</label>
@@ -6894,7 +6903,7 @@ function abrirEntradas(){
 
   </div>
 
-  <div class="boton" onclick="guardarEntradaMovil()" style="margin-top:20px;max-width:900px">💾 Guardar Entrada</div>
+  <div class="boton" id="btnGuardarEntrada" onclick="guardarEntradaMovil()" style="margin-top:20px;max-width:900px">${tgIcon("guardar",17)} Guardar Entrada</div>
 
   <div id="mensajeEntrada" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -6926,15 +6935,19 @@ function guardarEntradaMovil(){
     return;
   }
 
+  activarCargaBoton("btnGuardarEntrada", true);
+
   google.script.run
 
   .withSuccessHandler(function(){
+    activarCargaBoton("btnGuardarEntrada", false);
     mostrarMensajeTemporal("mensajeEntrada", "✅ Entrada registrada — listo para escanear el siguiente", "ok");
     actualizarNotificaciones();
     limpiarFormularioEntrada();
   })
 
   .withFailureHandler(function(error){
+    activarCargaBoton("btnGuardarEntrada", false);
     mostrarMensajeTemporal("mensajeEntrada", "⚠️ " + error.message, "error");
   })
 
@@ -6952,6 +6965,13 @@ function limpiarFormularioEntrada(){
 
   document.getElementById("codigoEntrada").focus();
 
+}
+
+// Activa/desactiva el estado visual de carga (spinner + bloqueo de clics) de
+// un botón .boton por su id, sin afectar la lógica que dispara al hacer clic.
+function activarCargaBoton(id, cargando){
+  const btn = document.getElementById(id);
+  if(btn) btn.classList.toggle("cargando", cargando);
 }
 
 // Muestra un mensaje corto dentro del formulario (no bloquea como alert())
@@ -7017,7 +7037,7 @@ function abrirSalidas(){
 
   <div class="vista-animada">
 
-  <h2>📤 Nueva Salida</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("salida",20)} Nueva Salida</h2>
 
   <div class="cardProducto">
 
@@ -7026,7 +7046,7 @@ function abrirSalidas(){
   <label>Código</label>
   <input id="codigoSalida" placeholder="Escanear o escribir código" onchange="buscarProductoSalida()">
   </div>
-  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoSalida')" title="Escanear con cámara">📷</button>
+  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoSalida')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
 
   <label>Producto</label>
@@ -7071,7 +7091,7 @@ function abrirSalidas(){
 
   </div>
 
-  <div class="boton" onclick="guardarSalidaMovil()" style="margin-top:20px;max-width:900px">💾 Guardar Salida</div>
+  <div class="boton" id="btnGuardarSalida" onclick="guardarSalidaMovil()" style="margin-top:20px;max-width:900px">${tgIcon("guardar",17)} Guardar Salida</div>
 
   <div id="mensajeSalida" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -7134,15 +7154,19 @@ function guardarSalidaMovil(){
     return;
   }
 
+  activarCargaBoton("btnGuardarSalida", true);
+
   google.script.run
 
   .withSuccessHandler(function(resultado){
+    activarCargaBoton("btnGuardarSalida", false);
     mostrarMensajeTemporal("mensajeSalida", "✅ Salida registrada. Existencia restante: "+resultado.existenciaRestante, "ok");
     actualizarNotificaciones();
     limpiarFormularioSalida();
   })
 
   .withFailureHandler(function(error){
+    activarCargaBoton("btnGuardarSalida", false);
     mostrarMensajeTemporal("mensajeSalida", "⚠️ "+error.message, "error");
   })
 
@@ -7180,14 +7204,14 @@ function abrirImportarSalidas(){
 
   <div class="vista-animada">
 
-  <h2>📄 Importar Salidas (requerimiento en Excel)</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("documento",20)} Importar Salidas (requerimiento en Excel)</h2>
   <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">
     Sube el Excel del requerimiento, el sistema busca cada producto contra tu catálogo,
     revisa lo que encontró y registra las salidas — usando la misma función de siempre.
   </p>
 
   <div class="cardProducto" style="max-width:none">
-      <div>📥 Selecciona el archivo del requerimiento (Excel o PDF)</div>
+      <div style="display:flex;align-items:center;gap:7px">${tgIcon("entrada",16)} Selecciona el archivo del requerimiento (Excel o PDF)</div>
       <input type="file" id="archivoImportarSalidas" accept=".xlsx,.xls,.pdf" onchange="procesarArchivoImportacion()">
 
     <div id="resumenImportacion" style="margin-top:14px;font-size:13px;color:var(--text-soft)"></div>
@@ -7195,7 +7219,7 @@ function abrirImportarSalidas(){
     <div id="contenedorTablaImportar" style="margin-top:16px;max-height:50vh;overflow:auto"></div>
 
     <div id="accionesImportar" style="margin-top:16px;display:none">
-      <div class="boton" onclick="registrarImportacionSalidas()">✅ Registrar salidas seleccionadas</div>
+      <div class="boton" id="btnRegistrarImportacion" onclick="registrarImportacionSalidas()">${tgIcon("checkCirculo",17)} Registrar salidas seleccionadas</div>
     </div>
 
   </div>
@@ -7521,6 +7545,8 @@ function registrarImportacionSalidas(){
     return;
   }
 
+  activarCargaBoton("btnRegistrarImportacion", true);
+
   google.script.run
     .withSuccessHandler(function(resultado){
       alert(
@@ -7533,6 +7559,7 @@ function registrarImportacionSalidas(){
       abrirImportarSalidas();
     })
     .withFailureHandler(function(error){
+      activarCargaBoton("btnRegistrarImportacion", false);
       alert("⚠️ " + error.message);
     })
     .registrarSalidasImportadasApp(filas, obtenerTokenSesion(), importacionArchivoNombre);
@@ -7551,9 +7578,12 @@ function abrirAjustesInventario(){
 
   <div class="vista-animada">
 
-  <h2>⚖️ Ajustes de Inventario</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("balanza",20)} Ajustes de Inventario</h2>
 
-  <div id="listaAjustes">Cargando...</div>
+  <div id="listaAjustes">
+    <div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>
+    <div class="skeletonCard"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:60%"></div></div>
+  </div>
 
   </div>
 
@@ -7575,7 +7605,7 @@ function dibujarAjustesInventario(datos){
   if(!cont){ return; }
 
   if(!datos.length){
-    cont.innerHTML="<p style='text-align:center;color:var(--text-muted)'>Sin ajustes registrados</p>";
+    cont.innerHTML = tgEmptyState("balanza", "Sin ajustes registrados");
     return;
   }
 
@@ -7593,7 +7623,7 @@ function dibujarAjustesInventario(datos){
       <div class="stock" style="color:${color}">
       Ajuste: ${Number(a.diferencia)>0?"+":""}${a.diferencia} (de ${a.existenciaAnterior} a ${a.existenciaNueva})
       </div>
-      <div class="ubicacion">🕐 ${a.fecha} — ${a.usuario}<br>📝 ${a.motivo}</div>
+      <div class="ubicacion">${tgIcon("reloj",13)} ${a.fecha} — ${a.usuario}<br>${tgIcon("documento",13)} ${a.motivo}</div>
     </div>
 
     `;
@@ -7616,14 +7646,18 @@ function abrirGenerarConteo(){
 
   <div class="vista-animada">
 
-  <h2>📋 Generar Conteo Cíclico</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("documento",20)} Generar Conteo Cíclico</h2>
 
   <div class="cardProducto">
 
   <label>Selecciona los racks a contar</label>
-  <div id="listaRacksConteo">Cargando racks...</div>
+  <div id="listaRacksConteo">
+    <div class="skeleton skeletonLinea" style="width:40%"></div>
+    <div class="skeleton skeletonLinea" style="width:55%"></div>
+    <div class="skeleton skeletonLinea" style="width:35%"></div>
+  </div>
 
-  <div class="boton" onclick="generarConteoDesdeApp()">📋 Generar Conteo</div>
+  <div class="boton" id="btnGenerarConteoAccion" onclick="generarConteoDesdeApp()">${tgIcon("documento",17)} Generar Conteo</div>
 
   </div>
 
@@ -7647,7 +7681,7 @@ function dibujarRacksConteo(racks){
   if(!cont){ return; }
 
   if(!racks.length){
-    cont.innerHTML="<p style='color:var(--text-muted)'>No hay racks disponibles</p>";
+    cont.innerHTML = tgEmptyState("ubicacion", "No hay racks disponibles");
     return;
   }
 
@@ -7671,14 +7705,17 @@ function generarConteoDesdeApp(){
     return;
   }
 
+  activarCargaBoton("btnGenerarConteoAccion", true);
+
   google.script.run
 
   .withSuccessHandler(function(resultado){
+    activarCargaBoton("btnGenerarConteoAccion", false);
     alert("✅ Conteo generado: "+resultado.folio+"\nProductos: "+resultado.productos);
     abrirCapturarConteo();
   })
 
-  .withFailureHandler(function(e){ alert("ERROR: "+e.message); })
+  .withFailureHandler(function(e){ activarCargaBoton("btnGenerarConteoAccion", false); alert("ERROR: "+e.message); })
 
   .generarConteoRacksApp(marcados, obtenerTokenSesion());
 
@@ -7694,7 +7731,7 @@ function abrirCapturarConteo(){
 
   <div class="vista-animada">
 
-  <h2>📷 Capturar Conteo Cíclico</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("camara",20)} Capturar Conteo Cíclico</h2>
 
   <div class="cardProducto">
 
@@ -7708,10 +7745,10 @@ function abrirCapturarConteo(){
   <label>Código</label>
   <input id="codigoConteo" placeholder="Escanear o escribir código" onchange="buscarCodigoParaConteo()">
   </div>
-  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoConteo')" title="Escanear con cámara">📷</button>
+  <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoConteo')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
 
-  <div class="boton" onclick="cargarSiguientePendiente()" style="background:var(--oliva)">⏭️ Siguiente pendiente</div>
+  <div class="boton success" onclick="cargarSiguientePendiente()">${tgIcon("chevronDerecha",17)} Siguiente pendiente</div>
 
   <div id="mensajeConteo" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -7841,7 +7878,7 @@ function mostrarDetalleConteo(item){
   <label>Cantidad física contada</label>
   <input id="fisicoConteo" type="number">
 
-  <div class="boton" onclick="guardarFisicoConteo()">💾 Guardar Conteo</div>
+  <div class="boton" id="btnGuardarConteo" onclick="guardarFisicoConteo()">${tgIcon("guardar",17)} Guardar Conteo</div>
 
   `;
 
@@ -7858,6 +7895,8 @@ function guardarFisicoConteo(){
     return;
   }
 
+  activarCargaBoton("btnGuardarConteo", true);
+
   google.script.run
 
   .withSuccessHandler(function(){
@@ -7868,6 +7907,7 @@ function guardarFisicoConteo(){
   })
 
   .withFailureHandler(function(e){
+    activarCargaBoton("btnGuardarConteo", false);
     mostrarMensajeTemporal("mensajeConteo", "⚠️ " + e.message, "error");
   })
 
@@ -7885,11 +7925,11 @@ function abrirRevisarDiscrepancias(){
 
   <div class="vista-animada">
 
-  <h2>🔎 Revisar Discrepancias</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("buscar",20)} Revisar Discrepancias</h2>
 
   <div class="cardProducto">
   <p>Busca en el conteo cíclico los productos con diferencia y los agrega a la tabla de discrepancias.</p>
-  <div class="boton" onclick="ejecutarRevisionDiscrepancias()">🔎 Buscar Discrepancias</div>
+  <div class="boton" id="btnBuscarDiscrepancias" onclick="ejecutarRevisionDiscrepancias()">${tgIcon("buscar",17)} Buscar Discrepancias</div>
   </div>
 
   </div>
@@ -7900,9 +7940,12 @@ function abrirRevisarDiscrepancias(){
 
 function ejecutarRevisionDiscrepancias(){
 
+  activarCargaBoton("btnBuscarDiscrepancias", true);
+
   google.script.run
 
   .withSuccessHandler(function(resultado){
+    activarCargaBoton("btnBuscarDiscrepancias", false);
     if(resultado.encontradas > 0){
       alert("Discrepancias encontradas: "+resultado.encontradas);
     } else {
@@ -7910,7 +7953,7 @@ function ejecutarRevisionDiscrepancias(){
     }
   })
 
-  .withFailureHandler(function(e){ alert("ERROR: "+e.message); })
+  .withFailureHandler(function(e){ activarCargaBoton("btnBuscarDiscrepancias", false); alert("ERROR: "+e.message); })
 
   .revisarDiscrepanciasApp();
 
@@ -7927,9 +7970,9 @@ function abrirAprobarDiscrepancias(){
   <div class="vista-animada">
 
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-    <h2 style="margin:0">✅ Aprobar Discrepancias</h2>
-    <button class="boton" id="btnAprobarTodas" style="width:auto;padding:10px 18px;display:none" onclick="aprobarTodasLasDiscrepancias()">
-      ⚡ Aprobar todas las de este folio
+    <h2 style="margin:0;display:flex;align-items:center;gap:9px">${tgIcon("checkCirculo",20)} Aprobar Discrepancias</h2>
+    <button class="boton success" id="btnAprobarTodas" style="width:auto;padding:10px 18px;display:none" onclick="aprobarTodasLasDiscrepancias()">
+      ${tgIcon("refrescar",16)} Aprobar todas las de este folio
     </button>
   </div>
 
@@ -7939,7 +7982,10 @@ function abrirAprobarDiscrepancias(){
 
   <div id="mensajeAprobarLote" style="display:none;margin:10px 0;font-size:13.5px;font-weight:600"></div>
 
-  <div id="listaDiscrepancias">Cargando...</div>
+  <div id="listaDiscrepancias">
+    <div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>
+    <div class="skeletonCard"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:60%"></div></div>
+  </div>
 
   </div>
 
@@ -7964,7 +8010,7 @@ function dibujarDiscrepancias(lista){
   window.discrepanciasPendientes = lista || [];
 
   if(!lista.length){
-    cont.innerHTML="<p style='text-align:center;color:var(--text-muted)'>Sin discrepancias pendientes 🎉</p>";
+    cont.innerHTML = tgEmptyState("checkCirculo", "Sin discrepancias pendientes");
     if(btnTodas) btnTodas.style.display="none";
     return;
   }
@@ -7985,7 +8031,7 @@ function dibujarDiscrepancias(lista){
       <div class="stock" style="color:${color}">
         Sistema: ${d.sistema} — Físico: ${d.fisico} — Dif: ${Number(d.diferencia)>0?"+":""}${d.diferencia}
       </div>
-      <div class="ubicacion">📍 ${d.ubicacion} — Rack ${d.rack}</div>
+      <div class="ubicacion">${tgIcon("ubicacion",13)} ${d.ubicacion} — Rack ${d.rack}</div>
 
       <label>Motivo</label>
       <select id="motivo-${d.fila}">
@@ -7999,8 +8045,8 @@ function dibujarDiscrepancias(lista){
       <input id="comentario-${d.fila}" placeholder="Opcional">
 
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <div class="boton" style="flex:1;margin:0" onclick="aprobarDiscrepanciaDesdeApp(${d.fila})">✅ Aprobar</div>
-        <div class="boton" style="flex:1;margin:0;background:var(--guinda)" onclick="rechazarDiscrepanciaDesdeApp(${d.fila})">❌ Rechazar</div>
+        <div class="boton success" style="flex:1;margin:0" onclick="aprobarDiscrepanciaDesdeApp(${d.fila})">${tgIcon("checkCirculo",16)} Aprobar</div>
+        <div class="boton danger" style="flex:1;margin:0" onclick="rechazarDiscrepanciaDesdeApp(${d.fila})">${tgIcon("xCirculo",16)} Rechazar</div>
       </div>
     </div>
 
@@ -8105,14 +8151,14 @@ function abrirCerrarConteo(){
 
   <div class="vista-animada">
 
-  <h2>📚 Cerrar Conteo Cíclico</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("recibo",20)} Cerrar Conteo Cíclico</h2>
 
   <div class="cardProducto">
 
   <label>Folio a cerrar</label>
   <select id="folioCerrarConteo"></select>
 
-  <div class="boton" onclick="cerrarConteoDesdeApp()">📚 Cerrar y Guardar Historial</div>
+  <div class="boton" id="btnCerrarConteoAccion" onclick="cerrarConteoDesdeApp()">${tgIcon("recibo",17)} Cerrar y Guardar Historial</div>
 
   </div>
 
@@ -8151,6 +8197,12 @@ function cerrarConteoDesdeApp(){
     return;
   }
 
+  if(!confirm("¿Cerrar el conteo " + folio + "? Esta acción actualiza la existencia y no se puede deshacer.")){
+    return;
+  }
+
+  activarCargaBoton("btnCerrarConteoAccion", true);
+
   google.script.run
 
   .withSuccessHandler(function(resultado){
@@ -8158,7 +8210,7 @@ function cerrarConteoDesdeApp(){
     abrirCerrarConteo();
   })
 
-  .withFailureHandler(function(e){ alert("⚠️ "+e.message); })
+  .withFailureHandler(function(e){ activarCargaBoton("btnCerrarConteoAccion", false); alert("⚠️ "+e.message); })
 
   .cerrarConteoFolioApp(folio, obtenerTokenSesion());
 
@@ -8178,7 +8230,7 @@ function abrirUbicaciones(){
 
   <div class="vista-animada">
 
-  <h2>📍 Mapa de Ubicaciones</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("ubicacion",20)} Mapa de Ubicaciones</h2>
 
   <div class="cardProducto">
 
@@ -8187,10 +8239,10 @@ function abrirUbicaciones(){
   <label>Buscar por Rack o Producto/Codigo</label>
   <input id="buscarUbicacion" placeholder="Ejemplo: A01 o nombre del producto" onkeyup="buscarUbicacionEnter(event)">
   </div>
-  <button type="button" class="btnEscaner" onclick="abrirEscaner('buscarUbicacion')" title="Escanear con cámara">📷</button>
+  <button type="button" class="btnEscaner" onclick="abrirEscaner('buscarUbicacion')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
 
-  <div class="boton" onclick="ejecutarBusquedaUbicacion()">🔎 Buscar</div>
+  <div class="boton" id="btnBuscarUbicacion" onclick="ejecutarBusquedaUbicacion()">${tgIcon("buscar",17)} Buscar</div>
 
   </div>
 
@@ -8214,14 +8266,19 @@ function ejecutarBusquedaUbicacion(){
 
   if(!termino){ return; }
 
-  document.getElementById("resultadosUbicacion").innerHTML=
-  "<p style='text-align:center;color:var(--text-muted)'>Buscando...</p>";
+  document.getElementById("resultadosUbicacion").innerHTML =
+    `<div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>`;
+
+  activarCargaBoton("btnBuscarUbicacion", true);
 
   google.script.run
 
-  .withSuccessHandler(mostrarResultadosUbicacion)
+  .withSuccessHandler(function(resultados){
+    activarCargaBoton("btnBuscarUbicacion", false);
+    mostrarResultadosUbicacion(resultados);
+  })
 
-  .withFailureHandler(function(e){ alert(e.message); })
+  .withFailureHandler(function(e){ activarCargaBoton("btnBuscarUbicacion", false); alert(e.message); })
 
   .buscarUbicacionApp(termino);
 
@@ -8233,7 +8290,7 @@ function mostrarResultadosUbicacion(resultados){
   if(!contenedorResultados){ return; }
 
   if(!resultados.length){
-    contenedorResultados.innerHTML="<p style='text-align:center;color:var(--text-muted)'>Sin resultados</p>";
+    contenedorResultados.innerHTML = tgEmptyState("buscar", "Sin resultados");
     return;
   }
 
@@ -8250,7 +8307,7 @@ function mostrarResultadosUbicacion(resultados){
     <div class="cardProducto" style="cursor:pointer" onclick="abrirDetalleProducto('${p.codigo}')">
       <div class="nombreProducto">${p.producto}</div>
       <div class="infoProducto"><span class="codigo">Código: ${p.codigo}</span></div>
-      <div class="ubicacion">📍 ${p.ubicacion}</div>
+      <div class="ubicacion">${tgIcon("ubicacion",13)} ${p.ubicacion}</div>
       <div class="stock">
         Existencia: <b>${p.existencia}</b>
         ${p.estado ? ` — <span style="color:${colorEstado}">${p.estado}</span>` : ""}
@@ -8258,7 +8315,7 @@ function mostrarResultadosUbicacion(resultados){
       <div style="font-size:12.5px;color:var(--text-soft);margin-top:4px">
         Mín. ${p.minimo} · Máx. ${p.maximo} · Reorden ${p.puntoReorden}
       </div>
-      <div style="font-size:11.5px;color:var(--text-soft);margin-top:6px">Toca para ver detalle completo →</div>
+      <div style="font-size:11.5px;color:var(--text-soft);margin-top:6px;display:flex;align-items:center;gap:4px">Toca para ver detalle completo ${tgIcon("chevronDerecha",12)}</div>
     </div>
 
     `;
@@ -8419,7 +8476,7 @@ function abrirKardex(){
 
   <div class="vista-animada">
 
-  <h2>📜 Kardex de Movimientos</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("kardex",20)} Kardex de Movimientos</h2>
 
   <input id="buscarKardex" placeholder="🔎 Buscar por código o producto" onkeyup="filtrarKardex()">
 
@@ -8429,7 +8486,11 @@ function abrirKardex(){
   <option value="SALIDA">📤 Salidas</option>
   </select>
 
-  <div id="listaKardex">Cargando...</div>
+  <div id="listaKardex">
+    <div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>
+    <div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:60%"></div></div>
+    <div class="skeletonCard"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:65%"></div></div>
+  </div>
 
   </div>
 
@@ -8453,7 +8514,7 @@ function dibujarKardex(datos){
   if(!lista){ return; }
 
   if(!datos.length){
-    lista.innerHTML="<p style='text-align:center;color:var(--text-muted)'>Sin movimientos</p>";
+    lista.innerHTML = tgEmptyState("kardex", "Sin movimientos");
     return;
   }
 
@@ -8462,15 +8523,15 @@ function dibujarKardex(datos){
   datos.forEach(m=>{
 
     let color = m.tipo=="ENTRADA" ? "#5C6B2A" : "#C4522A";
-    let icono = m.tipo=="ENTRADA" ? "📥" : "📤";
+    let icono = m.tipo=="ENTRADA" ? tgIcon("entrada",15) : tgIcon("salida",15);
 
     lista.innerHTML+=`
 
     <div class="cardProducto">
-      <div class="nombreProducto">${icono} ${m.producto}</div>
+      <div class="nombreProducto" style="display:flex;align-items:center;gap:7px">${icono} ${m.producto}</div>
       <div class="infoProducto"><span class="codigo">Código: ${m.codigo}</span></div>
       <div class="stock" style="color:${color}">${m.tipo}: ${m.cantidad}</div>
-      <div class="ubicacion">🕐 ${m.fecha} ${m.hora} — Saldo: ${m.saldo}<br>👤 ${m.usuario}</div>
+      <div class="ubicacion">${tgIcon("reloj",13)} ${m.fecha} ${m.hora} — Saldo: ${m.saldo}<br>${tgIcon("usuario",13)} ${m.usuario}</div>
     </div>
 
     `;
@@ -8513,6 +8574,15 @@ function abrirInventario(){
 
   marcarActivo("btnInventarioLista");
 
+  const contenedor=document.querySelector(".contenedor");
+  contenedor.innerHTML=`
+    <div class="vista-animada">
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("paquete",20)} Inventario</h2>
+    <div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>
+    <div class="skeletonCard"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:60%"></div></div>
+    </div>
+  `;
+
   google.script.run
   .withSuccessHandler(mostrarInventario)
   .withFailureHandler(function(e){ alert(e.message); })
@@ -8530,7 +8600,7 @@ function mostrarInventario(datos){
 
   <div class="vista-animada">
 
-  <h2>📦 Inventario</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("paquete",20)} Inventario</h2>
 
   <input id="buscar" placeholder="🔎 Buscar producto o código" onkeyup="filtrarInventario()">
 
@@ -8570,9 +8640,9 @@ function mostrarResumenInventario(datos){
 
   document.getElementById("resumenInventario").innerHTML=`
   <div class="resumen">
-  📦 Productos: <b>${totalProductos}</b>
+  ${tgIcon("paquete",14)} Productos: <b>${totalProductos}</b>
   <br>
-  🔢 Existencia: <b>${existencia}</b>
+  ${tgIcon("kardex",14)} Existencia: <b>${existencia}</b>
   </div>
   `;
 
@@ -8605,6 +8675,11 @@ function dibujarProductos(datos){
   let lista=document.getElementById("listaProductos");
   lista.innerHTML="";
 
+  if(!datos.length){
+    lista.innerHTML = tgEmptyState("buscar", "Sin productos con estos filtros");
+    return;
+  }
+
   datos.forEach(p=>{
 
     let estado="🟢";
@@ -8622,7 +8697,7 @@ function dibujarProductos(datos){
       <div class="nombreProducto">${estado} ${p.producto}</div>
       <div class="infoProducto"><span class="codigo">Código: ${p.codigo}</span></div>
       <div class="stock">Existencia: ${p.existencia}</div>
-      <div class="ubicacion">📍 ${p.ubicacion || "Sin ubicación"}</div>
+      <div class="ubicacion">${tgIcon("ubicacion",13)} ${p.ubicacion || "Sin ubicación"}</div>
     </div>
 
     `;
