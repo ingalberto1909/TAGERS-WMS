@@ -1913,6 +1913,27 @@ display:flex;
 padding-bottom:calc(20px + 58px + env(safe-area-inset-bottom));
 }
 
+/* MODALES: en escritorio se ven igual (caja centrada). En móvil, la
+   lista de stock/detalle de requisición y la ficha de producto pasan a
+   modo "casi pantalla completa" tipo hoja inferior — más cómodo para
+   leer tablas y formularios largos con el pulgar, sin perder ninguno de
+   sus botones/cierres existentes. */
+.modalLista, .modalDetalle{
+padding:0;
+align-items:flex-end;
+}
+
+.modalListaCaja, .modalDetalleCaja{
+max-width:100%;
+width:100%;
+max-height:92vh;
+border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.modalDetalleCaja{
+padding:20px;
+}
+
 /* El panel de notificaciones tiene un ancho fijo (320px) pensado para
    escritorio; anclado por la derecha del botón de campana en un header
    angosto, se salía por la izquierda de la pantalla. En móvil se ancla
@@ -2443,19 +2464,22 @@ function aplicarDataLabelsResponsive(raiz){
 
 function inicializarObservadorTablasResponsive(){
   if(typeof MutationObserver === "undefined") return;
-  const contenedor = document.querySelector(".contenedor");
-  if(!contenedor) return;
+  // #areaPrincipal cubre tanto .contenedor (las vistas) como los modales
+  // globales (#modalLista, #modalDetalle, #modalEscaner), que viven como
+  // hermanos de .contenedor y también arman tablas .tablaActividad/.tablaTop.
+  const raiz = document.getElementById("areaPrincipal") || document.querySelector(".contenedor");
+  if(!raiz) return;
   let pendiente = false;
   const observer = new MutationObserver(function(){
     if(pendiente) return;
     pendiente = true;
     requestAnimationFrame(function(){
       pendiente = false;
-      aplicarDataLabelsResponsive(contenedor);
+      aplicarDataLabelsResponsive(raiz);
     });
   });
-  observer.observe(contenedor, { childList:true, subtree:true });
-  aplicarDataLabelsResponsive(contenedor);
+  observer.observe(raiz, { childList:true, subtree:true });
+  aplicarDataLabelsResponsive(raiz);
 }
 
 function actualizarIconoTema(){
