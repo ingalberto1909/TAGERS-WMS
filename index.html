@@ -616,8 +616,9 @@ color:white;
 font-size:12px;
 font-weight:600;
 padding:6px 14px;
-border-radius:20px;
+border-radius:var(--radius-pill);
 white-space:nowrap;
+transition:background .2s ease;
 }
 
 .bienvenida{
@@ -666,7 +667,7 @@ transform:translateY(-1px);
 .kpiCard .kpiIcono{
 width:38px;
 height:38px;
-border-radius:11px;
+border-radius:var(--radius-sm);
 display:flex;
 align-items:center;
 justify-content:center;
@@ -674,9 +675,9 @@ font-size:17px;
 margin-bottom:10px;
 }
 
-.kpiCard.tono-guinda .kpiIcono{ background:rgba(107,39,55,.12); }
-.kpiCard.tono-oliva .kpiIcono{ background:rgba(92,107,42,.12); }
-.kpiCard.tono-terracota .kpiIcono{ background:rgba(196,82,42,.12); }
+.kpiCard.tono-guinda .kpiIcono{ background:rgba(107,39,55,.12); color:var(--guinda); }
+.kpiCard.tono-oliva .kpiIcono{ background:rgba(92,107,42,.12); color:var(--oliva); }
+.kpiCard.tono-terracota .kpiIcono{ background:rgba(196,82,42,.12); color:var(--terracota); }
 
 .kpiCard .kpiLabel{
 font-size:11px;
@@ -691,6 +692,7 @@ font-size:26px;
 font-weight:800;
 color:var(--text);
 margin:6px 0 2px;
+font-variant-numeric:tabular-nums;
 }
 
 .kpiCard .kpiNota{
@@ -744,11 +746,22 @@ border-bottom:1px solid var(--border);
 text-align:right;
 font-weight:700;
 white-space:nowrap;
+font-variant-numeric:tabular-nums;
+}
+
+.tablaTop tbody tr,
+.tablaActividad tbody tr{
+transition:background .12s ease;
+}
+
+.tablaTop tbody tr:hover,
+.tablaActividad tbody tr:hover{
+background:var(--bg);
 }
 
 .cardValorInventario{
 background:linear-gradient(135deg, var(--guinda-dark), var(--guinda));
-border-radius:18px;
+border-radius:var(--radius-lg);
 padding:22px 24px;
 margin-top:16px;
 color:#fff;
@@ -757,16 +770,21 @@ justify-content:space-between;
 align-items:center;
 flex-wrap:wrap;
 gap:14px;
+box-shadow:var(--shadow-md);
 }
 
 .cardValorInventario .valor{
 font-size:32px;
 font-weight:800;
+font-variant-numeric:tabular-nums;
 }
 
 .cardValorInventario .etiqueta{
 font-size:13px;
 opacity:.85;
+display:flex;
+align-items:center;
+gap:6px;
 }
 
 .cardValorInventario .nota{
@@ -789,7 +807,7 @@ gap:6px;
 
 .heatmapCelda{
 aspect-ratio:1;
-border-radius:8px;
+border-radius:var(--radius-sm);
 min-height:26px;
 transition:transform .15s ease;
 }
@@ -6144,7 +6162,7 @@ function volverInicio(){
 
   <div class="dashboardHeader">
     <div>
-      <h2>🏠 Inicio</h2>
+      <h2>${tgIcon("casa",20)} Inicio</h2>
       <p>Resumen operativo del almacén — actualizado en tiempo real.</p>
     </div>
     <span class="badgeSync" id="badgeSync">Cargando…</span>
@@ -6154,39 +6172,39 @@ function volverInicio(){
 
   <div class="kpiGrid">
     <div class="kpiCard tono-guinda">
-      <div class="kpiIcono">📦</div>
+      <div class="kpiIcono">${tgIcon("paquete",18)}</div>
       <div class="kpiLabel">Productos</div>
-      <div class="kpiValor" id="kpiProductos">--</div>
+      <div class="kpiValor" id="kpiProductos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">en catálogo</div>
     </div>
     <div class="kpiCard tono-oliva">
-      <div class="kpiIcono">📍</div>
+      <div class="kpiIcono">${tgIcon("ubicacion",18)}</div>
       <div class="kpiLabel">Ubicaciones</div>
-      <div class="kpiValor" id="kpiUbicaciones">--</div>
+      <div class="kpiValor" id="kpiUbicaciones"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">con producto asignado</div>
     </div>
     <div class="kpiCard tono-terracota">
-      <div class="kpiIcono">⚠️</div>
+      <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
       <div class="kpiLabel">Bajo mínimo</div>
-      <div class="kpiValor" id="kpiBajo">--</div>
+      <div class="kpiValor" id="kpiBajo"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requieren reorden</div>
     </div>
     <div class="kpiCard tono-guinda">
-      <div class="kpiIcono">⏰</div>
+      <div class="kpiIcono">${tgIcon("xCirculo",18)}</div>
       <div class="kpiLabel">Agotados</div>
-      <div class="kpiValor" id="kpiAgotados">--</div>
+      <div class="kpiValor" id="kpiAgotados"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requiere atención</div>
     </div>
     <div class="kpiCard tono-oliva">
-      <div class="kpiIcono">📄</div>
+      <div class="kpiIcono">${tgIcon("documento",18)}</div>
       <div class="kpiLabel">Discrepancias</div>
-      <div class="kpiValor" id="kpiDiscrepancias">--</div>
+      <div class="kpiValor" id="kpiDiscrepancias"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">pendientes de aprobar</div>
     </div>
     <div class="kpiCard tono-terracota">
-      <div class="kpiIcono">🔄</div>
+      <div class="kpiIcono">${tgIcon("refrescar",18)}</div>
       <div class="kpiLabel">Conteos abiertos</div>
-      <div class="kpiValor" id="kpiConteos">--</div>
+      <div class="kpiValor" id="kpiConteos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">ciclos en curso</div>
     </div>
   </div>
@@ -6221,10 +6239,10 @@ function volverInicio(){
     </div>
 
     <div class="cardProducto">
-      <h3 style="margin-top:0;color:var(--guinda)">Actividad reciente</h3>
+      <h3 style="margin-top:0">Actividad reciente</h3>
       <table class="tablaActividad">
         <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Producto</th><th>Cant.</th></tr></thead>
-        <tbody id="tablaActividadBody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Cargando...</td></tr></tbody>
+        <tbody id="tablaActividadBody">${filasSkeleton(5,5)}</tbody>
       </table>
     </div>
 
@@ -6232,8 +6250,8 @@ function volverInicio(){
 
   <div class="cardValorInventario">
     <div>
-      <div class="etiqueta">💰 Valor monetario del inventario</div>
-      <div class="valor" id="valorInventarioTotal">Cargando...</div>
+      <div class="etiqueta">${tgIcon("dinero",14)} Valor monetario del inventario</div>
+      <div class="valor" id="valorInventarioTotal"><span class="skeleton skeletonLinea" style="width:140px;height:28px;display:inline-block;background:rgba(255,255,255,.25)"></span></div>
     </div>
     <div class="nota" id="valorInventarioNota"></div>
   </div>
@@ -6241,38 +6259,38 @@ function volverInicio(){
   <div class="panelesInicio3">
 
     <div class="cardProducto">
-      <h3 style="margin-top:0;color:var(--guinda)">📦 Top 10 más entradas</h3>
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("entrada",16)} Top 10 más entradas</h3>
       <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Este mes — por número de veces registrada</p>
       <table class="tablaTop">
         <thead><tr><th>Producto</th><th style="text-align:right">Veces</th></tr></thead>
-        <tbody id="tablaTopEntradas"><tr><td colspan="2" style="text-align:center;color:var(--text-muted)">Cargando...</td></tr></tbody>
+        <tbody id="tablaTopEntradas">${filasSkeleton(2,4)}</tbody>
       </table>
     </div>
 
     <div class="cardProducto">
-      <h3 style="margin-top:0;color:var(--guinda)">🚚 Top 10 más salidas</h3>
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("salida",16)} Top 10 más salidas</h3>
       <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Este mes — por número de veces registrada</p>
       <table class="tablaTop">
         <thead><tr><th>Producto</th><th style="text-align:right">Veces</th></tr></thead>
-        <tbody id="tablaTopSalidas"><tr><td colspan="2" style="text-align:center;color:var(--text-muted)">Cargando...</td></tr></tbody>
+        <tbody id="tablaTopSalidas">${filasSkeleton(2,4)}</tbody>
       </table>
     </div>
 
     <div class="cardProducto">
-      <h3 style="margin-top:0;color:var(--guinda)">🔥 Mayor rotación</h3>
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("refrescar",16)} Mayor rotación</h3>
       <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Veces con entrada o salida, este mes</p>
       <table class="tablaTop">
         <thead><tr><th>Producto</th><th style="text-align:right">Veces</th></tr></thead>
-        <tbody id="tablaTopRotacion"><tr><td colspan="2" style="text-align:center;color:var(--text-muted)">Cargando...</td></tr></tbody>
+        <tbody id="tablaTopRotacion">${filasSkeleton(2,4)}</tbody>
       </table>
     </div>
 
     <div class="cardProducto">
-      <h3 style="margin-top:0;color:var(--guinda)">⚠️ Bajo mínimo</h3>
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("alertaTriangulo",16)} Bajo mínimo</h3>
       <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Los 10 más urgentes</p>
       <table class="tablaTop">
         <thead><tr><th>Producto</th><th style="text-align:right">Exist. / Mín.</th></tr></thead>
-        <tbody id="tablaTopBajoMinimo"><tr><td colspan="2" style="text-align:center;color:var(--text-muted)">Cargando...</td></tr></tbody>
+        <tbody id="tablaTopBajoMinimo">${filasSkeleton(2,4)}</tbody>
       </table>
     </div>
 
@@ -6336,7 +6354,7 @@ function dibujarResumenExtraInicio(datos){
   const tbodyBajo = document.getElementById("tablaTopBajoMinimo");
   if(tbodyBajo){
     if(!datos.bajoMinimo || !datos.bajoMinimo.length){
-      tbodyBajo.innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-muted)">Sin productos bajo mínimo 🎉</td></tr>`;
+      tbodyBajo.innerHTML = `<tr><td colspan="2">${tgEmptyState("checkCirculo", "Sin productos bajo mínimo")}</td></tr>`;
     } else {
       tbodyBajo.innerHTML = datos.bajoMinimo.map(p=>`
         <tr style="cursor:pointer" onclick="abrirDetalleProducto('${p.codigo}')">
@@ -6363,13 +6381,30 @@ function dibujarResumenExtraInicio(datos){
 
 }
 
+// Filas de carga (Fase 4 — Dashboard). Solo relleno visual mientras responde
+// google.script.run; se sobrescribe con innerHTML real en cuanto llegan los datos.
+function filasSkeleton(colspan, n){
+  let html = "";
+  for(let i=0; i<(n||3); i++){
+    html += `<tr><td colspan="${colspan}"><div class="skeleton skeletonLinea" style="width:${60+Math.random()*30}%"></div></td></tr>`;
+  }
+  return html;
+}
+
+function tgEmptyState(icono, texto){
+  return `<div style="text-align:center;padding:18px 8px;color:var(--text-muted)">
+    <div style="opacity:.5;margin-bottom:6px">${tgIcon(icono, 26)}</div>
+    <div style="font-size:12.5px">${texto}</div>
+  </div>`;
+}
+
 function pintarTablaTop(idTabla, lista, campoCantidad, mensajeVacio){
 
   const tbody = document.getElementById(idTabla);
   if(!tbody) return;
 
   if(!lista || !lista.length){
-    tbody.innerHTML = `<tr><td colspan="2" style="text-align:center;color:var(--text-muted)">${mensajeVacio}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="2">${tgEmptyState("documento", mensajeVacio)}</td></tr>`;
     return;
   }
 
@@ -6785,7 +6820,7 @@ function dibujarTablaActividad(datos){
   if(!cuerpo){ return; }
 
   if(!datos || !datos.length){
-    cuerpo.innerHTML="<tr><td colspan='5' style='text-align:center;color:var(--text-muted)'>Sin movimientos recientes</td></tr>";
+    cuerpo.innerHTML=`<tr><td colspan="5">${tgEmptyState("kardex", "Sin movimientos recientes")}</td></tr>`;
     return;
   }
 
