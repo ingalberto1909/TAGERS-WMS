@@ -723,7 +723,11 @@ margin-top:16px;
 }
 
 .tablaTop{
+display:block;
 width:100%;
+max-width:100%;
+overflow-x:auto;
+-webkit-overflow-scrolling:touch;
 border-collapse:collapse;
 font-size:12.5px;
 }
@@ -834,7 +838,11 @@ background:linear-gradient(to right, var(--bg), var(--terracota), var(--guinda-d
 }
 
 .tablaActividad{
+display:block;
 width:100%;
+max-width:100%;
+overflow-x:auto;
+-webkit-overflow-scrolling:touch;
 border-collapse:collapse;
 font-size:13px;
 }
@@ -928,7 +936,11 @@ display:inline-block;
 .badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
 
 .tablaImportar{
+display:block;
 width:100%;
+max-width:100%;
+overflow-x:auto;
+-webkit-overflow-scrolling:touch;
 border-collapse:collapse;
 font-size:12.5px;
 }
@@ -1876,6 +1888,156 @@ animation:fadeInUp .2s ease;
 .tgMensaje.warning{ background:var(--color-warning-bg); color:var(--color-warning); }
 .tgMensaje.info{ background:var(--color-info-bg); color:var(--color-info); }
 
+/* ===================== */
+/* RESPONSIVE — Fase 8 */
+/* Las tablas (.tablaTop/.tablaActividad/.tablaImportar) ya son scrollables
+   horizontalmente (ver sus reglas base) para que ninguna acción quede
+   inaccesible en pantallas angostas — aquí solo se afina el indicador visual
+   y el resto de breakpoints. */
+/* ===================== */
+
+.tablaTop::-webkit-scrollbar,
+.tablaActividad::-webkit-scrollbar,
+.tablaImportar::-webkit-scrollbar{
+height:6px;
+}
+
+.tablaTop::-webkit-scrollbar-thumb,
+.tablaActividad::-webkit-scrollbar-thumb,
+.tablaImportar::-webkit-scrollbar-thumb{
+background:var(--border);
+border-radius:var(--radius-pill);
+}
+
+/* TABLET (769px–1024px): el sidebar sigue en modo mini-colapsado (ver el
+   media query de min-width:769px), aquí solo se ajusta la densidad de
+   contenido para pantallas más angostas que un laptop grande. */
+@media (max-width:1024px){
+
+.kpiGrid{
+grid-template-columns:repeat(3,1fr);
+}
+
+.panelesInicio,
+.panelesInicio2{
+grid-template-columns:1fr;
+}
+
+.modalListaCaja,
+.modalDetalleCaja{
+max-width:94vw;
+}
+
+}
+
+/* MÓVIL PEQUEÑO (≤480px, ej. 390/375): encabezado sin espacio para el
+   buscador global completo — se colapsa a solo el ícono de lupa, que abre
+   el mismo buscador ya existente al tocarlo. */
+@media (max-width:480px){
+
+header{
+padding:0 12px;
+gap:8px;
+position:relative;
+}
+
+.buscadorHeader{
+flex:0 0 auto;
+width:40px;
+padding:0;
+border:none;
+background:none;
+overflow:hidden;
+transition:width .2s ease, flex-basis .2s ease, padding .2s ease;
+}
+
+.buscadorHeader.expandido{
+position:absolute;
+inset:0 12px;
+width:auto;
+height:40px;
+margin:auto 0;
+padding:0 12px;
+border:1px solid var(--border);
+background:var(--bg-panel);
+z-index:60;
+box-shadow:var(--shadow-md);
+}
+
+.buscadorHeader .iconoLupa{
+cursor:pointer;
+padding:9px;
+}
+
+.buscadorHeader input{
+min-width:0;
+}
+
+.buscadorHeader:not(.expandido) input,
+.buscadorHeader:not(.expandido) .atajoTecla{
+display:none;
+}
+
+.chipUsuarioHeader .datosUsuario{
+display:none;
+}
+
+.kpiGrid{
+grid-template-columns:repeat(2,1fr);
+gap:8px;
+}
+
+.kpiCard{
+padding:12px;
+}
+
+.panelesInicio3{
+grid-template-columns:1fr;
+}
+
+.cardValorInventario{
+flex-direction:column;
+align-items:flex-start;
+text-align:left;
+}
+
+.cardValorInventario .nota{
+text-align:left;
+max-width:none;
+}
+
+.modalDetalleGrid{
+grid-template-columns:1fr;
+}
+
+.gridFormulario{
+grid-template-columns:1fr;
+}
+
+}
+
+/* Objetivos táctiles: en pantallas táctiles los botones de solo ícono del
+   header y de escaneo crecen un poco para facilitar el toque. */
+@media (max-width:768px){
+
+.iconoHeaderBtn{
+width:40px;
+height:40px;
+padding:0;
+display:flex;
+align-items:center;
+justify-content:center;
+}
+
+.hamburguesa{
+width:40px;
+height:40px;
+padding:0;
+justify-content:center;
+}
+
+}
+
 </style>
 
 </head>
@@ -2181,11 +2343,27 @@ function cerrarBuscadorHeaderYAbrirProducto(codigo){
   abrirDetalleProducto(codigo);
 }
 
+// En pantallas angostas (≤480px) el buscador del header vive colapsado a
+// solo su ícono (ver CSS de Fase 8) — este toggle lo expande/contrae sin
+// afectar en nada su comportamiento en pantallas más anchas.
+function toggleBuscadorHeaderMovil(){
+  if(window.innerWidth > 480) return;
+  const cont = document.getElementById("buscadorHeaderContenedor");
+  if(!cont) return;
+  const expandiendo = !cont.classList.contains("expandido");
+  cont.classList.toggle("expandido", expandiendo);
+  if(expandiendo){
+    const input = document.getElementById("buscadorGlobalHeader");
+    if(input) setTimeout(() => input.focus(), 50);
+  }
+}
+
 document.addEventListener("click", function(e){
   const buscador = document.querySelector(".buscadorHeader");
   if(buscador && !buscador.contains(e.target)){
     const resultados = document.getElementById("resultadosBuscadorHeader");
     if(resultados) resultados.style.display = "none";
+    if(window.innerWidth <= 480) buscador.classList.remove("expandido");
   }
 });
 
@@ -9284,8 +9462,8 @@ function aplicarFiltros(){
 
 <button class="hamburguesa" onclick="toggleSidebarMovil()">☰</button>
 
-<div class="buscadorHeader">
-  <span class="iconoLupa">🔍</span>
+<div class="buscadorHeader" id="buscadorHeaderContenedor">
+  <span class="iconoLupa" onclick="toggleBuscadorHeaderMovil()">🔍</span>
   <input id="buscadorGlobalHeader" placeholder="Buscar producto, código, rack, proveedor..." oninput="buscarGlobalHeader()" onfocus="buscarGlobalHeader()">
   <span class="atajoTecla">Ctrl+K</span>
   <div class="resultadosBuscadorHeader" id="resultadosBuscadorHeader"></div>
