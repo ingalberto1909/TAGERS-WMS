@@ -420,6 +420,20 @@ min-width:0;
 
 header .tituloHeader{
 display:none;
+align-items:center;
+gap:6px;
+font-weight:700;
+font-size:15px;
+white-space:nowrap;
+min-width:0;
+color:var(--text);
+}
+
+header .tituloHeader .tituloHeaderTexto{
+overflow:hidden;
+text-overflow:ellipsis;
+white-space:nowrap;
+min-width:0;
 }
 
 .buscadorHeader{
@@ -1714,6 +1728,46 @@ z-index:90;
 display:block;
 }
 
+/* NAVEGACIÓN INFERIOR MÓVIL — capa visual, llama a las mismas funciones
+   que el sidebar; su visibilidad por ítem se sincroniza con los permisos
+   ya calculados para el botón equivalente del sidebar (ver
+   sincronizarNavInferiorConPermisos()). Oculta en escritorio. */
+
+.navInferior{
+display:none;
+position:fixed;
+left:0;
+right:0;
+bottom:0;
+background:var(--bg-panel);
+border-top:1px solid var(--border);
+box-shadow:0 -2px 10px rgba(0,0,0,.08);
+z-index:95;
+padding-bottom:env(safe-area-inset-bottom);
+}
+
+.navInferiorBtn{
+flex:1;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+gap:2px;
+min-height:56px;
+padding:8px 4px 6px;
+background:none;
+border:none;
+color:var(--text-muted);
+font-size:10.5px;
+font-weight:600;
+line-height:1.1;
+cursor:pointer;
+}
+
+.navInferiorBtn.activo{
+color:var(--color-primary);
+}
+
 /* RESPONSIVE */
 
 @media (min-width:769px){
@@ -1813,9 +1867,11 @@ pointer-events:none;
 
 #sidebar{
 position:fixed;
-left:-240px;
+left:-100%;
 top:0;
 height:100%;
+width:min(250px,80vw);
+box-shadow:var(--shadow-lg);
 }
 
 #sidebar.abierto{
@@ -1825,6 +1881,10 @@ left:0;
 .hamburguesa{
 display:flex;
 align-items:center;
+}
+
+header .tituloHeader{
+display:flex;
 }
 
 .graficas{
@@ -1843,6 +1903,14 @@ gap:8px;
 
 .filaConEscaner{
 flex-direction:row;
+}
+
+.navInferior{
+display:flex;
+}
+
+.contenedor{
+padding-bottom:calc(20px + 58px + env(safe-area-inset-bottom));
 }
 
 }
@@ -1952,8 +2020,17 @@ max-width:94vw;
 
 header{
 padding:0 12px;
-gap:8px;
+gap:6px;
 position:relative;
+}
+
+.accionesHeader{
+gap:6px;
+}
+
+.chipUsuarioHeader{
+gap:0;
+padding:4px;
 }
 
 .buscadorHeader{
@@ -2108,6 +2185,7 @@ const TG_ICONOS = {
   carrito: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
   receta: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
   casa: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  grafica: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
   carpeta: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   balanza: '<path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/><path d="M4 16.5v-9.75A2.75 2.75 0 0 1 6.75 4H8"/><path d="M8 4h8"/><path d="M12 4v12"/>',
   camara: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
@@ -2192,8 +2270,30 @@ function aplicarIconosSidebar(){
   const iconoMenuUsuario = document.querySelector("#menuUsuarioHeader .icono");
   if(iconoMenuUsuario) iconoMenuUsuario.innerHTML = tgIcon("salirIcono", 15);
 
+  const ICONOS_NAV_INFERIOR = {
+    navInfIconoInicio:"casa", navInfIconoInventario:"paquete",
+    navInfIconoKardex:"kardex", navInfIconoReportes:"grafica", navInfIconoMas:"menu"
+  };
+  Object.keys(ICONOS_NAV_INFERIOR).forEach(function(id){
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = tgIcon(ICONOS_NAV_INFERIOR[id], 21);
+  });
+
   actualizarIconoTema();
 
+}
+
+// Muestra en la barra inferior móvil solo los accesos que el usuario ya ve
+// en el sidebar (mismo id de referencia) — nunca decide permisos por su
+// cuenta, solo copia el estado que aplicarPermisosPorRol()/aplicarAccesoRequisicionesMenu()
+// ya calcularon para el botón equivalente del sidebar.
+function sincronizarNavInferiorConPermisos(){
+  document.querySelectorAll("#navInferior [data-permiso-id]").forEach(function(btn){
+    const refId = btn.getAttribute("data-permiso-id");
+    const ref = document.getElementById(refId);
+    const visible = !!ref && ref.style.display !== "none";
+    btn.style.display = visible ? "" : "none";
+  });
 }
 
 function actualizarIconoTema(){
@@ -2243,6 +2343,7 @@ function verificarSesionTAGERS(callback){
       pintarUsuarioSidebar();
       aplicarPermisosPorRol(USUARIO_ACTUAL.rol);
       aplicarAccesoRequisicionesMenu();
+      sincronizarNavInferiorConPermisos();
 
       if(callback) callback();
 
@@ -6424,6 +6525,7 @@ function abrirDashboardInventarioMensual(){
 function marcarActivo(id){
 
   document.querySelectorAll(".menuLateralBtn").forEach(b=>b.classList.remove("activo"));
+  document.querySelectorAll(".navInferiorBtn").forEach(b=>b.classList.remove("activo"));
 
   if(id){
     const btn=document.getElementById(id);
@@ -6437,6 +6539,9 @@ function marcarActivo(id){
         if(flecha){ flecha.classList.add("rotada"); }
       }
     }
+
+    const navBtn = document.querySelector('#navInferior [data-permiso-id="'+id+'"]');
+    if(navBtn) navBtn.classList.add("activo");
   }
 
   cerrarSidebarMovilSiAplica();
@@ -9477,6 +9582,8 @@ function aplicarFiltros(){
 
 <button class="hamburguesa" onclick="toggleSidebarMovil()">☰</button>
 
+<div class="tituloHeader">📦 <span class="tituloHeaderTexto">TAGERS WMS</span></div>
+
 <div class="buscadorHeader" id="buscadorHeaderContenedor">
   <span class="iconoLupa" onclick="toggleBuscadorHeaderMovil()">🔍</span>
   <input id="buscadorGlobalHeader" placeholder="Buscar producto, código, rack, proveedor..." oninput="buscarGlobalHeader()" onfocus="buscarGlobalHeader()">
@@ -9519,6 +9626,13 @@ function aplicarFiltros(){
 
 <div class="contenedor"></div>
 
+<nav class="navInferior" id="navInferior">
+<button class="navInferiorBtn" data-permiso-id="btnInicio" onclick="volverInicio()"><span class="navInferiorIcono" id="navInfIconoInicio"></span><span>Inicio</span></button>
+<button class="navInferiorBtn" data-permiso-id="btnInventarioLista" onclick="abrirInventario()"><span class="navInferiorIcono" id="navInfIconoInventario"></span><span>Inventario</span></button>
+<button class="navInferiorBtn" data-permiso-id="btnKardex" onclick="abrirKardex()"><span class="navInferiorIcono" id="navInfIconoKardex"></span><span>Kardex</span></button>
+<button class="navInferiorBtn" data-permiso-id="btnDashboard" onclick="abrirDashboard()"><span class="navInferiorIcono" id="navInfIconoReportes"></span><span>Reportes</span></button>
+<button class="navInferiorBtn" onclick="toggleSidebarMovil()"><span class="navInferiorIcono" id="navInfIconoMas"></span><span>Más</span></button>
+</nav>
 
 <div class="modalEscaner" id="modalEscaner">
 
