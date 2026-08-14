@@ -1351,7 +1351,7 @@ width:100%;
 padding:14px;
 border-radius:var(--radius-md);
 border:1px solid var(--border);
-font-size:15px;
+font-size:16px;
 margin-top:8px;
 background:var(--bg-panel);
 color:var(--text);
@@ -1913,6 +1913,29 @@ display:flex;
 padding-bottom:calc(20px + 58px + env(safe-area-inset-bottom));
 }
 
+/* El panel de notificaciones tiene un ancho fijo (320px) pensado para
+   escritorio; anclado por la derecha del botón de campana en un header
+   angosto, se salía por la izquierda de la pantalla. En móvil se ancla
+   al viewport completo en vez de al botón, para que siempre quede dentro
+   de la pantalla sin importar en qué parte del header esté la campana. */
+.panelDropdown{
+position:fixed;
+left:12px;
+right:12px;
+top:60px;
+width:auto;
+max-width:none;
+}
+
+/* Layout maestro-detalle de Recetas: en escritorio es una columna fija de
+   340px (lista) + el resto (detalle); en móvil ese ancho fijo no cabe y
+   generaba una franja cortada a la derecha, así que se apila en 1 columna.
+   Necesita !important porque el ancho de 340px viene de un style="" en
+   línea, que sin esto gana por especificidad sobre esta regla. */
+.layoutRecetas{
+grid-template-columns:1fr !important;
+}
+
 /* TABLAS → TARJETAS (Fase 4). No cambia datos ni columnas: cada <td> se
    apila como fila "etiqueta: valor" dentro de una tarjeta por registro.
    La etiqueta sale del <th> correspondiente vía atributo data-label, que
@@ -2207,6 +2230,17 @@ width:40px;
 height:40px;
 padding:0;
 justify-content:center;
+}
+
+/* Los botones .boton compactos (algunas acciones dentro de tarjetas/tablas
+   usan padding en línea más chico) mantienen al menos un alto táctil
+   cómodo en móvil, sin tocar su padding/tamaño en escritorio. */
+.boton{
+min-height:44px;
+}
+
+.btnEscaner{
+min-height:44px;
 }
 
 }
