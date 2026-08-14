@@ -898,13 +898,23 @@ display:inline-block;
 /* Sistema de estados unificado (Fase 2) — mismas clases .badgeEstado, nuevos modificadores
    disponibles para usarse en próximas fases sin tocar la lógica que arma el HTML */
 .badgeEstado.ACTIVO,
+.badgeEstado.ACTIVA,
 .badgeEstado.APROBADO,
-.badgeEstado.COMPLETADO{ background:var(--color-success-bg); color:var(--color-success); }
+.badgeEstado.APROBADA,
+.badgeEstado.COMPLETADO,
+.badgeEstado.COMPLETADA,
+.badgeEstado.ENTREGADO,
+.badgeEstado.ENTREGADA{ background:var(--color-success-bg); color:var(--color-success); }
 
 .badgeEstado.INACTIVO,
+.badgeEstado.INACTIVA,
 .badgeEstado.CANCELADO,
+.badgeEstado.CANCELADA,
 .badgeEstado.RECHAZADO,
-.badgeEstado.SIN_EXISTENCIA{ background:var(--color-danger-bg); color:var(--color-danger); }
+.badgeEstado.RECHAZADA,
+.badgeEstado.SIN_EXISTENCIA,
+.badgeEstado.AGOTADO,
+.badgeEstado.AGOTADA{ background:var(--color-danger-bg); color:var(--color-danger); }
 
 .badgeEstado.PENDIENTE,
 .badgeEstado.BAJO_MINIMO,
@@ -1922,7 +1932,8 @@ const TG_ICONOS = {
   panelIzquierdo: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>',
   guardar: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
   candado: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-  cajas: '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 8 10 5 10-5"/><path d="M12 13v8"/><path d="m22 8v8l-10 5-10-5V8"/>'
+  cajas: '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 8 10 5 10-5"/><path d="M12 13v8"/><path d="m22 8v8l-10 5-10-5V8"/>',
+  enviar: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>'
 };
 
 function tgIcon(nombre, tamano){
@@ -1949,7 +1960,8 @@ const ICONOS_MENU = {
   btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
   btnHistorialInventarioMensual:"reloj", btnDashboardInventarioMensual:"tendenciaSube",
-  btnDashboard:"tendenciaSube", btnRecetas:"receta"
+  btnDashboard:"tendenciaSube", btnRecetas:"receta",
+  btnRegistrarProduccion:"fabrica", btnLotesProduccion:"paquete"
 };
 
 function aplicarIconosSidebar(){
@@ -2318,7 +2330,7 @@ function abrirNuevaRequisicionReceta(){
 
   <div class="vista-animada">
 
-  <h2>🍳 Requisición de Recetas</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("receta",20)} Requisición de Recetas</h2>
   <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Pide por número de tandas de receta (ej. "3 recetas de Aceite Mediterráneo") — el sistema calcula los insumos según cuántas veces se va a preparar.</p>
 
   <div class="cardProducto">
@@ -2338,7 +2350,7 @@ function abrirNuevaRequisicionReceta(){
 
     <div id="mensajeRequisicionReceta" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
-    <div class="boton" style="margin-top:16px" onclick="enviarNuevaRequisicionReceta()">📨 Enviar requisición</div>
+    <div class="boton" id="btnEnviarRequisicionReceta" style="margin-top:16px" onclick="enviarNuevaRequisicionReceta()">${tgIcon("enviar",17)} Enviar requisición</div>
 
   </div>
 
@@ -2474,6 +2486,8 @@ function enviarNuevaRequisicionReceta(){
 
   if(!confirm("¿Enviar esta requisición con " + items.length + " receta(s) a Almacén?")) return;
 
+  activarCargaBoton("btnEnviarRequisicionReceta", true);
+
   google.script.run
     .withSuccessHandler(function(resultado){
       mostrarMensajeTemporal("mensajeRequisicionReceta", "✅ Requisición " + resultado.folio + " enviada", "ok");
@@ -2481,6 +2495,7 @@ function enviarNuevaRequisicionReceta(){
       setTimeout(abrirMisRequisiciones, 900);
     })
     .withFailureHandler(function(e){
+      activarCargaBoton("btnEnviarRequisicionReceta", false);
       mostrarMensajeTemporal("mensajeRequisicionReceta", "⚠️ " + e.message, "error");
     })
     .crearRequisicionRecetaApp(observaciones, items.map(it => ({
@@ -2500,7 +2515,7 @@ function abrirNuevaRequisicion(){
 
   <div class="vista-animada">
 
-  <h2>➕ Nueva Requisición</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("mas",20)} Nueva Requisición</h2>
 
   <div class="cardProducto">
 
@@ -2521,7 +2536,7 @@ function abrirNuevaRequisicion(){
 
     <div id="mensajeRequisicion" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
-    <div class="boton" style="margin-top:16px" onclick="enviarNuevaRequisicion()">📨 Enviar requisición</div>
+    <div class="boton" id="btnEnviarRequisicion" style="margin-top:16px" onclick="enviarNuevaRequisicion()">${tgIcon("enviar",17)} Enviar requisición</div>
 
   </div>
 
@@ -2698,6 +2713,8 @@ function enviarNuevaRequisicion(){
 
   if(!confirm("¿Enviar esta requisición con " + items.length + " producto(s) a Almacén?")) return;
 
+  activarCargaBoton("btnEnviarRequisicion", true);
+
   google.script.run
     .withSuccessHandler(function(resultado){
       mostrarMensajeTemporal("mensajeRequisicion", "✅ Requisición " + resultado.folio + " enviada", "ok");
@@ -2705,6 +2722,7 @@ function enviarNuevaRequisicion(){
       setTimeout(abrirMisRequisiciones, 900);
     })
     .withFailureHandler(function(e){
+      activarCargaBoton("btnEnviarRequisicion", false);
       mostrarMensajeTemporal("mensajeRequisicion", "⚠️ " + e.message, "error");
     })
     .crearRequisicionApp(observaciones, items, obtenerTokenSesion());
@@ -2712,8 +2730,7 @@ function enviarNuevaRequisicion(){
 }
 
 function dibujarBadgeEstadoRequisicion(estado){
-  const color = estado === "ENTREGADA" ? "var(--oliva)" : "var(--terracota)";
-  return `<span class="badgeEstado" style="background:${color}22;color:${color}">${estado}</span>`;
+  return `<span class="badgeEstado ${estado}">${estado}</span>`;
 }
 
 function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
@@ -2721,7 +2738,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
   const cont = document.getElementById(contenedorId);
 
   if(!lista || !lista.length){
-    cont.innerHTML = "<p style='text-align:center;color:var(--text-muted)'>No hay requisiciones aquí todavía.</p>";
+    cont.innerHTML = tgEmptyState("documento", "No hay requisiciones aquí todavía");
     return;
   }
 
@@ -2738,10 +2755,10 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td>${r.solicitante}</td>
             <td>${r.fecha}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
-            <td style="white-space:nowrap">
-              <span style="cursor:pointer" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">🔍</span>
-              ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">🧰</span>` : ""}
-              ${r.estado === "ENTREGADA" ? `<span style="cursor:pointer" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">📄</span>` : ""}
+            <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
+              <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
+              ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--color-primary)" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">${tgIcon("cajas",15)}</span>` : ""}
+              ${r.estado === "ENTREGADA" ? `<span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">${tgIcon("descargar",15)}</span>` : ""}
             </td>
           </tr>
         `).join("")}
@@ -2758,8 +2775,12 @@ function abrirMisRequisiciones(){
   const contenedor = document.querySelector(".contenedor");
   contenedor.innerHTML = `
     <div class="vista-animada">
-    <h2>📋 Mis Requisiciones</h2>
-    <div class="cardProducto"><div id="listaMisRequisiciones">Cargando...</div></div>
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("documento",20)} Mis Requisiciones</h2>
+    <div class="cardProducto"><div id="listaMisRequisiciones">
+      <div class="skeleton skeletonLinea" style="width:75%"></div>
+      <div class="skeleton skeletonLinea" style="width:60%"></div>
+      <div class="skeleton skeletonLinea" style="width:68%"></div>
+    </div></div>
     </div>
   `;
 
@@ -2777,8 +2798,12 @@ function abrirHistorialRequisicion(){
   const contenedor = document.querySelector(".contenedor");
   contenedor.innerHTML = `
     <div class="vista-animada">
-    <h2>🗂️ Historial de Requisiciones</h2>
-    <div class="cardProducto"><div id="listaHistorialRequisiciones">Cargando...</div></div>
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("reloj",20)} Historial de Requisiciones</h2>
+    <div class="cardProducto"><div id="listaHistorialRequisiciones">
+      <div class="skeleton skeletonLinea" style="width:75%"></div>
+      <div class="skeleton skeletonLinea" style="width:60%"></div>
+      <div class="skeleton skeletonLinea" style="width:68%"></div>
+    </div></div>
     </div>
   `;
 
@@ -2796,9 +2821,13 @@ function abrirRequisicionesPendientes(){
   const contenedor = document.querySelector(".contenedor");
   contenedor.innerHTML = `
     <div class="vista-animada">
-    <h2>🟡 Requisiciones Pendientes</h2>
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("reloj",20)} Requisiciones Pendientes</h2>
     <p style="font-size:12.5px;color:var(--text-muted);margin-top:-8px">Solo visible para Almacén.</p>
-    <div class="cardProducto"><div id="listaRequisicionesPendientes">Cargando...</div></div>
+    <div class="cardProducto"><div id="listaRequisicionesPendientes">
+      <div class="skeleton skeletonLinea" style="width:75%"></div>
+      <div class="skeleton skeletonLinea" style="width:60%"></div>
+      <div class="skeleton skeletonLinea" style="width:68%"></div>
+    </div></div>
     </div>
   `;
 
@@ -2816,9 +2845,13 @@ function abrirEntregasRequisicion(){
   const contenedor = document.querySelector(".contenedor");
   contenedor.innerHTML = `
     <div class="vista-animada">
-    <h2>✅ Entregas Recientes</h2>
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("checkCirculo",20)} Entregas Recientes</h2>
     <p style="font-size:12.5px;color:var(--text-muted);margin-top:-8px">Solo visible para Almacén.</p>
-    <div class="cardProducto"><div id="listaEntregasRequisicion">Cargando...</div></div>
+    <div class="cardProducto"><div id="listaEntregasRequisicion">
+      <div class="skeleton skeletonLinea" style="width:75%"></div>
+      <div class="skeleton skeletonLinea" style="width:60%"></div>
+      <div class="skeleton skeletonLinea" style="width:68%"></div>
+    </div></div>
     </div>
   `;
 
@@ -2836,9 +2869,13 @@ function abrirPreparacionRequisicion(){
   const contenedor = document.querySelector(".contenedor");
   contenedor.innerHTML = `
     <div class="vista-animada">
-    <h2>🧰 Preparación de Requisiciones</h2>
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("cajas",20)} Preparación de Requisiciones</h2>
     <p style="font-size:12.5px;color:var(--text-muted);margin-top:-8px">Elige una requisición pendiente para prepararla.</p>
-    <div class="cardProducto"><div id="listaParaPreparar">Cargando...</div></div>
+    <div class="cardProducto"><div id="listaParaPreparar">
+      <div class="skeleton skeletonLinea" style="width:75%"></div>
+      <div class="skeleton skeletonLinea" style="width:60%"></div>
+      <div class="skeleton skeletonLinea" style="width:68%"></div>
+    </div></div>
     <div id="contenedorPreparacionDetalle"></div>
     </div>
   `;
@@ -3026,7 +3063,7 @@ function cargarPreparacionRequisicionReceta_(folio){
 
           <div id="mensajePreparacionReceta" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
-          <div class="boton" style="margin-top:14px;background:var(--oliva)" onclick="confirmarEntregaRequisicionReceta()">✅ Confirmar Entrega</div>
+          <div class="boton success" id="btnConfirmarEntregaReceta" style="margin-top:14px" onclick="confirmarEntregaRequisicionReceta()">${tgIcon("checkCirculo",17)} Confirmar Entrega</div>
         </div>
       `;
 
@@ -3060,6 +3097,8 @@ function confirmarEntregaRequisicionReceta(){
 
   if(!confirm("¿Confirmar la entrega de insumos para " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.")) return;
 
+  activarCargaBoton("btnConfirmarEntregaReceta", true);
+
   google.script.run
     .withSuccessHandler(function(resultado){
       alert("✅ Entrega confirmada — " + resultado.insumosEntregados + " insumo(s)");
@@ -3067,6 +3106,7 @@ function confirmarEntregaRequisicionReceta(){
       abrirPreparacionRequisicion();
     })
     .withFailureHandler(function(e){
+      activarCargaBoton("btnConfirmarEntregaReceta", false);
       mostrarMensajeTemporal("mensajePreparacionReceta", "⚠️ " + e.message, "error");
     })
     .confirmarEntregaRequisicionRecetaApp(datos.folio, entregas, obtenerTokenSesion());
@@ -3109,7 +3149,7 @@ function cargarPreparacionRequisicionProducto_(folio){
 
           <div id="mensajePreparacion" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
-          <div class="boton" style="margin-top:14px;background:var(--oliva)" onclick="confirmarEntregaRequisicion()">✅ Confirmar Entrega</div>
+          <div class="boton success" id="btnConfirmarEntrega" style="margin-top:14px" onclick="confirmarEntregaRequisicion()">${tgIcon("checkCirculo",17)} Confirmar Entrega</div>
         </div>
       `;
 
@@ -3138,6 +3178,8 @@ function confirmarEntregaRequisicion(){
 
   if(!confirm("¿Confirmar la entrega de " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.")) return;
 
+  activarCargaBoton("btnConfirmarEntrega", true);
+
   google.script.run
     .withSuccessHandler(function(resultado){
       alert("✅ Entrega confirmada — " + resultado.productosEntregados + " producto(s)");
@@ -3145,6 +3187,7 @@ function confirmarEntregaRequisicion(){
       abrirPreparacionRequisicion();
     })
     .withFailureHandler(function(e){
+      activarCargaBoton("btnConfirmarEntrega", false);
       mostrarMensajeTemporal("mensajePreparacion", "⚠️ " + e.message, "error");
     })
     .confirmarEntregaRequisicionApp(datos.folio, entregas, obtenerTokenSesion());
@@ -3232,10 +3275,10 @@ function abrirRecetas(){
 
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
     <div>
-      <h2>📖 Catálogo de Recetas</h2>
+      <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("receta",20)} Catálogo de Recetas</h2>
       <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Consulta y administración de recetas</p>
     </div>
-    <div class="boton" style="width:auto;padding:10px 18px;margin:0" onclick="abrirFormularioReceta()">➕ Nueva Receta</div>
+    <div class="boton" style="width:auto;padding:10px 18px;margin:0" onclick="abrirFormularioReceta()">${tgIcon("mas",17)} Nueva Receta</div>
   </div>
 
   <div class="cardProducto">
@@ -3261,7 +3304,11 @@ function abrirRecetas(){
 
   <div style="display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start" class="layoutRecetas">
     <div class="cardProducto" style="max-height:70vh;overflow:auto">
-      <div id="listaRecetas">Cargando...</div>
+      <div id="listaRecetas">
+        <div class="skeleton skeletonLinea" style="width:80%"></div>
+        <div class="skeleton skeletonLinea" style="width:65%"></div>
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+      </div>
     </div>
     <div class="cardProducto" id="detalleRecetaCont">
       <p style="text-align:center;color:var(--text-muted);padding:30px 0">Selecciona una receta de la lista para ver su detalle.</p>
@@ -3316,18 +3363,18 @@ function filtrarListaRecetas(){
   if(estado) lista = lista.filter(r => r.estado === estado);
 
   if(!lista.length){
-    cont.innerHTML = "<p style='text-align:center;color:var(--text-muted);padding:20px 0'>Sin recetas con estos filtros.</p>";
+    cont.innerHTML = tgEmptyState("receta", "Sin recetas con estos filtros");
     return;
   }
 
   cont.innerHTML = `
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">LISTA DE RECETAS (${lista.length})</p>
     ${lista.map(r => `
-      <div class="itemRecetaLista" onclick="abrirDetalleReceta('${r.nombre.replace(/'/g,"\\'")}')" style="padding:10px 8px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:8px">
-        <div style="font-weight:700;font-size:13.5px">🧪 ${r.nombre}</div>
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted);margin-top:2px">
+      <div class="itemRecetaLista" onclick="abrirDetalleReceta('${r.nombre.replace(/'/g,"\\'")}')" style="padding:10px 8px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:var(--radius-sm)">
+        <div style="font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:6px">${tgIcon("receta",15)} ${r.nombre}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--text-muted);margin-top:4px">
           <span>${r.codigo} · ${r.totalIngredientes} ingr.</span>
-          <span style="color:${r.estado==='ACTIVA'?'var(--oliva)':'var(--terracota)'};font-weight:700">${r.estado}</span>
+          <span class="badgeEstado ${r.estado}">${r.estado}</span>
         </div>
       </div>
     `).join("")}
@@ -3730,6 +3777,327 @@ function toggleGrupo(id){
   if(!submenu){ return; }
   submenu.classList.toggle("abierto");
   if(flecha){ flecha.classList.toggle("rotada"); }
+}
+
+// ===============================
+// PRODUCCIÓN
+// Usa las funciones ya existentes en Produccion.gs (registrarProduccionApp,
+// obtenerLotesProduccionApp, cerrarLoteProduccionApp, obtenerRequisicionListaParaProduccionApp)
+// y obtenerEntregasRecientesApp/buscarProductoApp ya usadas en otras vistas.
+// ===============================
+
+function abrirRegistrarProduccion(){
+
+  marcarActivo("btnRegistrarProduccion");
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("fabrica",20)} Registrar Producción</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">
+      Elige una requisición de receta ya entregada para registrar el lote que se produjo con esos insumos.
+    </p>
+    <div class="cardProducto">
+      <div id="listaEntregadasProduccion">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+        <div class="skeleton skeletonLinea" style="width:60%"></div>
+      </div>
+    </div>
+    <div id="contenedorFormularioProduccion"></div>
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarListaEntregadasProduccion)
+    .withFailureHandler(function(e){
+      document.getElementById("listaEntregadasProduccion").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerEntregasRecientesApp(obtenerTokenSesion());
+
+}
+
+function dibujarListaEntregadasProduccion(lista){
+
+  const cont = document.getElementById("listaEntregadasProduccion");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("fabrica", "No hay requisiciones entregadas todavía");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Folio</th><th>Área</th><th>Solicitante</th><th>Fecha</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(r => `
+          <tr>
+            <td><b>${r.folio}</b></td>
+            <td>${r.area}</td>
+            <td>${r.solicitante}</td>
+            <td>${r.fecha}</td>
+            <td style="white-space:nowrap">
+              <span style="cursor:pointer;color:var(--color-primary);font-weight:600;font-size:12.5px;display:inline-flex;align-items:center;gap:4px" onclick="cargarFormularioProduccion('${r.folio}')">${tgIcon("fabrica",14)} Producir</span>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function cargarFormularioProduccion(folio){
+
+  const cont = document.getElementById("contenedorFormularioProduccion");
+  if(!cont) return;
+
+  cont.innerHTML = `<div class="cardProducto"><div class="skeleton skeletonLinea" style="width:50%"></div></div>`;
+
+  google.script.run
+    .withSuccessHandler(function(requisicion){
+
+      if(!requisicion.recetas || !requisicion.recetas.length){
+        cont.innerHTML = `<div class="cardProducto">${tgEmptyState("alertaTriangulo", "Esta requisición no tiene recetas asociadas (parece ser una requisición de producto, no de receta).")}</div>`;
+        return;
+      }
+
+      window.requisicionProduccionActual = requisicion;
+
+      cont.innerHTML = `
+        <div class="cardProducto vista-animada">
+
+          <p style="font-size:12.5px;color:var(--text-muted)">
+            Requisición <b>${requisicion.folio}</b> — ${requisicion.area} — ${requisicion.solicitante} — ${requisicion.fecha}
+          </p>
+
+          <label>Receta producida</label>
+          <select id="recetaProduccion">
+            ${requisicion.recetas.map(r => `<option value="${r.nombreReceta}">${r.nombreReceta} (pedido: ${formatearCantidadJS(r.cantidadSolicitada)} ${r.udm})</option>`).join("")}
+          </select>
+
+          <div class="filaConEscaner" style="margin-top:14px">
+            <div>
+              <label>Código de producto terminado</label>
+              <input id="codigoProduccion" placeholder="Escanear o escribir código" onchange="buscarProductoTerminadoProduccion()">
+            </div>
+            <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoProduccion')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
+          </div>
+
+          <label>Producto</label>
+          <input id="productoProduccion" readonly>
+
+          <div class="gridFormulario">
+
+            <div class="campo">
+              <label>Cantidad producida</label>
+              <input id="cantidadProduccion" type="number">
+            </div>
+
+            <div class="campo">
+              <label>UDM</label>
+              <input id="udmProduccion">
+            </div>
+
+            <div class="campo">
+              <label>Ubicación</label>
+              <input id="ubicacionProduccion">
+            </div>
+
+            <div class="campo">
+              <label>Fecha de caducidad</label>
+              <input id="caducidadProduccion" type="date">
+            </div>
+
+            <div class="campo campoAncho">
+              <label>Observaciones</label>
+              <input id="observacionesProduccion" placeholder="Opcional">
+            </div>
+
+          </div>
+
+          <div class="boton" id="btnGuardarProduccion" onclick="guardarProduccionDesdeApp()" style="margin-top:16px">${tgIcon("guardar",17)} Registrar Lote de Producción</div>
+
+          <div id="mensajeProduccion" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+        </div>
+      `;
+
+      document.getElementById("codigoProduccion").focus();
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = `<div class="cardProducto">${tgEmptyState("alertaTriangulo", e.message)}</div>`;
+    })
+    .obtenerRequisicionListaParaProduccionApp(folio);
+
+}
+
+function buscarProductoTerminadoProduccion(){
+
+  const codigo = document.getElementById("codigoProduccion").value;
+  if(!codigo){ return; }
+
+  google.script.run
+    .withSuccessHandler(function(producto){
+      if(producto){
+        document.getElementById("productoProduccion").value = producto.producto;
+        document.getElementById("udmProduccion").value = producto.udm;
+        document.getElementById("ubicacionProduccion").value = producto.ubicacion;
+        document.getElementById("cantidadProduccion").focus();
+      } else {
+        mostrarMensajeTemporal("mensajeProduccion", "Producto no encontrado — créalo primero en el catálogo", "error");
+      }
+    })
+    .withFailureHandler(function(e){
+      mostrarMensajeTemporal("mensajeProduccion", "⚠️ " + e.message, "error");
+    })
+    .buscarProductoApp(codigo);
+
+}
+
+function guardarProduccionDesdeApp(){
+
+  const requisicion = window.requisicionProduccionActual;
+
+  const datos = {
+    folioRequisicion: requisicion ? requisicion.folio : "",
+    nombreReceta: document.getElementById("recetaProduccion").value,
+    codigoProducto: document.getElementById("codigoProduccion").value,
+    producto: document.getElementById("productoProduccion").value,
+    cantidadProducida: document.getElementById("cantidadProduccion").value,
+    udm: document.getElementById("udmProduccion").value,
+    ubicacion: document.getElementById("ubicacionProduccion").value,
+    fechaCaducidad: document.getElementById("caducidadProduccion").value,
+    observaciones: document.getElementById("observacionesProduccion").value
+  };
+
+  if(!datos.folioRequisicion || !datos.nombreReceta){
+    mostrarMensajeTemporal("mensajeProduccion", "Selecciona la requisición y la receta", "error");
+    return;
+  }
+
+  if(!datos.codigoProducto || !datos.cantidadProducida){
+    mostrarMensajeTemporal("mensajeProduccion", "Completa el código de producto y la cantidad producida", "error");
+    return;
+  }
+
+  activarCargaBoton("btnGuardarProduccion", true);
+
+  google.script.run
+
+    .withSuccessHandler(function(resultado){
+      mostrarMensajeTemporal("mensajeProduccion", "✅ Lote " + resultado.folio + " registrado — " + resultado.cantidadProducida + " " + datos.udm + " de " + resultado.producto, "ok");
+      activarCargaBoton("btnGuardarProduccion", false);
+      setTimeout(abrirRegistrarProduccion, 1400);
+    })
+
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnGuardarProduccion", false);
+      mostrarMensajeTemporal("mensajeProduccion", "⚠️ " + e.message, "error");
+    })
+
+    .registrarProduccionApp(datos, obtenerTokenSesion());
+
+}
+
+function abrirLotesProduccion(){
+
+  marcarActivo("btnLotesProduccion");
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("paquete",20)} Lotes de Producción</h2>
+
+    <div class="gridFormulario" style="margin-bottom:6px">
+      <div class="campo">
+        <label>Código de producto</label>
+        <input id="filtroCodigoLoteProduccion" placeholder="Filtrar por código" onkeyup="if(event.key==='Enter') filtrarLotesProduccion()">
+      </div>
+      <div class="campo">
+        <label>Estado</label>
+        <select id="filtroEstadoLoteProduccion" onchange="filtrarLotesProduccion()">
+          <option value="">Todos</option>
+          <option value="ACTIVO">Activo</option>
+          <option value="AGOTADO">Agotado</option>
+        </select>
+      </div>
+    </div>
+    <div class="boton secundario" style="max-width:200px" onclick="filtrarLotesProduccion()">${tgIcon("buscar",16)} Filtrar</div>
+
+    <div class="cardProducto" style="max-width:none;margin-top:16px">
+      <table class="tablaActividad">
+        <thead>
+          <tr><th>Lote</th><th>Receta</th><th>Producto</th><th>Producido</th><th>Disponible</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody id="tablaLotesProduccion">${filasSkeleton(7,4)}</tbody>
+      </table>
+    </div>
+
+    </div>
+  `;
+
+  filtrarLotesProduccion();
+
+}
+
+function filtrarLotesProduccion(){
+
+  const filtros = {
+    codigoProducto: document.getElementById("filtroCodigoLoteProduccion").value.trim(),
+    estado: document.getElementById("filtroEstadoLoteProduccion").value
+  };
+
+  google.script.run
+    .withSuccessHandler(dibujarLotesProduccion)
+    .withFailureHandler(function(e){
+      document.getElementById("tablaLotesProduccion").innerHTML = `<tr><td colspan="7">${tgEmptyState("alertaTriangulo", e.message)}</td></tr>`;
+    })
+    .obtenerLotesProduccionApp(filtros);
+
+}
+
+function dibujarLotesProduccion(lista){
+
+  const tbody = document.getElementById("tablaLotesProduccion");
+  if(!tbody) return;
+
+  if(!lista || !lista.length){
+    tbody.innerHTML = `<tr><td colspan="7">${tgEmptyState("fabrica", "Sin lotes de producción registrados")}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = lista.map(l => `
+    <tr>
+      <td><b>${l.folio}</b><br><span style="font-size:10.5px;color:var(--text-muted)">${l.fechaElaboracion}${l.fechaCaducidad ? " · caduca " + l.fechaCaducidad : ""}</span></td>
+      <td>${l.receta}</td>
+      <td>${l.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${l.codigoProducto}</span></td>
+      <td class="num">${formatearCantidadJS(l.cantidadProducida)} ${l.udm}</td>
+      <td class="num">${formatearCantidadJS(l.cantidadDisponible)} ${l.udm}</td>
+      <td><span class="badgeEstado ${l.estado}">${l.estado}</span></td>
+      <td style="white-space:nowrap">
+        ${l.estado === "ACTIVO" ? `<span style="cursor:pointer;color:var(--color-danger);font-weight:600;font-size:12px" onclick="cerrarLoteDesdeApp('${l.folio}')">${tgIcon("xCirculo",14)} Cerrar</span>` : ""}
+      </td>
+    </tr>
+  `).join("");
+
+}
+
+function cerrarLoteDesdeApp(folio){
+
+  if(!confirm("¿Cerrar el lote " + folio + "? Quedará marcado como AGOTADO y su cantidad disponible en 0. No se puede deshacer.")){
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(){
+      filtrarLotesProduccion();
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .cerrarLoteProduccionApp(folio, obtenerTokenSesion());
+
 }
 
 // ===============================
@@ -8810,6 +9178,16 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnPreparacionRequisicion" onclick="abrirPreparacionRequisicion()" title="Preparación"><span class="icono">🧰</span><span class="textoMenu">Preparación</span></button>
     <button class="menuLateralBtn sub" id="btnEntregasRequisicion" onclick="abrirEntregasRequisicion()" title="Entregas"><span class="icono">✅</span><span class="textoMenu">Entregas</span></button>
     <button class="menuLateralBtn sub" id="btnHistorialRequisicion" onclick="abrirHistorialRequisicion()" title="Historial"><span class="icono">🗂️</span><span class="textoMenu">Historial</span></button>
+  </div>
+</div>
+
+<div class="grupoMenu">
+  <button class="menuLateralBtn grupoBtn" data-icono="fabrica" onclick="toggleGrupo('grupoProduccion')" title="Producción">
+  <span class="icono">🏭</span><span class="textoMenu">Producción</span> <span class="flechaGrupo" id="flecha-grupoProduccion">▸</span>
+  </button>
+  <div class="submenu" id="grupoProduccion">
+    <button class="menuLateralBtn sub" id="btnRegistrarProduccion" onclick="abrirRegistrarProduccion()" title="Registrar producción"><span class="icono">🏭</span><span class="textoMenu">Registrar producción</span></button>
+    <button class="menuLateralBtn sub" id="btnLotesProduccion" onclick="abrirLotesProduccion()" title="Lotes de producción"><span class="icono">📦</span><span class="textoMenu">Lotes de producción</span></button>
   </div>
 </div>
 
