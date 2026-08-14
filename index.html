@@ -906,7 +906,9 @@ display:inline-block;
 .badgeEstado.ENTREGADO,
 .badgeEstado.ENTREGADA,
 .badgeEstado.RECIBIDO,
-.badgeEstado.RECIBIDA{ background:var(--color-success-bg); color:var(--color-success); }
+.badgeEstado.RECIBIDA,
+.badgeEstado.CERRADO,
+.badgeEstado.CERRADA{ background:var(--color-success-bg); color:var(--color-success); }
 
 .badgeEstado.INACTIVO,
 .badgeEstado.INACTIVA,
@@ -921,6 +923,8 @@ display:inline-block;
 .badgeEstado.PENDIENTE,
 .badgeEstado.BAJO_MINIMO,
 .badgeEstado.PARCIAL,
+.badgeEstado.ABIERTO,
+.badgeEstado.ABIERTA,
 .badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
 
 .tablaImportar{
@@ -5426,13 +5430,13 @@ function abrirGenerarInventarioMensual(){
 
   <div class="vista-animada">
 
-  <h2>📋 Generar Inventario Mensual</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("calendario",20)} Generar Inventario Mensual</h2>
 
   <div class="cardProducto">
     <p style="font-size:13px;color:var(--text-soft)">
       Se copiará la existencia teórica de TODOS los productos con ubicación asignada en MATRIZ, para que puedas capturar la existencia física de cada uno.
     </p>
-    <div class="boton" id="btnGenerarInventarioMensualAccion" onclick="ejecutarGenerarInventarioMensual()">📋 Generar Inventario Mensual</div>
+    <div class="boton" id="btnGenerarInventarioMensualAccion" onclick="ejecutarGenerarInventarioMensual()">${tgIcon("documento",17)} Generar Inventario Mensual</div>
     <div id="mensajeGenerarInventario" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
   </div>
 
@@ -5446,19 +5450,18 @@ function ejecutarGenerarInventarioMensual(){
 
   if(!confirm("¿Generar un nuevo inventario mensual? Se copiará la existencia teórica de todos los productos con ubicación.")) return;
 
-  const btn = document.getElementById("btnGenerarInventarioMensualAccion");
-  if(btn){ btn.style.pointerEvents = "none"; btn.innerText = "Generando..."; }
+  activarCargaBoton("btnGenerarInventarioMensualAccion", true);
 
   google.script.run
 
   .withSuccessHandler(function(resultado){
     mostrarMensajeTemporal("mensajeGenerarInventario", "✅ Inventario " + resultado.folio + " generado — " + resultado.productos + " producto(s)", "ok");
-    if(btn){ btn.style.pointerEvents = "auto"; btn.innerText = "📋 Generar Inventario Mensual"; }
+    activarCargaBoton("btnGenerarInventarioMensualAccion", false);
   })
 
   .withFailureHandler(function(e){
     mostrarMensajeTemporal("mensajeGenerarInventario", "⚠️ " + e.message, "error");
-    if(btn){ btn.style.pointerEvents = "auto"; btn.innerText = "📋 Generar Inventario Mensual"; }
+    activarCargaBoton("btnGenerarInventarioMensualAccion", false);
   })
 
   .generarInventarioMensualApp(obtenerTokenSesion());
@@ -5475,7 +5478,7 @@ function abrirCapturarInventarioMensual(){
 
   <div class="vista-animada">
 
-  <h2>📷 Capturar Inventario Mensual</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("camara",20)} Capturar Inventario Mensual</h2>
 
   <div class="cardProducto">
 
@@ -5498,7 +5501,7 @@ function abrirCapturarInventarioMensual(){
   <input id="nombreInventarioMensual" placeholder="Escribe el nombre del producto..." oninput="buscarNombreParaInventarioMensual()" autocomplete="off">
   <div id="resultadosNombreInventarioMensual" style="display:none;position:relative;z-index:15;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow:auto"></div>
 
-  <div class="boton" onclick="cargarSiguientePendienteInventarioMensual()" style="background:var(--oliva)">⏭️ Siguiente pendiente</div>
+  <div class="boton success" onclick="cargarSiguientePendienteInventarioMensual()">${tgIcon("chevronDerecha",17)} Siguiente pendiente</div>
 
   <div id="mensajeInventarioMensual" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -5690,7 +5693,7 @@ function mostrarDetalleInventarioMensual(item){
   <label>Cantidad física contada</label>
   <input id="fisicoInventarioMensual" type="number" value="${item.fisico !== "" ? item.fisico : ""}">
 
-  <div class="boton" onclick="guardarFisicoInventarioMensual()">💾 Guardar Conteo</div>
+  <div class="boton" id="btnGuardarInventarioMensual" onclick="guardarFisicoInventarioMensual()">${tgIcon("guardar",17)} Guardar Conteo</div>
 
   `;
 
@@ -5707,6 +5710,8 @@ function guardarFisicoInventarioMensual(){
     return;
   }
 
+  activarCargaBoton("btnGuardarInventarioMensual", true);
+
   google.script.run
 
   .withSuccessHandler(function(){
@@ -5718,6 +5723,7 @@ function guardarFisicoInventarioMensual(){
   })
 
   .withFailureHandler(function(e){
+    activarCargaBoton("btnGuardarInventarioMensual", false);
     mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
   })
 
@@ -5735,7 +5741,7 @@ function abrirRevisarDiferenciasMensual(){
 
   <div class="vista-animada">
 
-  <h2>🔎 Diferencias del Inventario Mensual</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("buscar",20)} Diferencias del Inventario Mensual</h2>
 
   <div class="cardProducto">
 
@@ -5749,9 +5755,9 @@ function abrirRevisarDiferenciasMensual(){
     <label>Buscar producto</label>
     <input id="filtroProductoDiferencias" placeholder="Nombre o código..." oninput="pintarDiferenciasInventarioMensual()">
 
-    <div class="boton" style="background:var(--oliva)" onclick="aprobarTodasDiferenciasInventarioMensual()">✅ Aprobar todas las que se muestran abajo</div>
+    <div class="boton success" onclick="aprobarTodasDiferenciasInventarioMensual()">${tgIcon("checkCirculo",17)} Aprobar todas las que se muestran abajo</div>
 
-    <div id="listaDiferenciasInventarioMensual" style="margin-top:14px">Selecciona un inventario</div>
+    <div id="listaDiferenciasInventarioMensual" style="margin-top:14px">${tgEmptyState("buscar","Selecciona un inventario")}</div>
 
   </div>
 
@@ -5780,7 +5786,10 @@ function cargarDiferenciasInventarioMensual(){
   const cont = document.getElementById("listaDiferenciasInventarioMensual");
   if(!folio){ cont.innerHTML = ""; return; }
 
-  cont.innerHTML = "Cargando...";
+  cont.innerHTML = `
+    <div class="skeletonCard" style="margin-bottom:10px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>
+    <div class="skeletonCard"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:60%"></div></div>
+  `;
 
   google.script.run
     .withSuccessHandler(function(lista){
@@ -5808,7 +5817,7 @@ function pintarDiferenciasInventarioMensual(){
   if(producto) lista = lista.filter(d => String(d.producto||"").toUpperCase().includes(producto) || String(d.codigo||"").toUpperCase().includes(producto));
 
   if(!lista.length){
-    cont.innerHTML = "<p style='text-align:center;color:var(--text-muted)'>Sin diferencias con estos filtros 🎉</p>";
+    cont.innerHTML = tgEmptyState("checkCirculo", "Sin diferencias con estos filtros");
     window.diferenciasFiltradasActuales = [];
     return;
   }
@@ -5822,15 +5831,15 @@ function pintarDiferenciasInventarioMensual(){
       <div class="nombreProducto">${d.producto}</div>
       <div class="infoProducto"><span class="codigo">Código: ${d.codigo}</span> · ${d.categoria||"Sin categoría"}</div>
       <div class="stock" style="color:${color}">Teórica: ${d.existencia} — Física: ${d.fisico} — Dif: ${Number(d.diferencia)>0?"+":""}${d.diferencia}</div>
-      <div class="ubicacion">📍 ${d.ubicacion}</div>
+      <div class="ubicacion">${tgIcon("ubicacion",13)} ${d.ubicacion}</div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <input id="comentarioDif-${d.fila}" placeholder="Comentario (opcional)" style="flex:1;margin:0">
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         ${d.estado === "APROBADO"
-          ? `<div style="flex:1;text-align:center;color:var(--oliva);font-weight:700;padding:8px">✅ Aprobada</div>`
-          : `<div class="boton" style="flex:1;margin:0" onclick="aprobarDiferenciaInventarioMensual(${d.fila})">✅ Aprobar</div>`}
-        <div class="boton" style="flex:1;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="editarConteoInventarioMensual(${d.fila})">✏️ Editar conteo</div>
+          ? `<div style="flex:1;text-align:center;color:var(--color-success);font-weight:700;padding:8px;display:flex;align-items:center;justify-content:center;gap:6px">${tgIcon("checkCirculo",16)} Aprobada</div>`
+          : `<div class="boton success" style="flex:1;margin:0" onclick="aprobarDiferenciaInventarioMensual(${d.fila})">${tgIcon("checkCirculo",16)} Aprobar</div>`}
+        <div class="boton secundario" style="flex:1;margin:0" onclick="editarConteoInventarioMensual(${d.fila})">${tgIcon("editar",15)} Editar conteo</div>
       </div>
     </div>
     `;
@@ -5896,7 +5905,7 @@ function abrirCerrarInventarioMensual(){
 
   <div class="vista-animada">
 
-  <h2>📚 Cerrar Inventario Mensual</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("recibo",20)} Cerrar Inventario Mensual</h2>
 
   <div class="cardProducto">
 
@@ -5910,7 +5919,7 @@ function abrirCerrarInventarioMensual(){
     Al cerrar: se actualiza la existencia en MATRIZ con lo contado, se registra en Kardex y Auditoría, y se genera el PDF del inventario.
   </p>
 
-  <div class="boton" id="btnCerrarInventarioAccion" onclick="cerrarInventarioMensualDesdeApp()">📚 Cerrar y Guardar Historial</div>
+  <div class="boton" id="btnCerrarInventarioAccion" onclick="cerrarInventarioMensualDesdeApp()">${tgIcon("recibo",17)} Cerrar y Guardar Historial</div>
 
   <div id="mensajeCerrarInventario" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -5948,15 +5957,14 @@ function cerrarInventarioMensualDesdeApp(){
 
   if(!confirm("¿Cerrar el inventario " + folio + "? Esta acción actualiza MATRIZ y no se puede deshacer.")) return;
 
-  const btn = document.getElementById("btnCerrarInventarioAccion");
-  if(btn){ btn.style.pointerEvents = "none"; btn.innerText = "Cerrando..."; }
+  activarCargaBoton("btnCerrarInventarioAccion", true);
 
   google.script.run
 
   .withSuccessHandler(function(resultado){
 
     mostrarMensajeTemporal("mensajeCerrarInventario", "✅ Inventario cerrado correctamente", "ok");
-    if(btn){ btn.style.pointerEvents = "auto"; btn.innerText = "📚 Cerrar y Guardar Historial"; }
+    activarCargaBoton("btnCerrarInventarioAccion", false);
 
     document.getElementById("resumenCierreInventario").innerHTML = `
       <div class="cardProducto">
@@ -5964,7 +5972,7 @@ function cerrarInventarioMensualDesdeApp(){
         <p>Con diferencia: <b>${resultado.productosConDiferencia}</b></p>
         <p>Exactitud: <b>${resultado.exactitud}%</b></p>
         <p>Valor ajustado: <b>$${Number(resultado.valorAjustado).toLocaleString("es-MX",{minimumFractionDigits:2})}</b></p>
-        <div class="boton" style="margin-top:10px" onclick="window.open('${resultado.pdf.verUrl}','_blank')">👁️ Ver PDF del inventario</div>
+        <div class="boton" style="margin-top:10px" onclick="window.open('${resultado.pdf.verUrl}','_blank')">${tgIcon("documento",16)} Ver PDF del inventario</div>
       </div>
     `;
 
@@ -5972,7 +5980,7 @@ function cerrarInventarioMensualDesdeApp(){
 
   .withFailureHandler(function(e){
     mostrarMensajeTemporal("mensajeCerrarInventario", "⚠️ " + e.message, "error");
-    if(btn){ btn.style.pointerEvents = "auto"; btn.innerText = "📚 Cerrar y Guardar Historial"; }
+    activarCargaBoton("btnCerrarInventarioAccion", false);
   })
 
   .cerrarInventarioMensualApp(folio, supervisor, obtenerTokenSesion());
@@ -5989,10 +5997,14 @@ function abrirHistorialInventarioMensual(){
 
   <div class="vista-animada">
 
-  <h2>🗂️ Historial de Inventarios Mensuales</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("reloj",20)} Historial de Inventarios Mensuales</h2>
 
   <div class="cardProducto">
-    <div id="listaHistorialInventarios" style="overflow:auto;max-height:65vh">Cargando...</div>
+    <div id="listaHistorialInventarios" style="overflow:auto;max-height:65vh">
+      <div class="skeleton skeletonLinea" style="width:80%"></div>
+      <div class="skeleton skeletonLinea" style="width:65%"></div>
+      <div class="skeleton skeletonLinea" style="width:70%"></div>
+    </div>
   </div>
 
   </div>
@@ -6004,7 +6016,7 @@ function abrirHistorialInventarioMensual(){
 
       const cont = document.getElementById("listaHistorialInventarios");
       if(!lista || !lista.length){
-        cont.innerHTML = "<p style='text-align:center;color:var(--text-muted)'>Todavía no hay inventarios mensuales.</p>";
+        cont.innerHTML = tgEmptyState("calendario", "Todavía no hay inventarios mensuales");
         return;
       }
 
@@ -6022,16 +6034,16 @@ function abrirHistorialInventarioMensual(){
                 <td>${f.fechaInicio||""}</td>
                 <td>${f.fechaCierre||"—"}</td>
                 <td>${f.responsable||""}</td>
-                <td><span class="badgeEstado" style="background:${f.estado==='CERRADO'?'#5C6B2A22':'#C4522A22'};color:${f.estado==='CERRADO'?'#5C6B2A':'#C4522A'}">${f.estado}</span></td>
+                <td><span class="badgeEstado ${f.estado}">${f.estado}</span></td>
                 <td style="text-align:right">${f.productosContados}</td>
                 <td style="text-align:right">${f.productosConDiferencia}</td>
                 <td style="text-align:right">${f.exactitud}%</td>
                 <td style="text-align:right">$${Number(f.valorAjustado).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
-                <td style="white-space:nowrap">
-                  <span style="cursor:pointer" title="Ver detalle" onclick="verDetalleInventarioMensual('${f.folio}')">🔍</span>
-                  ${f.estado==='CERRADO' ? `<span style="cursor:pointer" title="Ver PDF (resumen y diferencias)" onclick="verPDFInventarioMensual('${f.folio}')">👁️</span>
-                  <span style="cursor:pointer" title="Descargar inventario completo en PDF" onclick="descargarPDFCompletoInventarioMensual('${f.folio}')">📄</span>
-                  <span style="cursor:pointer" title="Exportar Excel" onclick="exportarExcelInventarioMensual('${f.folio}')">⬇️</span>` : ""}
+                <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
+                  <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleInventarioMensual('${f.folio}')">${tgIcon("buscar",15)}</span>
+                  ${f.estado==='CERRADO' ? `<span style="cursor:pointer;color:var(--text-muted)" title="Ver PDF (resumen y diferencias)" onclick="verPDFInventarioMensual('${f.folio}')">${tgIcon("documento",15)}</span>
+                  <span style="cursor:pointer;color:var(--text-muted)" title="Descargar inventario completo en PDF" onclick="descargarPDFCompletoInventarioMensual('${f.folio}')">${tgIcon("descargar",15)}</span>
+                  <span style="cursor:pointer;color:var(--text-muted)" title="Exportar Excel" onclick="exportarExcelInventarioMensual('${f.folio}')">${tgIcon("cajas",15)}</span>` : ""}
                 </td>
               </tr>
             `).join("")}
@@ -6041,7 +6053,7 @@ function abrirHistorialInventarioMensual(){
 
     })
     .withFailureHandler(function(e){
-      document.getElementById("listaHistorialInventarios").innerHTML = "⚠️ " + e.message;
+      document.getElementById("listaHistorialInventarios").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
     .obtenerHistorialInventariosApp();
 
@@ -6148,9 +6160,9 @@ function abrirDashboardInventarioMensual(){
 
   <div class="vista-animada">
 
-  <h2>📊 Dashboard de Inventario Mensual</h2>
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("tendenciaSube",20)} Dashboard de Inventario Mensual</h2>
 
-  <div id="kpisDashboardInventario" class="cardProducto" style="text-align:center;padding:40px">Cargando...</div>
+  <div id="kpisDashboardInventario" class="cardProducto" style="text-align:center;padding:40px"><div class="spinnerCentro"><div class="spinner"></div></div></div>
 
   <div class="cardProducto">
     <h3>Exactitud por mes</h3>
@@ -6172,7 +6184,7 @@ function abrirDashboardInventarioMensual(){
       const kpisCont = document.getElementById("kpisDashboardInventario");
 
       if(!datos.hayDatos){
-        kpisCont.innerHTML = "<p style='color:var(--text-muted)'>Todavía no hay inventarios cerrados para mostrar el dashboard.</p>";
+        kpisCont.innerHTML = tgEmptyState("calendario", "Todavía no hay inventarios cerrados para mostrar el dashboard");
         return;
       }
 
@@ -6208,7 +6220,7 @@ function abrirDashboardInventarioMensual(){
 
     })
     .withFailureHandler(function(e){
-      document.getElementById("kpisDashboardInventario").innerHTML = "⚠️ " + e.message;
+      document.getElementById("kpisDashboardInventario").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
     .obtenerDashboardInventarioMensualApp();
 
