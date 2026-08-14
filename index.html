@@ -1945,7 +1945,19 @@ border-radius:var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .modalDetalleCaja{
-padding:20px;
+padding:16px;
+}
+
+.modalListaHead{
+padding:14px 16px 10px;
+}
+
+.modalListaBuscar{
+padding:10px 16px;
+}
+
+.modalListaBody{
+padding:6px 16px 16px;
 }
 
 /* El panel de notificaciones tiene un ancho fijo (320px) pensado para
@@ -1995,21 +2007,23 @@ width:100%;
 display:block;
 border:1px solid var(--border);
 border-radius:var(--radius-md);
-margin-bottom:10px;
-padding:4px 12px;
+margin-bottom:6px;
+padding:0 12px;
 background:var(--bg-panel);
 box-shadow:var(--shadow-sm);
+font-size:12.5px;
 }
 
 .tablaTop td, .tablaActividad td, .tablaImportar td{
 display:flex;
 align-items:center;
 justify-content:space-between;
-gap:14px;
-padding:8px 0;
+gap:10px;
+padding:5px 0;
 border-bottom:1px solid var(--border);
 text-align:right;
 white-space:normal;
+line-height:1.25;
 }
 
 .tablaTop td:last-child, .tablaActividad td:last-child, .tablaImportar td:last-child{
@@ -2019,7 +2033,7 @@ border-bottom:none;
 .tablaTop td::before, .tablaActividad td::before, .tablaImportar td::before{
 content:attr(data-label);
 font-weight:700;
-font-size:11px;
+font-size:10px;
 text-transform:uppercase;
 letter-spacing:.3px;
 color:var(--text-muted);
