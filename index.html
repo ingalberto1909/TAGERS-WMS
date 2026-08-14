@@ -4390,7 +4390,7 @@ function cargarFormularioProduccion(folio){
           </p>
 
           <label>Receta producida</label>
-          <select id="recetaProduccion">
+          <select id="recetaProduccion" onchange="autocompletarProductoTerminadoProduccion()">
             ${requisicion.recetas.map(r => `<option value="${r.nombreReceta}">${r.nombreReceta} (pedido: ${formatearCantidadJS(r.cantidadSolicitada)} ${r.udm})</option>`).join("")}
           </select>
 
@@ -4441,7 +4441,7 @@ function cargarFormularioProduccion(folio){
         </div>
       `;
 
-      document.getElementById("codigoProduccion").focus();
+      autocompletarProductoTerminadoProduccion();
 
     })
     .withFailureHandler(function(e){
@@ -4471,6 +4471,48 @@ function buscarProductoTerminadoProduccion(){
       mostrarMensajeTemporal("mensajeProduccion", "⚠️ " + e.message, "error");
     })
     .buscarProductoApp(codigo);
+
+}
+
+// Al elegir (o cargar por primera vez) una receta en el formulario de
+// Registrar Producción, busca si esa receta ya se produjo antes y, si
+// sí, rellena código/producto/UDM/ubicación solas — así solo queda
+// capturar cantidad, caducidad y observaciones. Si la receta nunca se
+// produjo (o el código guardado ya no existe en MATRIZ), deja los campos
+// vacíos para escanear/escribir el código como siempre.
+function autocompletarProductoTerminadoProduccion(){
+
+  const selectReceta = document.getElementById("recetaProduccion");
+  const nombreReceta = selectReceta ? selectReceta.value : "";
+
+  document.getElementById("codigoProduccion").value = "";
+  document.getElementById("productoProduccion").value = "";
+  document.getElementById("udmProduccion").value = "";
+  document.getElementById("ubicacionProduccion").value = "";
+
+  if(!nombreReceta){
+    document.getElementById("codigoProduccion").focus();
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(vinculo){
+      if(vinculo){
+        document.getElementById("codigoProduccion").value = vinculo.codigoProducto;
+        document.getElementById("productoProduccion").value = vinculo.producto;
+        document.getElementById("udmProduccion").value = vinculo.udm;
+        document.getElementById("ubicacionProduccion").value = vinculo.ubicacion;
+        document.getElementById("cantidadProduccion").focus();
+      } else {
+        document.getElementById("codigoProduccion").focus();
+      }
+    })
+    .withFailureHandler(function(){
+      // No bloquea nada: si falla la búsqueda automática, el usuario
+      // sigue pudiendo escanear/escribir el código a mano, igual que antes.
+      document.getElementById("codigoProduccion").focus();
+    })
+    .obtenerUltimoProductoTerminadoPorRecetaApp(nombreReceta);
 
 }
 
