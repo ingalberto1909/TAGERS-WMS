@@ -539,15 +539,21 @@ function analizarImportacionSalidasApp(items){
 
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
-  const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow() - 1, 17).getValues();
+  const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow() - 1, 20).getValues();
 
   const catalogo = datosMatriz.map(f => {
-    const info = extraerNombreYPresentacion_(f[0]);
+    // La Presentación real de cada producto vive en la columna T de MATRIZ
+    // (f[19], la misma que usan Órdenes de Compra y la valorización de
+    // inventario) — NO se parsea del nombre, porque el catálogo no trae
+    // el tamaño escrito en el texto (a diferencia del renglón del
+    // documento importado, que sí se sigue analizando con
+    // extraerNombreYPresentacion_ más abajo).
+    const presentacionNumero = Number(f[19]) > 0 ? Number(f[19]) : null;
     return {
-      nombre: info.nombre,
-      presentacionNumero: info.presentacionNumero,
-      presentacionUDM: info.presentacionUDM,
-      presentacionTexto: info.presentacionTexto,
+      nombre: normalizarTexto_(f[0]),
+      presentacionNumero: presentacionNumero,
+      presentacionUDM: presentacionNumero !== null ? normalizarUDM_(f[1]) : "",
+      presentacionTexto: presentacionNumero !== null ? (formatearCantidad_(presentacionNumero) + " " + (f[1]||"")) : "",
       producto: f[0],
       codigo: f[4],
       existencia: Number(f[10]) || 0,
@@ -864,7 +870,8 @@ function buscarProductoApp(codigo){
         producto: datos[i][0],
         udm: datos[i][1],
         ubicacion: datos[i][9],
-        existencia: datos[i][10]
+        existencia: datos[i][10],
+        presentacion: datos[i][19]
       };
     }
   }
@@ -876,9 +883,9 @@ function buscarProductoApp(codigo){
  * Recalcula una fila de importación cuando el usuario asigna el
  * código manualmente (filas SIN_COINCIDENCIA o STOCK_INSUFICIENTE).
  * Aplica la MISMA lógica de presentación que el matching automático de
- * analizarImportacionSalidasApp — el factor de conversión sale del
- * nombre del producto ya identificado en MATRIZ, nunca de un número
- * suelto tomado del documento.
+ * analizarImportacionSalidasApp — el factor de conversión sale de la
+ * columna Presentación de MATRIZ (columna T) del producto ya
+ * identificado, nunca de un número suelto tomado del documento.
  */
 function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
 
@@ -886,8 +893,9 @@ function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
   if(!producto) return null;
 
   const cantidad = Number(cantidadPedida) || 0;
-  const info = extraerNombreYPresentacion_(producto.producto);
-  const factor = info.presentacionNumero !== null ? info.presentacionNumero : 1;
+  const presentacionNumero = Number(producto.presentacion) > 0 ? Number(producto.presentacion) : null;
+  const presentacionTexto = presentacionNumero !== null ? (formatearCantidad_(presentacionNumero) + " " + (producto.udm||"")) : "";
+  const factor = presentacionNumero !== null ? presentacionNumero : 1;
   const cantidadADescontar = Math.round(cantidad * factor * 1000) / 1000;
 
   let estado = "OK";
@@ -907,7 +915,7 @@ function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
     existenciaResultante: (estado === "OK") ? Math.round((producto.existencia - cantidadADescontar) * 1000) / 1000 : "",
     udm: producto.udm,
     ubicacion: producto.ubicacion,
-    presentacionTexto: info.presentacionTexto || "—",
+    presentacionTexto: presentacionTexto || "—",
     factorPresentacion: factor,
     cantidadADescontar: cantidadADescontar,
     score: 1,
