@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <base target="_top">
 
 <meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -107,8 +108,8 @@ html,body{
 
 .brandTop{
   position:fixed;
-  top:28px;
-  left:32px;
+  top:calc(28px + env(safe-area-inset-top));
+  left:calc(32px + env(safe-area-inset-left));
   z-index:5;
   color:#fff;
   display:flex;
@@ -193,6 +194,10 @@ html,body{
   align-items:center;
   justify-content:center;
   padding:24px;
+  padding-top:calc(24px + env(safe-area-inset-top));
+  padding-bottom:calc(24px + env(safe-area-inset-bottom));
+  padding-left:calc(24px + env(safe-area-inset-left));
+  padding-right:calc(24px + env(safe-area-inset-right));
 }
 
 .tarjetaLogin{
@@ -247,7 +252,7 @@ input{
   border:1.5px solid rgba(255,255,255,.2);
   background:rgba(255,255,255,.08);
   color:#fff;
-  font-size:14.5px;
+  font-size:16px;
   outline:none;
   transition:border .15s ease, background .15s ease;
 }
@@ -261,18 +266,25 @@ input:focus{
 
 .togglePass{
   position:absolute;
-  right:14px;
-  top:39px;
+  right:4px;
+  top:29px;
   cursor:pointer;
   font-size:16px;
   opacity:.7;
   user-select:none;
+  padding:11px;
+  min-width:40px;
+  min-height:40px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
 button{
   width:100%;
   margin-top:26px;
   padding:14px;
+  min-height:48px;
   border-radius:12px;
   border:0;
   background:linear-gradient(135deg, var(--terracota), #a8431f);
