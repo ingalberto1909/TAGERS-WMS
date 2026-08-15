@@ -136,6 +136,7 @@ function registrarEntradaInterna_(datos, usuario, folioPersonalizado, observacio
 }
 
 function guardarEntradaApp(datos){
+  requerirAccesoOperacionesApp_(datos.token);
   return registrarEntradaInterna_(datos, obtenerNombreDesdeToken(datos.token));
 }
 
@@ -235,6 +236,7 @@ function registrarSalidaInterna_(datos, usuario){
 }
 
 function registrarSalidaApp(datos){
+  requerirAccesoOperacionesApp_(datos.token);
   return registrarSalidaInterna_(datos, obtenerNombreDesdeToken(datos.token));
 }
 
@@ -659,6 +661,8 @@ function analizarImportacionSalidasApp(items){
  * (fase 8).
  */
 function registrarSalidasImportadasApp(filas, token, nombreArchivo){
+
+  requerirAccesoOperacionesApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const folioLote = "IMP-" + new Date().getTime();
@@ -2903,7 +2907,9 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
  * de 1000 pz), después de correr esto queda en $0.30 (precio por pz).
  * Los productos con Convertir="NO" no se tocan (ya estaban correctos).
  */
-function migrarCostoUnitarioAPorUnidadApp(){
+function migrarCostoUnitarioAPorUnidadApp(token){
+
+  requerirNoConsultaApp_(token);
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(matriz.getLastRow() < 2) return { filas: 0, migrados: 0 };
@@ -2934,7 +2940,9 @@ function migrarCostoUnitarioAPorUnidadApp(){
 
 }
 
-function congelarFormulasExistenciaMatrizApp(){
+function congelarFormulasExistenciaMatrizApp(token){
+
+  requerirNoConsultaApp_(token);
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(matriz.getLastRow() < 2) return { filas: 0 };
@@ -4169,8 +4177,40 @@ function requerirAccesoAlmacenApp_(token){
   if(!obtenerSesion_(token)){
     throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
   }
+  const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
+  if(rol === "SUPERVISOR") return;
   const acceso = obtenerAccesoRequisicionesApp(token);
   if(!acceso.esAdmin){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+}
+
+/**
+ * Bloquea únicamente al rol CONSULTA. Se usa en funciones administrativas
+ * (migraciones/ajustes de Configuración) que antes no validaban nada —
+ * cualquier rol no listado explícitamente conserva su acceso actual.
+ */
+function requerirNoConsultaApp_(token){
+  if(!obtenerSesion_(token)){
+    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
+  }
+  const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
+  if(rol === "CONSULTA"){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+}
+
+/**
+ * Bloquea a SUPERVISOR y CONSULTA de las funciones de Operaciones
+ * (Entradas, Salidas, Importar Salidas). El resto de roles conserva su
+ * acceso actual.
+ */
+function requerirAccesoOperacionesApp_(token){
+  if(!obtenerSesion_(token)){
+    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
+  }
+  const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
+  if(rol === "SUPERVISOR" || rol === "CONSULTA"){
     throw new Error("No tienes permiso para realizar esta acción.");
   }
 }

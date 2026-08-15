@@ -2756,30 +2756,46 @@ function cerrarSesionTAGERS(){
 const PERMISOS_ROL = {
   "ADMIN": null, // null = ve todo, sin restricciones
   "SUPERVISOR": [
-    "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas","btnAjustes",
+    // Ya NO incluye Operaciones (btnEntradas/btnSalidas/btnImportarSalidas/
+    // btnAjustes) — a partir de ahora exclusivo de ADMIN/OPERADOR. Se agregó
+    // acceso completo a Compras e Inventario mensual.
+    "btnInicio",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion",
+    "btnCentroReabastecimiento","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
+    "btnAnalisisCostos","btnAnalisisCompras","btnProveedores",
+    "btnGenerarInventarioMensual","btnCapturarInventarioMensual","btnRevisarDiferenciasMensual",
+    "btnCerrarInventarioMensual","btnHistorialInventarioMensual","btnDashboardInventarioMensual",
+    // Ya se veían para este rol antes de que estos 3 botones tuvieran id
+    // (aplicarPermisosPorRol no podía ocultarlos) — se agregan aquí para
+    // que sigan viéndose exactamente igual que hoy, sin ganar ni perder nada.
+    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
   ],
   "OPERADOR": [
     "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnCapturarConteo","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion",
+    // Mismo motivo que en SUPERVISOR: ya se veían, se preservan tal cual.
+    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
   ],
   "CONSULTA": [
     // Solo lectura: ve inicio, inventario, kardex, mapa y ubicaciones.
     // NO tiene entradas, salidas, ajustes, ni ninguna pantalla de conteo cíclico.
+    // NO tiene Configuración (btnConfig...) ni Compras/Inventario mensual.
     // Sí puede crear/ver SUS PROPIAS requisiciones (Panadería/Cocina/Repostería) —
     // las 3 pantallas exclusivas de Almacén se ocultan aparte, por Área real,
     // no por rol (ver aplicarAccesoRequisicionesMenu()).
     // Recetas: puede consultar/buscar (crear/editar se oculta aparte, por rol real).
+    // Producción: acceso completo, igual que cualquier otro módulo permitido.
     "btnInicio","btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion",
+    "btnRegistrarProduccion","btnLotesProduccion"
   ]
 };
 
@@ -2833,7 +2849,7 @@ function ejecutarMigracionExistencia(){
     .withFailureHandler(function(e){
       alert("⚠️ " + e.message);
     })
-    .congelarFormulasExistenciaMatrizApp();
+    .congelarFormulasExistenciaMatrizApp(obtenerTokenSesion());
 
 }
 
@@ -2856,7 +2872,7 @@ function ejecutarMigracionCostoUnitario(){
     .withFailureHandler(function(e){
       alert("⚠️ " + e.message);
     })
-    .migrarCostoUnitarioAPorUnidadApp();
+    .migrarCostoUnitarioAPorUnidadApp(obtenerTokenSesion());
 
 }
 
@@ -7164,9 +7180,82 @@ function cerrarEscaner(){
 // INICIO — DASHBOARD EN TIEMPO REAL
 // ===============================
 
+// ===============================
+// VISTA INICIAL SIMPLIFICADA — ROL CONSULTA
+// ===============================
+
+function dibujarInicioConsulta(){
+
+  const contenedor = document.querySelector(".contenedor");
+  if(!contenedor) return;
+
+  contenedor.innerHTML = `
+    <div class="vista-animada" style="max-width:760px;margin:0 auto;padding-top:24px">
+
+      <div style="text-align:center;margin-bottom:30px">
+        <div style="width:64px;height:64px;border-radius:18px;background:var(--bg-panel);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:30px;box-shadow:var(--shadow-sm)">📦</div>
+        <h2 style="margin:0 0 6px">Bienvenido a TAGERS WMS</h2>
+        <p style="color:var(--text-muted);margin:0">
+          Hola, <b>${escaparHtml(USUARIO_ACTUAL.nombre || "usuario")}</b>
+          <span class="badgeEstado" style="background:var(--bg);color:var(--text-muted);margin-left:6px">${escaparHtml(USUARIO_ACTUAL.rol || "CONSULTA")}</span>
+        </p>
+      </div>
+
+      <p style="text-align:center;color:var(--text-soft);font-size:13.5px;margin-bottom:22px">Elige un módulo para consultar información.</p>
+
+      <div id="accesosConsulta" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px"></div>
+
+    </div>
+  `;
+
+  pintarAccesosConsulta();
+
+}
+
+// Arma las tarjetas de acceso leyendo los botones que aplicarPermisosPorRol()
+// YA dejó visibles en el sidebar para este usuario — así siempre coinciden
+// exactamente con PERMISOS_ROL.CONSULTA sin duplicar esa lista aquí (evita
+// que ambas listas se desincronicen si algún día cambian los permisos).
+function pintarAccesosConsulta(){
+
+  const cont = document.getElementById("accesosConsulta");
+  if(!cont) return;
+
+  const botones = [...document.querySelectorAll("#sidebar .menuLateralBtn")]
+    .filter(btn => btn.id && !btn.classList.contains("grupoBtn") && btn.style.display !== "none" && btn.id !== "btnInicio");
+
+  if(!botones.length){
+    cont.innerHTML = tgEmptyState("documento", "No tienes módulos asignados todavía. Contacta a un administrador.");
+    return;
+  }
+
+  cont.innerHTML = botones.map(btn => {
+    const icono = btn.querySelector(".icono");
+    const texto = btn.querySelector(".textoMenu");
+    const onclick = (btn.getAttribute("onclick") || "").replace(/"/g, "&quot;");
+    const titulo = texto ? texto.textContent : (btn.title || "");
+    return `
+      <div class="cardProducto" style="cursor:pointer;text-align:center;padding:22px 14px;margin:0" onclick="${onclick}">
+        <div style="width:42px;height:42px;border-radius:12px;background:var(--bg);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;color:var(--color-primary)">${icono ? icono.innerHTML : ""}</div>
+        <div style="font-weight:700;font-size:13px">${titulo}</div>
+      </div>
+    `;
+  }).join("");
+
+}
+
 function volverInicio(){
 
   marcarActivo("btnInicio");
+
+  // CONSULTA no debe ver el dashboard operativo completo (KPIs, gráficas,
+  // valor de inventario, etc.) — en su lugar, una vista de bienvenida
+  // simplificada con accesos directos a lo que sí puede usar. El resto de
+  // roles conserva exactamente el dashboard de siempre, sin cambios.
+  if(String(USUARIO_ACTUAL.rol).toUpperCase() === "CONSULTA"){
+    dibujarInicioConsulta();
+    return;
+  }
 
   const contenedor=document.querySelector(".contenedor");
 
@@ -9870,9 +9959,9 @@ function aplicarFiltros(){
   <span class="icono">⚙️</span><span class="textoMenu">Configuración</span> <span class="flechaGrupo" id="flecha-grupoConfig">▸</span>
   </button>
   <div class="submenu" id="grupoConfig">
-    <button class="menuLateralBtn sub" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
-    <button class="menuLateralBtn sub" data-icono="configuracion" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
-    <button class="menuLateralBtn sub" data-icono="dinero" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigModoOscuro" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigCongelarExistencia" data-icono="configuracion" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigMigrarCosto" data-icono="dinero" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
   </div>
 </div>
 
