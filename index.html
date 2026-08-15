@@ -4908,11 +4908,17 @@ function dibujarTablaReabasto(){
       </thead>
       <tbody>
         ${lista.map((p,i)=>{
-          const valorInicial = p.convertir ? p.sugeridoPiezas : p.sugerido;
-          const precioPresentacionInicial = p.convertir ? Math.round(p.precio * p.presentacion * 100) / 100 : p.precio;
+          // Si la fila ya se había capturado antes (marcado/cantidadCapturada/
+          // precioCapturado vienen de sincronizarReabastoDesdeInputs), se respeta
+          // eso en vez de recalcular el valor sugerido original — así agregar o
+          // quitar un producto no reinicia lo que el usuario ya había marcado o
+          // escrito en las demás filas.
+          const valorInicial = p.cantidadCapturada !== undefined ? p.cantidadCapturada : (p.convertir ? p.sugeridoPiezas : p.sugerido);
+          const precioPresentacionInicial = p.precioCapturado !== undefined ? p.precioCapturado : (p.convertir ? Math.round(p.precio * p.presentacion * 100) / 100 : p.precio);
+          const marcado = p.marcado !== undefined ? p.marcado : (p.bajoMinimo || p.agregadoManual);
           return `
           <tr style="${p.bajoMinimo?'background:rgba(196,82,42,.06)':''}">
-            <td><input type="checkbox" id="chkReabasto${i}" ${(p.bajoMinimo || p.agregadoManual)?"checked":""}></td>
+            <td><input type="checkbox" id="chkReabasto${i}" ${marcado?"checked":""}></td>
             <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}${p.agregadoManual?' · <span style="color:var(--terracota)">agregado</span>':''}</span></td>
             <td style="text-align:right">${p.existencia}</td>
             <td style="text-align:right">${p.minimo}</td>
@@ -4959,7 +4965,24 @@ function actualizarPreviewPrecioReabasto(indice){
 
 }
 
+// Lee del DOM lo que el usuario ya marcó/escribió en cada fila (checkbox,
+// cantidad, precio) y lo guarda en window.reabastoLista, para que
+// agregar o quitar un producto (que vuelve a dibujar toda la tabla) no
+// reinicie la captura ya hecha en las demás filas — mismo patrón que ya
+// usa sincronizarSolicitadosDesdeInputs() en Requisiciones.
+function sincronizarReabastoDesdeInputs(){
+  (window.reabastoLista || []).forEach((p,i) => {
+    const chk = document.getElementById("chkReabasto"+i);
+    const cantidadInput = document.getElementById("cantReabasto"+i);
+    const precioInput = document.getElementById("precioReabasto"+i);
+    if(chk) p.marcado = chk.checked;
+    if(cantidadInput) p.cantidadCapturada = cantidadInput.value;
+    if(precioInput) p.precioCapturado = precioInput.value;
+  });
+}
+
 function quitarProductoReabasto(indice){
+  sincronizarReabastoDesdeInputs();
   window.reabastoLista.splice(indice, 1);
   dibujarTablaReabasto();
 }
@@ -5010,6 +5033,8 @@ function buscarProductoParaAgregar(){
 }
 
 function agregarProductoManualAReabasto(producto){
+
+  sincronizarReabastoDesdeInputs();
 
   window.reabastoLista = window.reabastoLista || [];
 
