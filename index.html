@@ -44,6 +44,7 @@
   function forzarResponsiveSiHaceFalta(){
     if(!window.screen || !window.screen.width) return;
     var anchoReal = window.screen.width;
+    var tocoAlgo = false;
     try{
       for (var s = 0; s < document.styleSheets.length; s++){
         var reglas;
@@ -54,13 +55,29 @@
           if(regla.type !== CSSRule.MEDIA_RULE) continue;
           var texto = regla.media.mediaText;
           var coincide = texto.match(/max-width:\s*(\d+)px/);
-          if(coincide && anchoReal <= parseInt(coincide[1], 10)){
+          if(coincide && anchoReal <= parseInt(coincide[1], 10) && texto !== 'all'){
             regla.media.mediaText = 'all';
+            tocoAlgo = true;
           }
         }
       }
     }catch(e){ /* si el navegador no deja tocar cssRules, se queda como estaba */ }
+    // Mutar reglas de @media vía CSSOM a veces deja al navegador con los
+    // estilos recalculados pero SIN repintar el contenido ya existente
+    // (se queda "atorado" hasta que el usuario toca algo, que es lo que
+    // fuerza el repintado) — leer una propiedad de layout obliga un
+    // reflow/repintado inmediato y sincrónico, sin esperar a esa
+    // interacción del usuario.
+    if(tocoAlgo && document.body){
+      void document.body.offsetHeight;
+    }
   }
+
+  // Se expone para poder volver a forzarlo justo antes de abrir el menú o
+  // el buscador en móvil (toggleSidebarMovil/toggleBuscadorHeaderMovil),
+  // por si el usuario interactúa antes de que corra alguno de los
+  // reintentos programados abajo.
+  window.tgForzarResponsive = forzarResponsiveSiHaceFalta;
 
   ajustarViewport();
   window.addEventListener('load', function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); });
@@ -2673,11 +2690,22 @@ function cerrarBuscadorHeaderYAbrirProducto(codigo){
   abrirDetalleProducto(codigo);
 }
 
+// window.innerWidth mide el ancho del iframe que arma script.google.com,
+// que puede reportar un ancho de escritorio aunque el celular sea angosto
+// (ver el fix de zoom en <head>). window.screen.width es el ancho físico
+// real del dispositivo y no tiene ese problema — se usa aquí para que las
+// decisiones de "¿estoy en móvil?" en JS coincidan con lo que ya fuerza
+// el CSS, en vez de quedarse en modo escritorio por error.
+function anchoRealDispositivo(){
+  return (window.screen && window.screen.width) || window.innerWidth;
+}
+
 // En pantallas angostas (≤480px) el buscador del header vive colapsado a
 // solo su ícono (ver CSS de Fase 8) — este toggle lo expande/contrae sin
 // afectar en nada su comportamiento en pantallas más anchas.
 function toggleBuscadorHeaderMovil(){
-  if(window.innerWidth > 480) return;
+  if(window.tgForzarResponsive) window.tgForzarResponsive();
+  if(anchoRealDispositivo() > 480) return;
   const cont = document.getElementById("buscadorHeaderContenedor");
   if(!cont) return;
   const expandiendo = !cont.classList.contains("expandido");
@@ -2693,7 +2721,7 @@ document.addEventListener("click", function(e){
   if(buscador && !buscador.contains(e.target)){
     const resultados = document.getElementById("resultadosBuscadorHeader");
     if(resultados) resultados.style.display = "none";
-    if(window.innerWidth <= 480) buscador.classList.remove("expandido");
+    if(anchoRealDispositivo() <= 480) buscador.classList.remove("expandido");
   }
 });
 
@@ -4252,12 +4280,17 @@ function alternarModoOscuro(){
 // ===============================
 
 function toggleSidebarMovil(){
+  // Defensivo: por si el usuario toca el menú antes de que corra alguno
+  // de los reintentos programados del fix de responsive (ver <head>),
+  // esto garantiza que el CSS móvil ya esté forzado antes de abrir el
+  // drawer, en vez de arriesgarse a que abra en modo "solo íconos".
+  if(window.tgForzarResponsive) window.tgForzarResponsive();
   document.getElementById("sidebar").classList.toggle("abierto");
   document.getElementById("overlaySidebar").classList.toggle("mostrar");
 }
 
 function cerrarSidebarMovilSiAplica(){
-  if(window.innerWidth <= 768){
+  if(anchoRealDispositivo() <= 768){
     document.getElementById("sidebar").classList.remove("abierto");
     document.getElementById("overlaySidebar").classList.remove("mostrar");
   }
