@@ -2400,7 +2400,7 @@ const ICONOS_MENU = {
   btnRevisarDiscrepancias:"buscar", btnAprobarDiscrepancias:"checkCirculo", btnCerrarConteo:"recibo",
   btnNuevaRequisicion:"mas", btnNuevaRequisicionReceta:"receta", btnMisRequisiciones:"documento",
   btnRequisicionesPendientes:"reloj", btnPreparacionRequisicion:"paquete", btnEntregasRequisicion:"checkCirculo",
-  btnHistorialRequisicion:"reloj", btnCentroReabastecimiento:"refrescar", btnOrdenesCompra:"recibo",
+  btnHistorialRequisicion:"reloj", btnRequisicionesSucursal:"ubicacion", btnCentroReabastecimiento:"refrescar", btnOrdenesCompra:"recibo",
   btnRecepcionMercancia:"camion", btnHistorialCompras:"reloj", btnAnalisisCostos:"dinero",
   btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
@@ -2764,7 +2764,7 @@ const PERMISOS_ROL = {
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion",
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     "btnCentroReabastecimiento","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
     "btnAnalisisCostos","btnAnalisisCompras","btnProveedores",
     "btnGenerarInventarioMensual","btnCapturarInventarioMensual","btnRevisarDiferenciasMensual",
@@ -2779,7 +2779,7 @@ const PERMISOS_ROL = {
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnCapturarConteo","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion",
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     // Mismo motivo que en SUPERVISOR: ya se veían, se preservan tal cual.
     "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
   ],
@@ -2794,7 +2794,7 @@ const PERMISOS_ROL = {
     // Producción: acceso completo, igual que cualquier otro módulo permitido.
     "btnInicio","btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion",
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     "btnRegistrarProduccion","btnLotesProduccion"
   ]
 };
@@ -3326,6 +3326,345 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
       </tbody>
     </table>
   `;
+
+}
+
+// ============================================
+// REQUISICIONES POR SUCURSAL — pantalla APARTE de "Requisiciones
+// internas" (por Área). Mismo flujo (crear / consultar / entregar),
+// pero pide/filtra por la Sucursal del usuario en vez de su Área,
+// contra RequisicionesSucursal.gs. No comparte función, DOM ni estado
+// con la sección de arriba — solo reutiliza buscarProductoParaRequisicionApp
+// para el buscador de productos (catálogo de MATRIZ, es de solo lectura
+// y no depende de sucursal).
+// ============================================
+
+function abrirRequisicionesSucursal(){
+
+  marcarActivo("btnRequisicionesSucursal");
+
+  const contenedor = document.querySelector(".contenedor");
+  window.itemsRequisicionSucursal = [];
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("ubicacion",20)} Requisiciones por Sucursal</h2>
+  <p style="font-size:12.5px;color:var(--text-muted);margin-top:-6px">
+    Aparte de "Requisiciones internas": esta pantalla pide a nombre de TU sucursal
+    (se toma de tu usuario, no se puede elegir) y descuenta la existencia propia de esa sucursal.
+  </p>
+
+  <div class="cardProducto">
+
+    <label>Observaciones (opcional)</label>
+    <input id="observacionesRequisicionSucursal" placeholder="Notas para quien surte">
+
+    <div style="position:relative;max-width:500px;margin:14px 0">
+      <label>Buscar producto para agregar</label>
+      <input id="buscarProductoRequisicionSucursal" placeholder="Nombre o código..." oninput="buscarProductoParaRequisicionSucursal()" autocomplete="off">
+      <div id="resultadosProductoRequisicionSucursal" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:-10px">El "disponible" del buscador es de referencia general — lo que realmente se puede entregar depende de la existencia propia de tu sucursal.</p>
+
+    <div id="tablaNuevaRequisicionSucursal" style="overflow:auto;max-height:45vh"></div>
+
+    <div id="mensajeRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" id="btnEnviarRequisicionSucursal" style="margin-top:16px" onclick="enviarNuevaRequisicionSucursal()">${tgIcon("enviar",17)} Enviar requisición</div>
+
+  </div>
+
+  <div class="cardProducto" style="margin-top:18px">
+    <h3 style="margin:0 0 10px">Requisiciones de tu sucursal</h3>
+    <div id="listaRequisicionesSucursal"></div>
+  </div>
+
+  <div id="detalleRequisicionSucursal" style="margin-top:18px"></div>
+
+  </div>
+
+  `;
+
+  dibujarTablaNuevaRequisicionSucursal();
+  cargarListaRequisicionesSucursal();
+
+}
+
+let temporizadorBuscarProductoRequisicionSucursal;
+
+function buscarProductoParaRequisicionSucursal(){
+
+  clearTimeout(temporizadorBuscarProductoRequisicionSucursal);
+
+  const texto = document.getElementById("buscarProductoRequisicionSucursal").value.trim();
+  const cont = document.getElementById("resultadosProductoRequisicionSucursal");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoRequisicionSucursal = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarProductoARequisicionSucursal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo}) — referencia: ${p.existencia} ${p.udm||""}</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        cont.innerHTML = "⚠️ " + e.message;
+        cont.style.display = "block";
+      })
+      .buscarProductoParaRequisicionApp(texto);
+
+  }, 300);
+
+}
+
+function sincronizarSolicitadosRequisicionSucursal(){
+  (window.itemsRequisicionSucursal || []).forEach((p,i) => {
+    const input = document.getElementById("solicitadoReqSuc"+i);
+    if(input) p.solicitado = Number(input.value) || 0;
+  });
+}
+
+function agregarProductoARequisicionSucursal(producto){
+
+  sincronizarSolicitadosRequisicionSucursal();
+
+  if(window.itemsRequisicionSucursal.some(p => p.codigo === producto.codigo)){
+    mostrarMensajeTemporal("mensajeRequisicionSucursal", "Ese producto ya está en la lista", "error");
+  } else {
+    window.itemsRequisicionSucursal.push({
+      codigo: producto.codigo, producto: producto.producto, unidad: producto.udm, solicitado: 1
+    });
+    dibujarTablaNuevaRequisicionSucursal();
+  }
+
+  document.getElementById("buscarProductoRequisicionSucursal").value = "";
+  document.getElementById("resultadosProductoRequisicionSucursal").innerHTML = "";
+  document.getElementById("resultadosProductoRequisicionSucursal").style.display = "none";
+
+}
+
+function quitarProductoRequisicionSucursal(indice){
+  sincronizarSolicitadosRequisicionSucursal();
+  window.itemsRequisicionSucursal.splice(indice, 1);
+  dibujarTablaNuevaRequisicionSucursal();
+}
+
+function dibujarTablaNuevaRequisicionSucursal(){
+
+  const cont = document.getElementById("tablaNuevaRequisicionSucursal");
+  if(!cont) return;
+  const lista = window.itemsRequisicionSucursal || [];
+
+  if(!lista.length){
+    cont.innerHTML = "<p style='color:var(--text-muted);font-size:13px'>Agrega productos con el buscador de arriba.</p>";
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((p,i) => `
+          <tr>
+            <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span></td>
+            <td style="text-align:right">
+              <input type="number" id="solicitadoReqSuc${i}" value="${p.solicitado}" min="0"
+                style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+            </td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoRequisicionSucursal(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function enviarNuevaRequisicionSucursal(){
+
+  const observaciones = document.getElementById("observacionesRequisicionSucursal").value.trim();
+  const lista = window.itemsRequisicionSucursal || [];
+
+  const items = lista.map((p,i) => {
+    const input = document.getElementById("solicitadoReqSuc"+i);
+    return {
+      codigo: p.codigo, producto: p.producto, unidad: p.unidad,
+      solicitado: input ? Number(input.value) || 0 : 0
+    };
+  }).filter(it => it.solicitado > 0);
+
+  if(!items.length){
+    mostrarMensajeTemporal("mensajeRequisicionSucursal", "Agrega al menos un producto con cantidad", "error");
+    return;
+  }
+
+  activarCargaBoton("btnEnviarRequisicionSucursal", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnEnviarRequisicionSucursal", false);
+      mostrarMensajeTemporal("mensajeRequisicionSucursal", "✅ Requisición " + resultado.folio + " enviada (" + resultado.sucursal + ")", "ok");
+      window.itemsRequisicionSucursal = [];
+      dibujarTablaNuevaRequisicionSucursal();
+      document.getElementById("observacionesRequisicionSucursal").value = "";
+      cargarListaRequisicionesSucursal();
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnEnviarRequisicionSucursal", false);
+      mostrarMensajeTemporal("mensajeRequisicionSucursal", "⚠️ " + e.message, "error");
+    })
+    .crearRequisicionSucursalApp(observaciones, items, obtenerTokenSesion());
+
+}
+
+function cargarListaRequisicionesSucursal(){
+
+  const cont = document.getElementById("listaRequisicionesSucursal");
+  if(!cont) return;
+
+  google.script.run
+    .withSuccessHandler(function(lista){ dibujarTablaRequisicionesSucursal(lista); })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerRequisicionesSucursalApp(obtenerTokenSesion());
+
+}
+
+function dibujarTablaRequisicionesSucursal(lista){
+
+  const cont = document.getElementById("listaRequisicionesSucursal");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("documento", "No hay requisiciones de sucursal todavía");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead>
+        <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Estado</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${lista.map(r => `
+          <tr>
+            <td><b>${r.folio}</b></td>
+            <td>${r.sucursal}</td>
+            <td>${r.solicitante}</td>
+            <td>${r.fecha}</td>
+            <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
+            <td><span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSucursal('${r.folio}')">${tgIcon("buscar",15)}</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function verDetalleRequisicionSucursal(folio){
+
+  const cont = document.getElementById("detalleRequisicionSucursal");
+  if(!cont) return;
+
+  cont.innerHTML = `<div class="cardProducto">Cargando…</div>`;
+
+  google.script.run
+    .withSuccessHandler(function(acceso){
+
+      google.script.run
+        .withSuccessHandler(function(detalle){
+
+          const puedeEntregar = acceso.esTodasLasSucursales && detalle.estado === "PENDIENTE";
+
+          cont.innerHTML = `
+            <div class="cardProducto">
+              <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:9px">${tgIcon("documento",18)} ${detalle.folio} — Sucursal ${detalle.sucursal}</h3>
+              <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
+                Solicitó: ${detalle.solicitante} — ${detalle.fecha} — ${dibujarBadgeEstadoRequisicion(detalle.estado)}
+              </p>
+              <table class="tablaTop" style="font-size:13px">
+                <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia en ${detalle.sucursal}</th>${puedeEntregar ? '<th style="text-align:right">Entregar</th>' : '<th style="text-align:right">Entregado</th>'}</tr></thead>
+                <tbody>
+                  ${detalle.items.map((it,i) => `
+                    <tr>
+                      <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}</span></td>
+                      <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
+                      <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+                      <td style="text-align:right">${
+                        puedeEntregar
+                          ? `<input type="number" id="entregarReqSuc${i}" value="${it.entregarSugerido}" min="0" max="${it.existencia}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">`
+                          : (it.entregado || 0) + " " + (it.unidad||"")
+                      }</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+              <div id="mensajeDetalleRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+              ${puedeEntregar ? `<div class="boton" id="btnConfirmarEntregaSucursal" style="margin-top:16px" onclick="confirmarEntregaRequisicionSucursalUI('${detalle.folio}')">${tgIcon("check",17)} Confirmar entrega</div>` : ""}
+            </div>
+          `;
+
+          window.detalleRequisicionSucursalActual = detalle;
+
+        })
+        .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
+        .obtenerDetalleRequisicionSucursalApp(folio, obtenerTokenSesion());
+
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
+    .obtenerAccesoSucursalApp(obtenerTokenSesion());
+
+}
+
+function confirmarEntregaRequisicionSucursalUI(folio){
+
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+
+  const entregas = detalle.items.map((it,i) => {
+    const input = document.getElementById("entregarReqSuc"+i);
+    return { codigo: it.codigo, cantidadEntregada: input ? Number(input.value) || 0 : 0 };
+  }).filter(e => e.cantidadEntregada > 0);
+
+  if(!entregas.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad a entregar", "error");
+    return;
+  }
+
+  if(!confirm("¿Confirmar la entrega de " + folio + "? Esto descuenta la existencia de la sucursal y no se puede deshacer.")) return;
+
+  activarCargaBoton("btnConfirmarEntregaSucursal", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Entrega confirmada — " + resultado.productosEntregados + " producto(s)", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnConfirmarEntregaSucursal", false);
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error");
+    })
+    .confirmarEntregaRequisicionSucursalApp(folio, entregas, obtenerTokenSesion());
 
 }
 
@@ -9906,6 +10245,8 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnHistorialRequisicion" onclick="abrirHistorialRequisicion()" title="Historial"><span class="icono">🗂️</span><span class="textoMenu">Historial</span></button>
   </div>
 </div>
+
+<button class="menuLateralBtn" id="btnRequisicionesSucursal" onclick="abrirRequisicionesSucursal()" title="Requisiciones por sucursal"><span class="icono">🏬</span><span class="textoMenu">Requisiciones por Sucursal</span></button>
 
 <div class="grupoMenu">
   <button class="menuLateralBtn grupoBtn" data-icono="fabrica" onclick="toggleGrupo('grupoProduccion')" title="Producción">
