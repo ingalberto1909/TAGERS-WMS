@@ -374,6 +374,32 @@ function normalizarUDM_(udm){
 }
 
 /**
+ * Factor para convertir una CANTIDAD de `udmOrigen` a `udmDestino`,
+ * cuando las dos son la misma magnitud — masa (G/KG) o volumen (ML/L).
+ * Usa normalizarUDM_ primero, así que "GRS"/"Gramos"/"g" se tratan
+ * igual que "G". Si las unidades no son de la misma magnitud (p. ej.
+ * PZ contra KG) no hay un factor fijo posible sin inventar un peso por
+ * pieza — regresa null en vez de adivinar uno.
+ */
+function factorConversionUDM_(udmOrigen, udmDestino){
+  const origen = normalizarUDM_(udmOrigen);
+  const destino = normalizarUDM_(udmDestino);
+  if(origen === destino) return 1;
+
+  const aUnidadBase = { "G": 0.001, "KG": 1, "ML": 0.001, "L": 1 };
+  const familiaMasa = ["G","KG"];
+  const familiaVolumen = ["ML","L"];
+
+  const mismaFamilia =
+    (familiaMasa.includes(origen) && familiaMasa.includes(destino)) ||
+    (familiaVolumen.includes(origen) && familiaVolumen.includes(destino));
+
+  if(!mismaFamilia) return null;
+
+  return aUnidadBase[origen] / aUnidadBase[destino];
+}
+
+/**
  * Separa "NOMBRE" y "PRESENTACIÓN" (número + unidad) de un texto libre
  * — un renglón del PDF de Marketman o el nombre de un producto de
  * MATRIZ (en tu catálogo el nombre completo ya trae el tamaño, ej.
