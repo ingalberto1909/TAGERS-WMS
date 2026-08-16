@@ -1230,6 +1230,7 @@ function obtenerRacksConteoApp(){
 }
 
 function generarConteoRacksApp(racks, token){
+  requerirAccesoAlmacenApp_(token);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const matriz = ss.getSheetByName("MATRIZ");
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
@@ -1358,7 +1359,9 @@ function obtenerConteosProgramadosHoyApp(){
  * para las filas indicadas, después de generar el conteo desde la tarjeta
  * de Inicio — así no se vuelve a sugerir hasta que le vuelva a tocar.
  */
-function marcarConteoProgramadoGeneradoApp(filas){
+function marcarConteoProgramadoGeneradoApp(filas, token){
+
+  requerirAccesoAlmacenApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("PROGRAMACION_CONTEOS");
@@ -1403,6 +1406,7 @@ function revisarDiscrepanciasApp(){
 }
 
 function cerrarConteoFolioApp(folio, token){
+  requerirAccesoAlmacenApp_(token);
   const ss = SpreadsheetApp.getActive();
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
   const historial = ss.getSheetByName("HISTORIAL_CONTEOS");
@@ -3272,6 +3276,8 @@ function obtenerHojaHistorialInventario_(){
 
 function generarInventarioMensualApp(token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
@@ -3418,6 +3424,8 @@ function obtenerSiguientePendienteInventarioMensualApp(folio){
 
 function guardarConteoFisicoInventarioMensualApp(fila, cantidad, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
 
@@ -3524,6 +3532,8 @@ function obtenerDiscrepanciasInventarioMensualApp(folio){
 
 function aprobarDiscrepanciaInventarioMensualApp(fila, comentario, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
 
@@ -3546,6 +3556,8 @@ function aprobarDiscrepanciaInventarioMensualApp(fila, comentario, token){
  * usada por el botón "Aprobar todas" en Revisar Diferencias.
  */
 function aprobarDiscrepanciasLoteInventarioMensualApp(filas, token){
+
+  requerirAccesoAlmacenApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
@@ -4150,6 +4162,46 @@ function obtenerCorreoDesdeToken_(token){
 }
 
 /**
+ * Estado actual (columna E de USUARIOS) del usuario dueño del correo.
+ * Mismo patrón que obtenerAreaUsuarioPorCorreo_, para el mismo problema:
+ * el rol de la sesión se guarda una sola vez al hacer login y no se
+ * vuelve a leer hasta que el token expira (hasta 8h) — si un admin
+ * desactiva a alguien mientras esa persona ya tiene sesión abierta, con
+ * solo obtenerSesion_() esa sesión seguiría pasando cualquier guard.
+ */
+function obtenerEstadoUsuarioPorCorreo_(correo){
+  const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(!hoja) return "";
+  const datos = hoja.getDataRange().getValues();
+  const buscado = String(correo||"").toLowerCase().trim();
+  for(let i=1;i<datos.length;i++){
+    if(String(datos[i][0]||"").toLowerCase().trim() === buscado){
+      return String(datos[i][4]||"").trim(); // columna E = Estado
+    }
+  }
+  return "";
+}
+
+/**
+ * Reemplaza el simple "obtenerSesion_(token) ? sigue : rechaza" que
+ * usaban los 3 guards de abajo. Además de que el token exista y no haya
+ * expirado, revalida en USUARIOS que el usuario siga ACTIVO — así una
+ * cuenta desactivada después del login pierde acceso de inmediato, en
+ * vez de conservarlo hasta que su token expire.
+ */
+function requerirSesionActivaApp_(token){
+  const sesion = obtenerSesion_(token);
+  if(!sesion){
+    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
+  }
+  const estado = obtenerEstadoUsuarioPorCorreo_(sesion.correo);
+  if(estado && estado.toUpperCase() !== "ACTIVO"){
+    throw new Error("Tu cuenta ya no está activa. Contacta a un administrador.");
+  }
+  return sesion;
+}
+
+/**
  * Acceso del usuario actual a Requisiciones: su área, y si puede ver
  * TODAS las áreas (Admin, o Área = "Almacén").
  */
@@ -4174,9 +4226,7 @@ function obtenerAccesoRequisicionesApp(token){
  * (obtenerAccesoRequisicionesApp), no se inventa un permiso nuevo.
  */
 function requerirAccesoAlmacenApp_(token){
-  if(!obtenerSesion_(token)){
-    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
-  }
+  requerirSesionActivaApp_(token);
   const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
   if(rol === "SUPERVISOR") return;
   const acceso = obtenerAccesoRequisicionesApp(token);
@@ -4191,9 +4241,7 @@ function requerirAccesoAlmacenApp_(token){
  * cualquier rol no listado explícitamente conserva su acceso actual.
  */
 function requerirNoConsultaApp_(token){
-  if(!obtenerSesion_(token)){
-    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
-  }
+  requerirSesionActivaApp_(token);
   const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
   if(rol === "CONSULTA"){
     throw new Error("No tienes permiso para realizar esta acción.");
@@ -4206,9 +4254,7 @@ function requerirNoConsultaApp_(token){
  * acceso actual.
  */
 function requerirAccesoOperacionesApp_(token){
-  if(!obtenerSesion_(token)){
-    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
-  }
+  requerirSesionActivaApp_(token);
   const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
   if(rol === "SUPERVISOR" || rol === "CONSULTA"){
     throw new Error("No tienes permiso para realizar esta acción.");
@@ -4339,7 +4385,7 @@ function obtenerEntregasRecientesApp(token){
  * FASE 3: Preparación — compara lo solicitado contra la existencia
  * actual de MATRIZ.
  */
-function obtenerDetalleRequisicionApp(folio){
+function obtenerDetalleRequisicionApp(folio, token){
 
   const req = obtenerHojaRequisiciones_();
   const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
@@ -4347,6 +4393,15 @@ function obtenerDetalleRequisicionApp(folio){
   datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
 
   if(!encabezado) throw new Error("No se encontró la requisición " + folio);
+
+  // Mismo criterio que obtenerRequisicionesApp: un área solo ve las
+  // suyas, salvo Admin/Almacén. Antes esta función no comprobaba nada,
+  // así que cualquier folio (consecutivos y predecibles) era legible
+  // desde cualquier área con solo cambiar el número.
+  const acceso = obtenerAccesoRequisicionesApp(token);
+  if(!acceso.esAdmin && String(encabezado[2]).trim() !== String(acceso.area).trim()){
+    throw new Error("No se encontró la requisición " + folio);
+  }
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   const datosDetalle = detalle.getLastRow() > 1 ? detalle.getRange(2,1,detalle.getLastRow()-1,6).getValues() : [];

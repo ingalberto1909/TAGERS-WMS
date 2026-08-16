@@ -166,6 +166,8 @@ function validarDatosReceta_(datos){
 
 function crearRecetaApp(datos, token){
 
+  requerirNoConsultaApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const validos = validarDatosReceta_(datos);
 
@@ -202,6 +204,8 @@ function crearRecetaApp(datos, token){
 // ---------------- FASE 5/6/19/20: editar receta (bloque completo) ----------------
 
 function editarRecetaApp(nombreOriginal, datos, token){
+
+  requerirNoConsultaApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const bloques = obtenerBloquesRecetas_();
@@ -249,6 +253,8 @@ function editarRecetaApp(nombreOriginal, datos, token){
 // ---------------- FASE 7: activar / inactivar ----------------
 
 function cambiarEstadoRecetaApp(nombreReceta, nuevoEstado, token){
+
+  requerirNoConsultaApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const bloque = obtenerBloquesRecetas_().find(b => b.nombre === nombreReceta);

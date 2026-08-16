@@ -3495,7 +3495,7 @@ function verDetalleRequisicionProducto(folio){
     .withFailureHandler(function(e){
       document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerDetalleRequisicionApp(folio);
+    .obtenerDetalleRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3547,7 +3547,7 @@ function verDetalleRequisicionReceta(folio){
     .withFailureHandler(function(e){
       document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerCalculoIngredientesRequisicionApp(folio);
+    .obtenerCalculoIngredientesRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3632,7 +3632,7 @@ function cargarPreparacionRequisicionReceta_(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerCalculoIngredientesRequisicionApp(folio);
+    .obtenerCalculoIngredientesRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3718,7 +3718,7 @@ function cargarPreparacionRequisicionProducto_(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerDetalleRequisicionApp(folio);
+    .obtenerDetalleRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -7597,7 +7597,7 @@ function generarConteosProgramadosHoy(){
           cargarConteosProgramadosHoy();
           actualizarNotificaciones();
         })
-        .marcarConteoProgramadoGeneradoApp(lista.map(c => c.fila));
+        .marcarConteoProgramadoGeneradoApp(lista.map(c => c.fila), obtenerTokenSesion());
 
     })
     .withFailureHandler(function(error){

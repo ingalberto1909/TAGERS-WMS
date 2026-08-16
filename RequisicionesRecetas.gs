@@ -103,7 +103,7 @@ function obtenerTipoRequisicionApp(folio){
 
 }
 
-function obtenerDetalleRequisicionRecetaApp(folio){
+function obtenerDetalleRequisicionRecetaApp(folio, token){
 
   const req = obtenerHojaRequisiciones_();
   const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
@@ -111,6 +111,18 @@ function obtenerDetalleRequisicionRecetaApp(folio){
   datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
 
   if(!encabezado) throw new Error("No se encontró la requisición " + folio);
+
+  // Mismo criterio que obtenerDetalleRequisicionApp (Requisiciones de
+  // producto): un área solo ve las suyas, salvo Admin/Almacén. `token`
+  // es opcional para no romper llamadas internas ya protegidas por su
+  // propio guard (p. ej. Producción, que ya exige requerirAccesoAlmacenApp_
+  // antes de llegar aquí) — solo se aplica el filtro cuando se recibe token.
+  if(token){
+    const acceso = obtenerAccesoRequisicionesApp(token);
+    if(!acceso.esAdmin && String(encabezado[2]).trim() !== String(acceso.area).trim()){
+      throw new Error("No se encontró la requisición " + folio);
+    }
+  }
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   const anchoDetalle = Math.min(detalle.getLastColumn(), 7);
@@ -170,9 +182,9 @@ function buscarProductoEnMatrizPorNombre_(nombre){
 
 }
 
-function obtenerCalculoIngredientesRequisicionApp(folio){
+function obtenerCalculoIngredientesRequisicionApp(folio, token){
 
-  const detalleReceta = obtenerDetalleRequisicionRecetaApp(folio);
+  const detalleReceta = obtenerDetalleRequisicionRecetaApp(folio, token);
 
   const acumulado = {}; // ingrediente normalizado -> {nombre, necesario, udmReceta}
 
