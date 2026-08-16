@@ -4496,7 +4496,7 @@ function cargarFormularioProduccion(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = `<div class="cardProducto">${tgEmptyState("alertaTriangulo", e.message)}</div>`;
     })
-    .obtenerRequisicionListaParaProduccionApp(folio);
+    .obtenerRequisicionListaParaProduccionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -9005,7 +9005,7 @@ function guardarFisicoConteo(){
     mostrarMensajeTemporal("mensajeConteo", "⚠️ " + e.message, "error");
   })
 
-  .guardarConteoFisico(window.conteoActual.fila, fisico);
+  .guardarConteoFisico(window.conteoActual.fila, fisico, obtenerTokenSesion());
 
 }
 
@@ -9166,7 +9166,7 @@ function aprobarDiscrepanciaDesdeApp(fila){
     mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ "+e.message, "error");
   })
 
-  .aprobarDiscrepancia(fila, motivo, comentario);
+  .aprobarDiscrepancia(fila, motivo, comentario, obtenerTokenSesion());
 
 }
 
@@ -9185,7 +9185,7 @@ function rechazarDiscrepanciaDesdeApp(fila){
     mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ "+e.message, "error");
   })
 
-  .rechazarDiscrepancia(fila, comentario);
+  .rechazarDiscrepancia(fila, comentario, obtenerTokenSesion());
 
 }
 
@@ -9231,7 +9231,7 @@ function aprobarTodasLasDiscrepancias(){
     if(btn){ btn.disabled = false; btn.innerText = "⚡ Aprobar todas las de este folio"; }
   })
 
-  .aprobarDiscrepanciasLoteApp(items);
+  .aprobarDiscrepanciasLoteApp(items, obtenerTokenSesion());
 
 }
 

@@ -180,6 +180,7 @@ function registrarSalidaInterna_(datos, usuario){
   // Si no alcanza, esto lanza el error ANTES de escribir nada en
   // SALIDA/KARDEX — así una salida que falla no deja movimientos huérfanos.
   const resultadoExistencia = ajustarExistenciaMatrizPorDeltaValidado_(datos.codigo, -cantidad);
+  const existenciaAnterior = resultadoExistencia.anterior;
   const nuevaExistencia = resultadoExistencia.nueva;
 
   salida.appendRow([
@@ -205,7 +206,7 @@ function registrarSalidaInterna_(datos, usuario){
     datos.producto,
     0,          // G Entrada — antes aquí se ponía la cantidad por error
     cantidad,   // H Salida — la cantidad va aquí
-    cantidad,
+    existenciaAnterior, // I ExistenciaAnterior — antes aquí se ponía la cantidad por error
     nuevaExistencia,
     usuario,
     datos.observacion || (datos.area ? ("Salida a " + datos.area) : "Salida desde app móvil")
@@ -4329,6 +4330,70 @@ function requerirAccesoOperacionesApp_(token){
   requerirSesionActivaApp_(token);
   const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
   if(rol === "SUPERVISOR" || rol === "CONSULTA"){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+}
+
+/**
+ * Rol (columna D de USUARIOS) de un correo. Mismo patrón que
+ * obtenerAreaUsuarioPorCorreo_/obtenerEstadoUsuarioPorCorreo_.
+ */
+function obtenerRolUsuarioPorCorreo_(correo){
+  const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(!hoja) return "";
+  const datos = hoja.getDataRange().getValues();
+  const buscado = String(correo||"").toLowerCase().trim();
+  for(let i=1;i<datos.length;i++){
+    if(String(datos[i][0]||"").toLowerCase().trim() === buscado){
+      return String(datos[i][3]||"").trim(); // columna D = Rol
+    }
+  }
+  return "";
+}
+
+/**
+ * Variantes de requerirAccesoAlmacenApp_/requerirNoConsultaApp_ para
+ * funciones que en Código.gs siguen siendo compartidas por dos
+ * llamadores muy distintos: la SPA (que manda `token` de sesión) y los
+ * diálogos legados de Sheets — CapturaConteo.html, AprobacionDiscrepancias.html,
+ * SeleccionarCierreConteo.html, abiertos desde el menú "📦 Inventario" de
+ * la hoja — que no conocen ese token y siempre han identificado al
+ * usuario con Session.getActiveUser() (obtenerUsuario(), la misma cuenta
+ * de Google que ya usan para el Kardex/Auditoría de esas pantallas).
+ *
+ * Si llega `token`, se valida exactamente igual que en el resto de la
+ * app. Si no llega token, se intenta la MISMA validación de rol pero
+ * usando esa cuenta de Google activa en vez del token; si no se puede
+ * determinar quién es (o esa cuenta no tiene fila en USUARIOS), NO se
+ * bloquea — la persona ya tiene acceso de edición directo a la hoja de
+ * cálculo para abrir ese diálogo en primer lugar, un permiso mayor al
+ * que cualquiera de estas funciones podría dar, así que negarle el paso
+ * aquí no añade seguridad real y sí rompería el diálogo legado.
+ */
+function requerirAccesoAlmacenLegadoApp_(token){
+  if(token){
+    requerirAccesoAlmacenApp_(token);
+    return;
+  }
+  const correo = obtenerUsuario();
+  if(!correo) return;
+  const rol = String(obtenerRolUsuarioPorCorreo_(correo)||"").toUpperCase();
+  if(!rol) return;
+  if(rol === "SUPERVISOR" || rol === "ADMIN") return;
+  const areaNorm = String(obtenerAreaUsuarioPorCorreo_(correo)||"").trim().toUpperCase();
+  if(areaNorm === "ALMACÉN" || areaNorm === "ALMACEN") return;
+  throw new Error("No tienes permiso para realizar esta acción.");
+}
+
+function requerirNoConsultaLegadoApp_(token){
+  if(token){
+    requerirNoConsultaApp_(token);
+    return;
+  }
+  const correo = obtenerUsuario();
+  if(!correo) return;
+  const rol = String(obtenerRolUsuarioPorCorreo_(correo)||"").toUpperCase();
+  if(rol === "CONSULTA"){
     throw new Error("No tienes permiso para realizar esta acción.");
   }
 }

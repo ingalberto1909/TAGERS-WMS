@@ -124,7 +124,9 @@ function abrirMapa() {
 
 }
 
-function guardarConteoFisico(fila,cantidad){
+function guardarConteoFisico(fila,cantidad,token){
+
+  requerirNoConsultaLegadoApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -442,7 +444,9 @@ function obtenerSiguientePendiente(folio) {
 
 }
 
-function cerrarConteoFolio(folio){
+function cerrarConteoFolio(folio, token){
+
+  requerirAccesoAlmacenLegadoApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
@@ -462,6 +466,19 @@ function cerrarConteoFolio(folio){
   if(ultimaFila < 2){
     SpreadsheetApp.getUi().alert("No hay conteos para cerrar");
     return;
+  }
+
+  // Mismo criterio que cerrarConteoFolioApp (📁 App.gs.gs): si una
+  // diferencia ya se resolvió individualmente en Aprobar/Rechazar
+  // Discrepancias, el cierre ya no decide por su cuenta.
+  const estadoDiscrepanciaPorProducto = {};
+  const hojaDiscrepancias = ss.getSheetByName("DISCREPANCIAS");
+  if(hojaDiscrepancias && hojaDiscrepancias.getLastRow() > 1){
+    const datosDiscrepancias = hojaDiscrepancias.getRange(2, 1, hojaDiscrepancias.getLastRow()-1, 10).getValues();
+    datosDiscrepancias.forEach(d => {
+      if(String(d[1]) !== String(folio)) return;
+      estadoDiscrepanciaPorProducto[String(d[2])] = String(d[9]||"").trim().toUpperCase();
+    });
   }
 
   const datos = conteo.getRange(2,1,ultimaFila-1,11).getValues();
@@ -501,7 +518,10 @@ function cerrarConteoFolio(folio){
       fila[6], fila[7], fila[8], resultado, new Date(), usuario
     ]);
 
-    if(resultado == "AJUSTADO"){
+    const estadoResuelto = estadoDiscrepanciaPorProducto[String(fila[3])];
+    const yaResueltaIndividualmente = estadoResuelto === "RECHAZADO" || estadoResuelto === "APROBADO";
+
+    if(resultado == "AJUSTADO" && !yaResueltaIndividualmente){
 
       auditoriaDatos.push([
         fechaHoy, fila[3], fila[4], existenciaAnterior, existenciaNueva, diferencia,
@@ -1066,13 +1086,23 @@ function generarConteoRacks(racks){
     "Conteo generado para racks: "+racks.join(", ")
   );
 
-  SpreadsheetApp.getUi()
-    .alert(
-      "Conteo generado correctamente\n\nRacks: "+
-      racks.join(", ")+
-      "\nProductos: "+
-      salida.length
-    );
+  // Esta función también se invoca sin interfaz de Sheets abierta (desde
+  // generarConteosDelDia, para la programación automática de conteos) —
+  // ahí SpreadsheetApp.getUi() no tiene a quién mostrarle el aviso y
+  // lanza su propio error. El conteo ya se generó correctamente arriba;
+  // que no haya alguien viendo la hoja en este momento no debe hacer
+  // fallar la función completa.
+  try{
+    SpreadsheetApp.getUi()
+      .alert(
+        "Conteo generado correctamente\n\nRacks: "+
+        racks.join(", ")+
+        "\nProductos: "+
+        salida.length
+      );
+  }catch(e){
+    // sin interfaz activa (ejecución automática) — no hay nada que hacer aquí
+  }
 
 }
 
@@ -1209,7 +1239,9 @@ function obtenerDiscrepanciasPendientes(){
 
 }
 
-function rechazarDiscrepancia(fila, comentario){
+function rechazarDiscrepancia(fila, comentario, token){
+
+  requerirAccesoAlmacenLegadoApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -1225,7 +1257,9 @@ function rechazarDiscrepancia(fila, comentario){
 
 }
 
-function aprobarDiscrepancia(fila, motivo, comentario) {
+function aprobarDiscrepancia(fila, motivo, comentario, token) {
+
+  requerirAccesoAlmacenLegadoApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("DISCREPANCIAS");
@@ -1342,14 +1376,14 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
 
 }
 
-function aprobarDiscrepanciasLoteApp(lista){
+function aprobarDiscrepanciasLoteApp(lista, token){
 
   let exitosas = 0;
   let fallidas = [];
 
   (lista || []).forEach(item=>{
     try{
-      aprobarDiscrepancia(item.fila, item.motivo, item.comentario || "");
+      aprobarDiscrepancia(item.fila, item.motivo, item.comentario || "", token);
       exitosas++;
     }catch(e){
       fallidas.push({ fila: item.fila, error: e.message });

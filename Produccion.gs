@@ -25,7 +25,20 @@ function generarFolioLote_(hoja, fecha){
   return "PROD-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
 }
 
-function obtenerRequisicionListaParaProduccionApp(folio){
+function obtenerRequisicionListaParaProduccionApp(folio, token){
+  // Producción es de las pocas pantallas a las que CONSULTA sí tiene
+  // acceso (y no está atado a una sola área como Cocina/Panadería), así
+  // que aquí NO se restringe por área — solo se exige que, cuando llega
+  // un token (la llamada directa desde la SPA), la sesión sea realmente
+  // válida. Cuando no llega token (la llamada interna desde
+  // registrarProduccionApp, que ya exige su propio guard antes de
+  // llegar aquí) se deja pasar igual que antes.
+  if(token){
+    requerirSesionActivaApp_(token);
+  }
+  // Se llama SIN token a propósito: obtenerDetalleRequisicionRecetaApp
+  // solo filtra por área cuando recibe uno, y aquí se quiere mantener el
+  // acceso de Producción a cualquier área (ver comentario arriba).
   const detalle = obtenerDetalleRequisicionRecetaApp(folio);
   if(detalle.estado !== "ENTREGADA"){
     throw new Error("La requisición " + folio + " todavía no tiene los insumos entregados — confírmala primero.");
