@@ -1,0 +1,181 @@
+'use strict';
+
+/*
+ * FASE 5 del pedido del usuario: 5 casos especiales de inventario con
+ * resultado exacto esperado. Los 5 corren contra el código REAL.
+ *
+ * Nota sobre "concurrencia" en los Casos 1 y 2: el propio backend de
+ * producción serializa TODA escritura de existencia con un único
+ * LockService.getScriptLock() de proyecto (conBloqueoApp_) — dos
+ * solicitudes que en la vida real llegan "al mismo tiempo" quedan
+ * encoladas por ese lock y se procesan una tras otra, nunca en paralelo
+ * de verdad (Apps Script no tiene hilos). Por eso invocar la función real
+ * dos veces EN SECUENCIA es una prueba EMPÍRICA válida del comportamiento
+ * bajo concurrencia real, no una aproximación: es exactamente lo que
+ * pasa del otro lado del lock. Lo que NO se puede probar aquí (verificar
+ * que dos peticiones HTTP simultáneas de Apps Script de verdad se
+ * encolan y no se pisan) queda marcado como NO TESTEABLE SIN ENTORNO
+ * CONTROLADO en el reporte final.
+ */
+
+const { prueba } = require('../lib/runner');
+const { crearEntorno } = require('../lib/cargar-backend');
+const { hojasBase } = require('../lib/datos-prueba');
+
+function entornoConLogin(rolCorreo) {
+  const entorno = crearEntorno({ hojas: hojasBase() });
+  const token = entorno.invocar('crearSesion_', rolCorreo.correo, rolCorreo.nombre, rolCorreo.rol);
+  return { entorno, token };
+}
+
+prueba({
+  id: 'INV-CASO1', grupo: 'inventario', nombre: 'Caso 1: dos salidas iguales agotan el stock exacto, nunca negativo', metodo: 'EMPÍRICO',
+  objetivo: 'Existencia=5, Salida A=5 y Salida B=5 "concurrentes": una se aplica, la otra se rechaza; existencia final=0 (nunca -5/-10, nunca doble movimiento)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    entorno.leerHoja('MATRIZ')[2][10] = 5; // COD-002 AZUCAR, fila 2 (índice 2 = tercera fila = fila de datos #2)
+
+    let okA = false, okB = false, errA = '', errB = '';
+    try { entorno.invocar('registrarSalidaApp', { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', token }); okA = true; }
+    catch (e) { errA = e.message; }
+    try { entorno.invocar('registrarSalidaApp', { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', token }); okB = true; }
+    catch (e) { errB = e.message; }
+
+    const existenciaFinal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10];
+    const filasSalida = entorno.leerHoja('SALIDA').length - 1;
+    const unaSiUnaNo = (okA && !okB) || (!okA && okB);
+
+    return {
+      datos: 'existencia=5, salida A=5, salida B=5 (secuencial, serializadas por el mismo lock que en producción)',
+      esperado: 'una aplicada y otra rechazada, existencia final=0, 1 sola fila en SALIDA',
+      obtenido: `A=${okA ? 'aplicada' : 'rechazada(' + errA + ')'}, B=${okB ? 'aplicada' : 'rechazada(' + errB + ')'}, existenciaFinal=${existenciaFinal}, filasSalida=${filasSalida}`,
+      pasa: unaSiUnaNo && existenciaFinal === 0 && filasSalida === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-CASO2', grupo: 'inventario', nombre: 'Caso 2: entrada y salida concurrentes se suman correctamente', metodo: 'EMPÍRICO',
+  objetivo: 'Existencia=100, Entrada=20 y Salida=15 "concurrentes" → resultado final=105, sin importar el orden',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    // COD-001 HARINA ya tiene existencia=100 en el fixture estándar
+    entorno.invocar('guardarEntradaApp', { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', token });
+    entorno.invocar('registrarSalidaApp', { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 15, udm: 'KG', token });
+    const existenciaFinal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    return {
+      datos: 'existencia=100, entrada=20, salida=15',
+      esperado: 'existencia final=105',
+      obtenido: `existenciaFinal=${existenciaFinal}`,
+      pasa: existenciaFinal === 105,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-CASO3', grupo: 'inventario', nombre: 'Caso 3: discrepancia aprobada actualiza MATRIZ, KARDEX y AUDITORÍA', metodo: 'EMPÍRICO',
+  objetivo: 'Sistema=100, Físico=90, aprobada → MATRIZ=90, KARDEX registra el ajuste (Salida=10, ExistenciaAnterior=100, ExistenciaNueva=90), AUDITORIA_AJUSTES.Diferencia=-10',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10] = 100;
+    entorno.hojas.DISCREPANCIAS._filas().push([new Date(), 'CC-1', 'COD-001', 'HARINA DE TRIGO', 'A-01', 100, 90, -10, 'A', 'PENDIENTE', '', '', '', '']);
+
+    entorno.invocar('aprobarDiscrepancia', 2, 'CONTEO_FISICO', 'ajuste caso 3', undefined);
+
+    const existencia = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const kardex = entorno.leerHoja('KARDEX')[1];
+    const auditoria = entorno.leerHoja('AUDITORIA_AJUSTES')[1];
+
+    const kardexOk = kardex && kardex[7] === 10 && kardex[8] === 100 && kardex[9] === 90;
+    const auditoriaOk = auditoria && Number(auditoria[5]) === -10;
+
+    return {
+      datos: 'MATRIZ inicial=100, discrepancia sistema=100/físico=90 (diferencia=-10)',
+      esperado: 'MATRIZ=90, KARDEX.Salida=10 (ExistenciaAnterior=100→Nueva=90), AUDITORIA_AJUSTES.Diferencia=-10',
+      obtenido: `MATRIZ=${existencia}, KARDEX.Salida=${kardex && kardex[7]}, AUDITORIA.Diferencia=${auditoria && auditoria[5]}`,
+      pasa: existencia === 90 && kardexOk && auditoriaOk,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-CASO4', grupo: 'inventario', nombre: 'Caso 4: la misma discrepancia aprobada dos veces no se duplica', metodo: 'EMPÍRICO',
+  objetivo: '1ª aprobación: AJUSTE APLICADO. 2ª aprobación de la misma fila: NO APLICA NADA (MATRIZ sin cambio, KARDEX sin fila nueva, AUDITORIA sin fila nueva)',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10] = 100;
+    entorno.hojas.DISCREPANCIAS._filas().push([new Date(), 'CC-1', 'COD-001', 'HARINA DE TRIGO', 'A-01', 100, 90, -10, 'A', 'PENDIENTE', '', '', '', '']);
+
+    const r1 = entorno.invocar('aprobarDiscrepancia', 2, 'CONTEO_FISICO', 'primera', undefined);
+    const existenciaTras1 = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const kardexTras1 = entorno.leerHoja('KARDEX').length - 1;
+    const auditoriaTras1 = entorno.leerHoja('AUDITORIA_AJUSTES').length - 1;
+
+    const r2 = entorno.invocar('aprobarDiscrepancia', 2, 'CONTEO_FISICO', 'segunda', undefined);
+    const existenciaTras2 = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const kardexTras2 = entorno.leerHoja('KARDEX').length - 1;
+    const auditoriaTras2 = entorno.leerHoja('AUDITORIA_AJUSTES').length - 1;
+
+    const pasa = r1.yaProcesada === false && existenciaTras1 === 90 && kardexTras1 === 1 && auditoriaTras1 === 1
+      && r2.yaProcesada === true && existenciaTras2 === 90 && kardexTras2 === 1 && auditoriaTras2 === 1;
+
+    return {
+      datos: 'misma fila de discrepancia aprobada 2 veces seguidas',
+      esperado: '1ª: yaProcesada=false, MATRIZ=90, 1 fila Kardex, 1 fila Auditoría. 2ª: yaProcesada=true, todo igual (sin duplicar)',
+      obtenido: `1ª: yaProcesada=${r1.yaProcesada}, MATRIZ=${existenciaTras1}, kardex=${kardexTras1}, auditoria=${auditoriaTras1} | 2ª: yaProcesada=${r2.yaProcesada}, MATRIZ=${existenciaTras2}, kardex=${kardexTras2}, auditoria=${auditoriaTras2}`,
+      pasa,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-CASO5', grupo: 'inventario', nombre: 'Caso 5: discrepancia rechazada no toca MATRIZ ni se aplica al cerrar el folio', metodo: 'EMPÍRICO',
+  objetivo: 'rechazarDiscrepancia no cambia MATRIZ/KARDEX; y el cierre del folio de conteo (cerrarConteoFolioApp) tampoco aplica ese ajuste ya rechazado',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10] = 100;
+
+    // 1) Rechazar la discrepancia directamente
+    entorno.hojas.DISCREPANCIAS._filas().push([new Date(), 'CC-5', 'COD-001', 'HARINA DE TRIGO', 'A-01', 100, 90, -10, 'A', 'PENDIENTE', '', '', '', '']);
+    entorno.invocar('rechazarDiscrepancia', 2, 'rechazada a propósito', undefined);
+    const existenciaTrasRechazo = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const kardexTrasRechazo = entorno.leerHoja('KARDEX').length - 1;
+    const filaDiscrepancia = entorno.leerHoja('DISCREPANCIAS')[1];
+
+    // 2) El folio de conteo que originó esa discrepancia se cierra: el cierre NO debe reaplicar el ajuste ya rechazado
+    entorno.hojas.CONTEO_CICLICO._filas().push(['CC-5', new Date(), 'Admin', 'COD-001', 'HARINA DE TRIGO', 'A-01', 100, 90, -10, 'PENDIENTE', 'A']);
+    entorno.invocar('cerrarConteoFolioApp', 'CC-5', token);
+    const existenciaTrasCierre = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const auditoriaFilas = entorno.leerHoja('AUDITORIA_AJUSTES').length - 1;
+
+    const pasa = existenciaTrasRechazo === 100 && kardexTrasRechazo === 0
+      && filaDiscrepancia[9] === 'RECHAZADO' && filaDiscrepancia[13] === 'SIN AJUSTE'
+      && existenciaTrasCierre === 100 && auditoriaFilas === 0;
+
+    return {
+      datos: 'discrepancia sistema=100/físico=90 rechazada, luego se cierra el folio CC-5 que la originó',
+      esperado: 'MATRIZ se mantiene en 100 todo el tiempo; sin fila nueva en KARDEX; el cierre no crea ajuste en AUDITORIA_AJUSTES',
+      obtenido: `trasRechazo: MATRIZ=${existenciaTrasRechazo}, kardex=${kardexTrasRechazo}, estado=${filaDiscrepancia[9]} | trasCierre: MATRIZ=${existenciaTrasCierre}, auditoriaAjustes=${auditoriaFilas}`,
+      pasa,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-006', grupo: 'inventario', nombre: 'Cierre de folio SÍ aplica un ajuste no resuelto individualmente', metodo: 'EMPÍRICO',
+  objetivo: 'Control positivo del Caso 5: una diferencia de conteo que NADIE aprobó/rechazó individualmente sí debe aplicarse al cerrar el folio (comportamiento histórico que no debe romperse)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-003')[10] = 50;
+    entorno.hojas.CONTEO_CICLICO._filas().push(['CC-6', new Date(), 'Admin', 'COD-003', 'SAL DE MESA', 'A-01', 50, 45, -5, 'PENDIENTE', 'A']);
+    entorno.invocar('cerrarConteoFolioApp', 'CC-6', token);
+    const existencia = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-003')[10];
+    const auditoriaFilas = entorno.leerHoja('AUDITORIA_AJUSTES').length - 1;
+    return {
+      datos: 'conteo sistema=50/físico=45 (diferencia=-5), sin resolución individual previa',
+      esperado: 'MATRIZ=45, 1 fila nueva en AUDITORIA_AJUSTES',
+      obtenido: `MATRIZ=${existencia}, auditoriaAjustes=${auditoriaFilas}`,
+      pasa: existencia === 45 && auditoriaFilas === 1,
+    };
+  },
+});
