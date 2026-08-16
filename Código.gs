@@ -971,68 +971,80 @@ function generarConteoRacks(racks){
     "yyyyMMdd"
   );
 
-  let consecutivo = 1;
+  // El folio consecutivo del día y la reserva de las filas quedan
+  // protegidos por el mismo lock que ya usa la generación manual
+  // (generarConteoRacksApp, en 📁 App.gs.gs) — antes esta ruta (la que
+  // usa la programación automática de conteos) calculaba el consecutivo
+  // sin ningún bloqueo, y podía coincidir con el folio que la generación
+  // manual acababa de tomar si las dos corrían casi al mismo tiempo.
+  let folioConteo;
 
-  if(conteo.getLastRow() > 1){
+  conBloqueoApp_(function(){
 
-    const folios = conteo
-      .getRange(2,1,conteo.getLastRow()-1,1)
-      .getValues()
-      .flat();
+    let consecutivo = 1;
 
-    const conteosHoy = folios.filter(f =>
-      f.toString().includes("CC-"+fechaCodigo)
-    );
+    if(conteo.getLastRow() > 1){
 
-    consecutivo = conteosHoy.length + 1;
+      const folios = conteo
+        .getRange(2,1,conteo.getLastRow()-1,1)
+        .getValues()
+        .flat();
 
-  }
+      const conteosHoy = folios.filter(f =>
+        f.toString().includes("CC-"+fechaCodigo)
+      );
 
-  const folioConteo =
-    "CC-"+fechaCodigo+"-"+Utilities.formatString(
-      "%03d",
-      consecutivo
-    );
-
-  datos.forEach((fila,index)=>{
-
-    let rackProducto = fila[6];
-
-    if(
-      racks.includes(rackProducto)
-      && fila[4]
-      && fila[9]
-    ){
-
-      salida.push([
-        folioConteo,
-        fecha,
-        usuario,
-        fila[4],
-        fila[0],
-        fila[9],
-        fila[10],
-        "",
-        "",
-        "PENDIENTE",
-        rackProducto
-      ]);
+      consecutivo = conteosHoy.length + 1;
 
     }
 
+    folioConteo =
+      "CC-"+fechaCodigo+"-"+Utilities.formatString(
+        "%03d",
+        consecutivo
+      );
+
+    datos.forEach((fila,index)=>{
+
+      let rackProducto = fila[6];
+
+      if(
+        racks.includes(rackProducto)
+        && fila[4]
+        && fila[9]
+      ){
+
+        salida.push([
+          folioConteo,
+          fecha,
+          usuario,
+          fila[4],
+          fila[0],
+          fila[9],
+          fila[10],
+          "",
+          "",
+          "PENDIENTE",
+          rackProducto
+        ]);
+
+      }
+
+    });
+
+    if(salida.length>0){
+
+      conteo
+        .getRange(
+          conteo.getLastRow()+1,
+          1,
+          salida.length,
+          11
+        )
+        .setValues(salida);
+    }
+
   });
-
-  if(salida.length>0){
-
-    conteo
-      .getRange(
-        conteo.getLastRow()+1,
-        1,
-        salida.length,
-        11
-      )
-      .setValues(salida);
-  }
 
   registrarControlConteo(
     folioConteo,
@@ -1231,6 +1243,15 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
   const fisico       = Number(datos[6]) || 0;
   const diferencia    = Number(datos[7]) || 0;
   const rack           = datos[8] || "";
+  const estadoActual   = String(datos[9]||"").trim().toUpperCase();
+
+  // Idempotencia: si esta fila ya se aprobó antes (doble clic, reintento
+  // de red, o la misma fila procesada dos veces en un lote), no se
+  // vuelve a aplicar el ajuste ni a duplicar ENTRADA/SALIDA/Kardex/
+  // Auditoría — se avisa que ya estaba procesada y no se hace nada más.
+  if(estadoActual === "APROBADO"){
+    return { ok: true, yaProcesada: true };
+  }
 
   const usuario = obtenerUsuario();
   const nombreUsuario = obtenerNombreUsuario();
@@ -1240,6 +1261,15 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
     "ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
     "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"
   ];
+
+  // Aplica el ajuste a la existencia REAL de MATRIZ antes de escribir
+  // nada más — si por alguna razón no se puede aplicar (p. ej. dejaría
+  // la existencia negativa), se detiene aquí y la fila se queda como
+  // estaba, en vez de marcar "APROBADO" sin que el número haya cambiado
+  // (que era exactamente el problema: la aprobación nunca tocaba MATRIZ).
+  if(diferencia !== 0){
+    ajustarExistenciaMatrizPorDeltaValidado_(codigo, diferencia);
+  }
 
   hoja.getRange(fila, 10).setValue("APROBADO");
   hoja.getRange(fila, 11).setValue(usuario);
@@ -1308,7 +1338,7 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
     motivo + " - " + comentario
   );
 
-  return true;
+  return { ok: true, yaProcesada: false };
 
 }
 

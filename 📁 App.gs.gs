@@ -163,23 +163,8 @@ function guardarEntradaApp(datos){
  */
 function registrarSalidaInterna_(datos, usuario){
   const ss = SpreadsheetApp.getActive();
-  const matriz = ss.getSheetByName("MATRIZ");
   const salida = ss.getSheetByName("SALIDA");
   const kardex = ss.getSheetByName("KARDEX");
-
-  const datosMatriz = matriz.getDataRange().getValues();
-  let fila = -1;
-
-  for (let i = 1; i < datosMatriz.length; i++){
-    if (String(datosMatriz[i][4]) == String(datos.codigo)){
-      fila = i;
-      break;
-    }
-  }
-
-  if (fila === -1){
-    throw new Error("Producto no encontrado en MATRIZ");
-  }
 
   const cantidad = Number(datos.cantidad);
 
@@ -187,13 +172,15 @@ function registrarSalidaInterna_(datos, usuario){
     throw new Error("Cantidad inválida");
   }
 
-  const existenciaActual = Number(datosMatriz[fila][10]) || 0;
-
-  if (cantidad > existenciaActual){
-    throw new Error("Existencia insuficiente. Disponible: " + existenciaActual);
-  }
-
   const fecha = new Date();
+  const folio = datos.folio || ("SAL-" + fecha.getTime());
+
+  // La validación de existencia suficiente y el descuento ahora ocurren
+  // en un solo paso, dentro del lock (ver ajustarExistenciaMatrizPorDeltaValidado_).
+  // Si no alcanza, esto lanza el error ANTES de escribir nada en
+  // SALIDA/KARDEX — así una salida que falla no deja movimientos huérfanos.
+  const resultadoExistencia = ajustarExistenciaMatrizPorDeltaValidado_(datos.codigo, -cantidad);
+  const nuevaExistencia = resultadoExistencia.nueva;
 
   salida.appendRow([
     fecha.getFullYear(),          // A AÑO
@@ -209,14 +196,6 @@ function registrarSalidaInterna_(datos, usuario){
     datos.ubicacion || ""                   // K UBICACION
   ]);
 
-  SpreadsheetApp.flush();
-
-  // Única fuente de verdad para la existencia (antes esta función nunca
-  // la escribía en MATRIZ — dependía de la fórmula de la columna K).
-  const resultadoExistencia = ajustarExistenciaMatrizPorDelta_(datos.codigo, -cantidad);
-  const nuevaExistencia = resultadoExistencia ? resultadoExistencia.nueva : (existenciaActual - cantidad);
-  const folio = datos.folio || ("SAL-" + fecha.getTime());
-
   kardex.appendRow([
     fecha,
     Utilities.formatDate(fecha, Session.getScriptTimeZone(), "HH:mm:ss"),
@@ -231,6 +210,8 @@ function registrarSalidaInterna_(datos, usuario){
     usuario,
     datos.observacion || (datos.area ? ("Salida a " + datos.area) : "Salida desde app móvil")
   ]);
+
+  SpreadsheetApp.flush();
 
   return { exito: true, existenciaRestante: nuevaExistencia };
 }
@@ -1423,6 +1404,21 @@ function cerrarConteoFolioApp(folio, token){
     throw new Error("No hay conteos para cerrar");
   }
 
+  // Estado ya resuelto (por folio+código) en DISCREPANCIAS, si alguien ya
+  // pasó por la pantalla de "Aprobar/Rechazar Discrepancias" antes de
+  // cerrar este folio. Si hay varias filas para el mismo folio+código
+  // (p. ej. por una revisión repetida), se queda con la última — el
+  // estado más reciente.
+  const estadoDiscrepanciaPorProducto = {};
+  const hojaDiscrepancias = ss.getSheetByName("DISCREPANCIAS");
+  if(hojaDiscrepancias && hojaDiscrepancias.getLastRow() > 1){
+    const datosDiscrepancias = hojaDiscrepancias.getRange(2, 1, hojaDiscrepancias.getLastRow()-1, 10).getValues();
+    datosDiscrepancias.forEach(d => {
+      if(String(d[1]) !== String(folio)) return; // columna B = Folio
+      estadoDiscrepanciaPorProducto[String(d[2])] = String(d[9]||"").trim().toUpperCase(); // columna C = Código, J = Estado
+    });
+  }
+
   const datos = conteo.getRange(2,1,ultimaFila-1,11).getValues();
 
   let historialDatos = [];
@@ -1460,7 +1456,16 @@ function cerrarConteoFolioApp(folio, token){
       fila[6], fila[7], fila[8], resultado, new Date(), usuario
     ]);
 
-    if(resultado == "AJUSTADO"){
+    // Si esta diferencia ya se resolvió individualmente en la pantalla de
+    // Aprobar/Rechazar Discrepancias, el cierre del folio ya NO decide
+    // por su cuenta: si fue RECHAZADA, no se toca MATRIZ; si ya fue
+    // APROBADA, el ajuste ya se aplicó en ese momento y no se repite aquí
+    // (antes el cierre ignoraba esto por completo y podía aplicar un
+    // ajuste ya rechazado, o duplicarlo si ya había sido aprobado).
+    const estadoResuelto = estadoDiscrepanciaPorProducto[String(fila[3])];
+    const yaResueltaIndividualmente = estadoResuelto === "RECHAZADO" || estadoResuelto === "APROBADO";
+
+    if(resultado == "AJUSTADO" && !yaResueltaIndividualmente){
       auditoriaDatos.push([
         fechaHoy, fila[3], fila[4], existenciaAnterior, existenciaNueva, diferencia,
         usuario, "Ajuste por conteo cíclico " + folio, fila[10] || ""
@@ -2887,6 +2892,47 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
 
     const anterior = Number(celda.getValue()) || 0;
     const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+
+    celda.setValue(nueva);
+
+    return { anterior: anterior, nueva: nueva };
+
+  });
+
+}
+
+/**
+ * Variante de ajustarExistenciaMatrizPorDelta_ para SALIDAS: valida que
+ * quede suficiente existencia DENTRO del mismo lock que aplica el
+ * descuento, en vez de validar antes y descontar después por separado.
+ * Antes, dos salidas casi simultáneas del mismo producto podían leer la
+ * misma existencia "anterior" cada una fuera del lock, pasar su propia
+ * validación por separado, y solo entonces disputarse el lock para
+ * restar — la segunda en aplicar su resta ya no volvía a comprobar nada
+ * y podía dejar la existencia en negativo. Aquí la lectura, la
+ * validación y la escritura son un solo paso atómico: si no alcanza,
+ * lanza el error y no escribe nada. Es la segunda función (además de
+ * actualizarExistenciaMatriz_/ajustarExistenciaMatrizPorDelta_)
+ * autorizada a tocar la columna K de MATRIZ, para este caso específico.
+ */
+function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta){
+
+  const fila = buscarFilaMatrizPorCodigo_(codigo);
+  if(fila === -1){
+    throw new Error("Producto no encontrado en MATRIZ");
+  }
+
+  return conBloqueoApp_(function(){
+
+    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+    const celda = matriz.getRange(fila, 11);
+
+    const anterior = Number(celda.getValue()) || 0;
+    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+
+    if(nueva < 0){
+      throw new Error("Existencia insuficiente. Disponible: " + anterior);
+    }
 
     celda.setValue(nueva);
 
