@@ -7,14 +7,14 @@
  * Nunca toca una hoja real — todo vive en memoria durante la prueba.
  */
 
-// USUARIOS: A Correo | B Nombre | C Password(hash) | D Rol | E Estado | F Área
-function filaUsuario({ correo, nombre, passHash, rol, estado, area }) {
-  return [correo, nombre, passHash || '', rol || '', estado || 'ACTIVO', area || ''];
+// USUARIOS: A Correo | B Nombre | C Password(hash) | D Rol | E Estado | F Área | G Sucursal
+function filaUsuario({ correo, nombre, passHash, rol, estado, area, sucursal }) {
+  return [correo, nombre, passHash || '', rol || '', estado || 'ACTIVO', area || '', sucursal || ''];
 }
 
 function hojaUsuariosEstandar() {
   return [
-    ['Correo', 'Nombre', 'Password', 'Rol', 'Estado', 'Área'],
+    ['Correo', 'Nombre', 'Password', 'Rol', 'Estado', 'Área', 'Sucursal'],
     filaUsuario({ correo: 'admin@tagers.com', nombre: 'Admin Prueba', rol: 'ADMIN', area: 'Almacén' }),
     filaUsuario({ correo: 'supervisor@tagers.com', nombre: 'Supervisor Prueba', rol: 'SUPERVISOR' }),
     filaUsuario({ correo: 'operador@tagers.com', nombre: 'Operador Prueba', rol: 'OPERADOR' }),
@@ -22,6 +22,9 @@ function hojaUsuariosEstandar() {
     filaUsuario({ correo: 'cocina@tagers.com', nombre: 'Usuario Cocina', rol: 'OPERADOR', area: 'Cocina' }),
     filaUsuario({ correo: 'panaderia@tagers.com', nombre: 'Usuario Panadería', rol: 'OPERADOR', area: 'Panadería' }),
     filaUsuario({ correo: 'exempleado@tagers.com', nombre: 'Ex Empleado', rol: 'ADMIN', estado: 'INACTIVO' }),
+    filaUsuario({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR', sucursal: 'S02' }),
+    filaUsuario({ correo: 'sucursal4@tagers.com', nombre: 'Operador S04', rol: 'OPERADOR', sucursal: 'S04' }),
+    filaUsuario({ correo: 'corporativo@tagers.com', nombre: 'Corporativo', rol: 'SUPERVISOR', sucursal: 'TODAS' }),
   ];
 }
 

@@ -27,6 +27,7 @@ const ARCHIVOS_BACKEND = [
   '📁 App.gs.gs',
   'Recetas.gs',
   'RequisicionesRecetas.gs',
+  'RequisicionesSucursal.gs',
   'Produccion.gs',
   'ProgramacionConteos.gs',
   'AnalisisCompras.gs',

@@ -3179,6 +3179,131 @@ function ajustarExistenciaSucursal_(codigo, sucursal, delta, nuevaExistencia, va
   });
 }
 
+// ============================================
+// FASE 12 — TRANSFERENCIAS ENTRE SUCURSALES (diseño previo ya
+// autorizado a implementar). Mueve existencia de una sucursal a otra
+// dentro de UN SOLO conBloqueoApp_: origen y destino se ajustan en el
+// mismo lock para que la operación sea atómica de verdad — a
+// propósito NO reutiliza ajustarExistenciaSucursal_/
+// ajustarExistenciaMatrizPorDeltaValidado_ para cada lado (cada una
+// abre y CIERRA su propio lock; encadenar dos de esas dejaría una
+// ventana entre el descuento de origen y el alta en destino donde otra
+// escritura podría colarse). ajustarUnaCeldaExistenciaSinLock_ es el
+// único punto que duplica esa lógica de lectura/validación/escritura,
+// deliberadamente, para no tocar los escritores públicos ya probados.
+// ============================================
+
+function ajustarUnaCeldaExistenciaSinLock_(codigo, sucursal, delta, validar){
+
+  if(esSucursalNoDefault_(sucursal)){
+    const hoja = obtenerHojaExistenciasSucursal_();
+    let fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+    const anterior = fila !== -1 ? (Number(hoja.getRange(fila, 3).getValue()) || 0) : obtenerExistenciaSucursal_(codigo, sucursal);
+    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+
+    if(validar && nueva < 0){
+      throw new Error("Existencia insuficiente en " + sucursal + ". Disponible: " + anterior);
+    }
+
+    if(fila === -1){
+      hoja.appendRow([codigo, sucursal, nueva]);
+    } else {
+      hoja.getRange(fila, 3).setValue(nueva);
+    }
+
+    invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
+    return { anterior: anterior, nueva: nueva };
+  }
+
+  const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+  if(filaMatriz === -1){
+    throw new Error("Producto no encontrado en MATRIZ");
+  }
+
+  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const celda = matriz.getRange(filaMatriz, 11);
+  const anterior = Number(celda.getValue()) || 0;
+  const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+
+  if(validar && nueva < 0){
+    throw new Error("Existencia insuficiente en " + sucursal + ". Disponible: " + anterior);
+  }
+
+  celda.setValue(nueva);
+  invalidarCacheHoja_("MATRIZ");
+  return { anterior: anterior, nueva: nueva };
+
+}
+
+/**
+ * Transfiere `cantidad` de un producto de sucursalOrigen a
+ * sucursalDestino. Genera Kardex en AMBAS sucursales (una salida, una
+ * entrada), enlazadas por el mismo folio TR-. Solo Almacén/Admin puede
+ * transferir (mismo criterio que Compras/Recepción/Inventario mensual).
+ */
+function transferirEntreSucursalesApp(codigo, sucursalOrigen, sucursalDestino, cantidad, token){
+
+  requerirAccesoAlmacenApp_(token);
+
+  codigo = String(codigo||"").trim();
+  sucursalOrigen = normalizarSucursal_(sucursalOrigen);
+  sucursalDestino = normalizarSucursal_(sucursalDestino);
+  cantidad = Number(cantidad) || 0;
+
+  if(!codigo){
+    throw new Error("Indica el producto a transferir.");
+  }
+  if(sucursalOrigen === sucursalDestino){
+    throw new Error("La sucursal de origen y destino no pueden ser la misma.");
+  }
+  if(cantidad <= 0){
+    throw new Error("Captura una cantidad mayor a cero.");
+  }
+
+  const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+  if(filaMatriz === -1){
+    throw new Error("Producto no encontrado en MATRIZ");
+  }
+  const producto = SpreadsheetApp.getActive().getSheetByName("MATRIZ").getRange(filaMatriz, 1).getValue();
+  const usuario = obtenerNombreDesdeToken(token);
+
+  let folioTransferencia, anteriorOrigen, nuevaOrigen, anteriorDestino, nuevaDestino;
+
+  conBloqueoApp_(function(){
+
+    folioTransferencia = "TR-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+
+    const resOrigen = ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalOrigen, -cantidad, true);
+    anteriorOrigen = resOrigen.anterior;
+    nuevaOrigen = resOrigen.nueva;
+
+    const resDestino = ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalDestino, cantidad, false);
+    anteriorDestino = resDestino.anterior;
+    nuevaDestino = resDestino.nueva;
+
+  });
+
+  registrarKardex(
+    "TRANSFERENCIA-SALIDA", folioTransferencia, codigo, producto, "", cantidad,
+    anteriorOrigen, nuevaOrigen, usuario,
+    "Transferencia a " + sucursalDestino + " — folio " + folioTransferencia
+  );
+  registrarKardex(
+    "TRANSFERENCIA-ENTRADA", folioTransferencia, codigo, producto, cantidad, "",
+    anteriorDestino, nuevaDestino, usuario,
+    "Transferencia desde " + sucursalOrigen + " — folio " + folioTransferencia
+  );
+
+  registrarAuditoria(usuario, "TRANSFERENCIAS", "TRANSFERENCIA ENTRE SUCURSALES", folioTransferencia, codigo, producto, cantidad, cantidad,
+    sucursalOrigen + " -> " + sucursalDestino);
+
+  return {
+    folio: folioTransferencia, sucursalOrigen: sucursalOrigen, sucursalDestino: sucursalDestino,
+    cantidad: cantidad, existenciaOrigen: nuevaOrigen, existenciaDestino: nuevaDestino
+  };
+
+}
+
 /**
  * MIGRACIÓN — ejecutar UNA sola vez. Convierte la columna Existencia de
  * MATRIZ de fórmula a valor fijo: lee lo que la fórmula tiene calculado
@@ -4435,6 +4560,44 @@ function obtenerAreaUsuarioPorCorreo_(correo){
     }
   }
   return "";
+}
+
+/**
+ * FASE 11 — modelo de permisos multi-sucursal (diseño previo ya
+ * autorizado a implementar). Columna G ("Sucursal") de USUARIOS, misma
+ * idea que Área (columna F) pero para la ubicación física, no el
+ * departamento. Si la columna no existe todavía o el usuario no tiene
+ * valor capturado, normalizarSucursal_("") la resuelve a
+ * SUCURSAL_DEFAULT_ ("S01") — así ningún usuario existente pierde
+ * acceso el día que se agregue la columna: sigue viendo exactamente lo
+ * mismo que hoy, la única sucursal operativa.
+ */
+function obtenerSucursalUsuarioPorCorreo_(correo){
+  const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(!hoja) return "";
+  const datos = hoja.getDataRange().getValues();
+  const buscado = String(correo||"").toLowerCase().trim();
+  for(let i=1;i<datos.length;i++){
+    if(String(datos[i][0]||"").toLowerCase().trim() === buscado){
+      return String(datos[i][6]||"").trim(); // columna G
+    }
+  }
+  return "";
+}
+
+/**
+ * Acceso del usuario actual a datos por sucursal: su propia sucursal, y
+ * si puede ver/operar TODAS (ADMIN, o Sucursal="TODAS" capturada a
+ * mano para un usuario corporativo). Mismo shape y mismo criterio que
+ * obtenerAccesoRequisicionesApp — a propósito, para que cualquier
+ * pantalla que ya sepa usar uno sepa usar el otro.
+ */
+function obtenerAccesoSucursalApp(token){
+  const correo = obtenerCorreoDesdeToken_(token);
+  const rol = obtenerRolDesdeToken(token);
+  const sucursal = normalizarSucursal_(obtenerSucursalUsuarioPorCorreo_(correo));
+  const esTodasLasSucursales = String(rol||"").toUpperCase() === "ADMIN" || sucursal === "TODAS";
+  return { sucursal: sucursal, esTodasLasSucursales: esTodasLasSucursales };
 }
 
 // Mismo patrón que obtenerNombreDesdeToken/obtenerRolDesdeToken de

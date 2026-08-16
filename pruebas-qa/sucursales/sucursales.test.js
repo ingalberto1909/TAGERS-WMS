@@ -160,3 +160,177 @@ prueba({
     };
   },
 });
+
+/*
+ * FASE 11 — modelo de permisos multi-sucursal (autorizado en esta
+ * ronda). Columna G ("Sucursal") de USUARIOS + obtenerAccesoSucursalApp,
+ * mismo shape y criterio que obtenerAccesoRequisicionesApp.
+ */
+
+prueba({
+  id: 'SUC-008', grupo: 'sucursales', nombre: 'Un usuario de sucursal ve solo su propia sucursal', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerAccesoSucursalApp debe devolver la sucursal capturada en USUARIOS y esTodasLasSucursales=false para un OPERADOR normal',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'sucursal2@tagers.com', 'Operador S02', 'OPERADOR');
+    const acceso = entorno.invocar('obtenerAccesoSucursalApp', token);
+    return {
+      datos: 'USUARIOS.sucursal2@tagers.com tiene Sucursal=S02',
+      esperado: 'sucursal=S02, esTodasLasSucursales=false',
+      obtenido: `sucursal=${acceso.sucursal}, esTodasLasSucursales=${acceso.esTodasLasSucursales}`,
+      pasa: acceso.sucursal === 'S02' && acceso.esTodasLasSucursales === false,
+    };
+  },
+});
+
+prueba({
+  id: 'SUC-009', grupo: 'sucursales', nombre: 'ADMIN ve todas las sucursales sin importar su propia Sucursal', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerAccesoSucursalApp debe dar esTodasLasSucursales=true para rol ADMIN, igual que ya hace obtenerAccesoRequisicionesApp con Área',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const acceso = entorno.invocar('obtenerAccesoSucursalApp', token);
+    return {
+      datos: 'rol=ADMIN, sin Sucursal capturada en USUARIOS',
+      esperado: 'esTodasLasSucursales=true (cae a S01 por default, pero el rol ya le da acceso a todas)',
+      obtenido: `sucursal=${acceso.sucursal}, esTodasLasSucursales=${acceso.esTodasLasSucursales}`,
+      pasa: acceso.esTodasLasSucursales === true,
+    };
+  },
+});
+
+prueba({
+  id: 'SUC-010', grupo: 'sucursales', nombre: 'Usuario corporativo (Sucursal=TODAS) sin ser ADMIN también ve todas', metodo: 'EMPÍRICO',
+  objetivo: 'Un usuario con Sucursal="TODAS" capturada a mano debe tener esTodasLasSucursales=true aunque su rol no sea ADMIN',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'corporativo@tagers.com', 'Corporativo', 'SUPERVISOR');
+    const acceso = entorno.invocar('obtenerAccesoSucursalApp', token);
+    return {
+      datos: 'rol=SUPERVISOR, USUARIOS.Sucursal=TODAS',
+      esperado: 'esTodasLasSucursales=true',
+      obtenido: `sucursal=${acceso.sucursal}, esTodasLasSucursales=${acceso.esTodasLasSucursales}`,
+      pasa: acceso.esTodasLasSucursales === true,
+    };
+  },
+});
+
+prueba({
+  id: 'SUC-011', grupo: 'sucursales', nombre: 'Usuario sin Sucursal migrada sigue viendo S01 (sin perder acceso)', metodo: 'EMPÍRICO',
+  objetivo: 'Un usuario ya existente, sin la columna Sucursal capturada, debe resolver a S01 — la migración no le quita nada',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'operador@tagers.com', 'Operador Prueba', 'OPERADOR');
+    const acceso = entorno.invocar('obtenerAccesoSucursalApp', token);
+    return {
+      datos: 'USUARIOS.operador@tagers.com sin Sucursal capturada',
+      esperado: 'sucursal=S01 (default), esTodasLasSucursales=false',
+      obtenido: `sucursal=${acceso.sucursal}, esTodasLasSucursales=${acceso.esTodasLasSucursales}`,
+      pasa: acceso.sucursal === 'S01' && acceso.esTodasLasSucursales === false,
+    };
+  },
+});
+
+/*
+ * FASE 12 — transferencias entre sucursales (autorizado en esta
+ * ronda). Ejemplo exacto del diseño: S02=100 KG, S05=10 KG,
+ * transferencia de 30 KG -> S02=70 KG, S05=40 KG.
+ */
+
+prueba({
+  id: 'SUC-012', grupo: 'sucursales', nombre: 'Transferencia S02→S05 da el resultado exacto del diseño', metodo: 'EMPÍRICO',
+  objetivo: 'transferirEntreSucursalesApp: S02=100, S05=10, transferir 30 -> S02=70, S05=40',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 100, 'S02');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 10, 'S05');
+
+    const r = entorno.invocar('transferirEntreSucursalesApp', 'COD-001', 'S02', 'S05', 30, tokenAdmin);
+
+    const s02 = entorno.invocar('obtenerExistenciaSucursal_', 'COD-001', 'S02');
+    const s05 = entorno.invocar('obtenerExistenciaSucursal_', 'COD-001', 'S05');
+
+    return {
+      datos: 'S02=100 KG, S05=10 KG, transferencia de 30 KG',
+      esperado: 'S02=70 KG, S05=40 KG',
+      obtenido: `S02=${s02}, S05=${s05}, folio=${r.folio}`,
+      pasa: s02 === 70 && s05 === 40 && /^TR-/.test(r.folio),
+    };
+  },
+});
+
+prueba({
+  id: 'SUC-013', grupo: 'sucursales', nombre: 'La transferencia registra Kardex en AMBAS sucursales', metodo: 'EMPÍRICO',
+  objetivo: 'transferirEntreSucursalesApp debe generar 2 filas de Kardex (salida en origen, entrada en destino) con el mismo folio',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 100, 'S02');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 10, 'S05');
+
+    const r = entorno.invocar('transferirEntreSucursalesApp', 'COD-001', 'S02', 'S05', 30, tokenAdmin);
+    const kardex = entorno.leerHoja('KARDEX').slice(1).filter(f => f[3] === r.folio);
+
+    const salida = kardex.find(f => f[2] === 'TRANSFERENCIA-SALIDA');
+    const entrada = kardex.find(f => f[2] === 'TRANSFERENCIA-ENTRADA');
+
+    return {
+      datos: `folio=${r.folio}`,
+      esperado: '2 filas de Kardex con ese folio: 1 TRANSFERENCIA-SALIDA (Salida=30, 100→70) y 1 TRANSFERENCIA-ENTRADA (Entrada=30, 10→40)',
+      obtenido: `filas=${kardex.length}, salida=${salida ? `${salida[7]}→${salida[9]} (mov=${salida[7]===''?'':salida[6]})` : 'NO'}, entrada=${entrada ? `${entrada[8]}→${entrada[9]}` : 'NO'}`,
+      pasa: kardex.length === 2 && !!salida && !!entrada && salida[7] === 30 && salida[8] === 100 && salida[9] === 70 && entrada[6] === 30 && entrada[8] === 10 && entrada[9] === 40,
+    };
+  },
+});
+
+prueba({
+  id: 'SUC-014', grupo: 'sucursales', nombre: 'Transferencia bloqueada si el origen no tiene suficiente', metodo: 'EMPÍRICO',
+  objetivo: 'transferirEntreSucursalesApp debe bloquear la transferencia si sucursalOrigen tiene menos de lo pedido, y no debe tocar ninguna de las dos sucursales',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 10, 'S02');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 5, 'S05');
+
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('transferirEntreSucursalesApp', 'COD-001', 'S02', 'S05', 30, tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+
+    const s02 = entorno.invocar('obtenerExistenciaSucursal_', 'COD-001', 'S02');
+    const s05 = entorno.invocar('obtenerExistenciaSucursal_', 'COD-001', 'S05');
+
+    return {
+      datos: 'S02=10, intenta transferir 30 a S05',
+      esperado: 'bloqueado, S02 sigue en 10 y S05 sigue en 5 (nada se mueve)',
+      obtenido: bloqueado ? `${mensaje} — S02=${s02}, S05=${s05}` : 'PERMITIDO',
+      pasa: bloqueado && /insuficiente/i.test(mensaje) && s02 === 10 && s05 === 5,
+    };
+  },
+});
+
+prueba({
+  id: 'SUC-015', grupo: 'sucursales', nombre: 'Transferencia bloqueada entre la misma sucursal', metodo: 'EMPÍRICO',
+  objetivo: 'transferirEntreSucursalesApp debe rechazar origen y destino iguales',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    let bloqueado = false;
+    try { entorno.invocar('transferirEntreSucursalesApp', 'COD-001', 'S02', 'S02', 10, tokenAdmin); }
+    catch (e) { bloqueado = true; }
+    return { datos: 'origen=destino=S02', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO', pasa: bloqueado };
+  },
+});
+
+prueba({
+  id: 'SUC-016', grupo: 'sucursales', nombre: 'Solo Almacén/Admin puede transferir', metodo: 'EMPÍRICO',
+  objetivo: 'transferirEntreSucursalesApp debe bloquear a un OPERADOR normal (mismo criterio que Compras/Recepción)',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'sucursal2@tagers.com', 'Operador S02', 'OPERADOR');
+    let bloqueado = false;
+    try { entorno.invocar('transferirEntreSucursalesApp', 'COD-001', 'S02', 'S05', 10, token); }
+    catch (e) { bloqueado = true; }
+    return { datos: 'rol=OPERADOR', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO', pasa: bloqueado };
+  },
+});
