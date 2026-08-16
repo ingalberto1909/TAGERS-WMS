@@ -1683,6 +1683,21 @@ function obtenerProductoPorCodigo(codigo) {
   return null;
 }
 
+/**
+ * Movimiento (Entrada/Salida) desde el Dashboard legado de Sheets
+ * (Dashboard.html). ÚNICA definición del proyecto — antes existía una
+ * copia casi idéntica en MovimientosDashboard.gs, y cuál de las dos
+ * "ganaba" dependía del orden interno del proyecto de Apps Script, no
+ * de nada visible en el repo. Auditoría de arquitectura multi-sucursal
+ * encontró además que NINGUNA de las dos copias actualizaba la
+ * Existencia real de MATRIZ — ambas calculaban "existencia nueva" a
+ * mano y solo la escribían en Kardex, dejando Kardex y MATRIZ
+ * desincronizados en cuanto alguien usara esta pantalla. Ahora usa la
+ * misma función central que ya usan Entradas/Salidas de la app
+ * (ajustarExistenciaMatrizPorDelta_/...Validado_), así que queda
+ * protegida por el mismo lock, con la misma validación de existencia
+ * insuficiente, y de verdad deja MATRIZ actualizada.
+ */
 function registrarMovimientoDashboard(tipo, datosFormulario) {
   const tipoMovimiento = String(tipo || "").toUpperCase();
 
@@ -1702,11 +1717,16 @@ function registrarMovimientoDashboard(tipo, datosFormulario) {
     throw new Error("No se encontró el código en la hoja MATRIZ.");
   }
 
-  if (tipoMovimiento === "SALIDA" && cantidad > producto.existencia) {
-    throw new Error(
-      "Existencia insuficiente. Disponible: " + producto.existencia
-    );
-  }
+  // Única fuente de verdad para la existencia — misma función central
+  // que Entradas/Salidas de la app, con lock y validación de existencia
+  // insuficiente ya incluidos (para SALIDA, lanza "Existencia
+  // insuficiente. Disponible: X" si no alcanza, antes de escribir nada).
+  const resultadoExistencia = tipoMovimiento === "ENTRADA"
+    ? ajustarExistenciaMatrizPorDelta_(producto.codigo, cantidad)
+    : ajustarExistenciaMatrizPorDeltaValidado_(producto.codigo, -cantidad);
+
+  const existenciaAnterior = resultadoExistencia.anterior;
+  const existenciaNueva = resultadoExistencia.nueva;
 
   const ss = SpreadsheetApp.getActive();
   const hojaMovimiento = ss.getSheetByName(tipoMovimiento);
@@ -1734,11 +1754,6 @@ function registrarMovimientoDashboard(tipo, datosFormulario) {
     "",
     producto.ubicacion
   ]);
-
-  const existenciaAnterior = producto.existencia;
-  const existenciaNueva = tipoMovimiento === "ENTRADA"
-    ? existenciaAnterior + cantidad
-    : existenciaAnterior - cantidad;
 
   registrarKardex(
     tipoMovimiento,
