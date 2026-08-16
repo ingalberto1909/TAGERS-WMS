@@ -58,6 +58,8 @@ function crearEntorno(opciones) {
   const utilities = crearUtilitiesEmulado();
   const session = crearSessionEmulado(opciones.correoActivo);
 
+  const toasts = [];
+
   const spreadsheetActivo = {
     getSheetByName(nombre) {
       return registroHojas[nombre] || null;
@@ -66,6 +68,12 @@ function crearEntorno(opciones) {
       const nueva = crearHojaEmulada(nombre, []);
       registroHojas[nombre] = nueva;
       return nueva;
+    },
+    // toast() real no bloquea ni requiere autorización especial (a
+    // diferencia de getUi().alert()) — aquí solo se registra para que
+    // las pruebas puedan comprobar que se avisó de un problema.
+    toast(mensaje, titulo) {
+      toasts.push({ mensaje, titulo });
     },
   };
 
@@ -139,6 +147,8 @@ function crearEntorno(opciones) {
       const hoja = registroHojas[nombre];
       return hoja ? hoja._filas() : null;
     },
+    /** Mensajes que el código llamó vía SpreadsheetApp.getActive().toast(...). */
+    toasts,
   };
 }
 

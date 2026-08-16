@@ -771,54 +771,45 @@ function onEdit(e) {
 
     if (codigo == "") return;
 
-    const ss = SpreadsheetApp.getActive();
-    const matriz = ss.getSheetByName("MATRIZ");
+    // ANTES: este trigger asumía que la columna Existencia de MATRIZ ya
+    // reflejaba el cambio (como si K tuviera una fórmula viva atada a
+    // ENTRADA/SALIDA) y solo escribía un Kardex "de adorno" con números
+    // calculados a mano leyendo el valor ACTUAL de K — pero nada en
+    // este trigger tocaba MATRIZ. Resultado real: alguien escribe una
+    // cantidad directo en la hoja, el Kardex queda registrado como si
+    // el movimiento hubiera ocurrido, y la existencia real de MATRIZ
+    // nunca se mueve (auditoría de arquitectura multi-sucursal).
+    // AHORA: usa la misma función central que usa el resto del sistema
+    // (Entradas/Salidas de la app, Dashboard legado) — con el mismo
+    // lock y la misma validación de existencia insuficiente — así que
+    // editar la hoja a mano también queda correcto y consistente.
+    try {
 
-    const datosMatriz = matriz
-      .getRange(2, 1, matriz.getLastRow() - 1, 11)
-      .getValues();
+      const resultadoExistencia = nombreHoja == "ENTRADA"
+        ? ajustarExistenciaMatrizPorDelta_(codigo, cantidad)
+        : ajustarExistenciaMatrizPorDeltaValidado_(codigo, -cantidad);
 
-    let existenciaNueva = 0;
-
-    for (let i = 0; i < datosMatriz.length; i++) {
-
-      if (datosMatriz[i][4] == codigo) {
-
-        existenciaNueva = Number(datosMatriz[i][10]) || 0;
-        break;
-
+      if (!resultadoExistencia) {
+        SpreadsheetApp.getActive().toast("Código " + codigo + " no encontrado en MATRIZ — no se movió existencia ni se registró Kardex.", "⚠️ Movimiento no aplicado", 8);
+        return;
       }
 
+      registrarKardex(
+        nombreHoja,
+        "",
+        codigo,
+        producto,
+        nombreHoja == "ENTRADA" ? cantidad : "",
+        nombreHoja == "SALIDA" ? cantidad : "",
+        resultadoExistencia.anterior,
+        resultadoExistencia.nueva,
+        obtenerNombreUsuario(),
+        "Editado directo en la hoja " + nombreHoja
+      );
+
+    } catch (error) {
+      SpreadsheetApp.getActive().toast(error.message, "⚠️ Movimiento no aplicado", 8);
     }
-
-    let existenciaAnterior;
-    let entradaVal = "";
-    let salidaVal  = "";
-
-    if (nombreHoja == "ENTRADA") {
-
-      existenciaAnterior = existenciaNueva - cantidad;
-      entradaVal = cantidad;
-
-    } else {
-
-      existenciaAnterior = existenciaNueva + cantidad;
-      salidaVal = cantidad;
-
-    }
-
-    registrarKardex(
-      nombreHoja,
-      "",
-      codigo,
-      producto,
-      entradaVal,
-      salidaVal,
-      existenciaAnterior,
-      existenciaNueva,
-      obtenerNombreUsuario(),
-      ""
-    );
 
     return;
 

@@ -1,5 +1,5 @@
 {
-  "fecha": "2026-08-16T15:48:44.699Z",
+  "fecha": "2026-08-16T16:05:42.392Z",
   "resultados": [
     {
       "id": "001",
@@ -11,7 +11,7 @@
       "esperado": "ok:true, rol:ADMIN",
       "obtenido": "ok:true, rol:ADMIN",
       "estado": "PASS",
-      "duracionMs": 22.19
+      "duracionMs": 31.09
     },
     {
       "id": "002",
@@ -23,7 +23,7 @@
       "esperado": "ok:false",
       "obtenido": "ok:false",
       "estado": "PASS",
-      "duracionMs": 3.14
+      "duracionMs": 4.99
     },
     {
       "id": "003",
@@ -35,7 +35,7 @@
       "esperado": "existencia=120, 1 fila nueva en Kardex",
       "obtenido": "existencia=120, filasKardex=1",
       "estado": "PASS",
-      "duracionMs": 4.48
+      "duracionMs": 5.72
     },
     {
       "id": "004",
@@ -47,7 +47,7 @@
       "esperado": "existencia=80",
       "obtenido": "existencia=80",
       "estado": "PASS",
-      "duracionMs": 2.97
+      "duracionMs": 4.19
     },
     {
       "id": "005",
@@ -59,7 +59,7 @@
       "esperado": "bloqueado con \"Existencia insuficiente\"",
       "obtenido": "Existencia insuficiente. Disponible: 5",
       "estado": "PASS",
-      "duracionMs": 2.75
+      "duracionMs": 8.02
     },
     {
       "id": "006",
@@ -71,7 +71,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.97
+      "duracionMs": 8.05
     },
     {
       "id": "007",
@@ -83,7 +83,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.88
+      "duracionMs": 10.45
     },
     {
       "id": "008",
@@ -95,7 +95,7 @@
       "esperado": "folio con formato CC-YYYYMMDD-001",
       "obtenido": "CC-20260816-001",
       "estado": "PASS",
-      "duracionMs": 3.96
+      "duracionMs": 8.25
     },
     {
       "id": "009",
@@ -107,7 +107,7 @@
       "esperado": "diferencia=-3, estado=DIFERENCIA",
       "obtenido": "diferencia=-3, estado=DIFERENCIA",
       "estado": "PASS",
-      "duracionMs": 3.26
+      "duracionMs": 4.35
     },
     {
       "id": "010",
@@ -119,7 +119,7 @@
       "esperado": "MATRIZ=97",
       "obtenido": "MATRIZ=97",
       "estado": "PASS",
-      "duracionMs": 2.96
+      "duracionMs": 3.4
     },
     {
       "id": "011",
@@ -131,7 +131,7 @@
       "esperado": "folio OC-..., 2 productos",
       "obtenido": "folio=OC-20260816-001, productos=2",
       "estado": "PASS",
-      "duracionMs": 17.73
+      "duracionMs": 37.88
     },
     {
       "id": "012",
@@ -143,7 +143,7 @@
       "esperado": "",
       "obtenido": "SKIP: Prueba de frontend (JS de index.html) — cubierta por Playwright en check_oc_persist.js, fuera del alcance de esta suite de backend.",
       "estado": "SKIP",
-      "duracionMs": 0.06
+      "duracionMs": 0.08
     },
     {
       "id": "013",
@@ -155,7 +155,7 @@
       "esperado": "recibido=10 (topado)",
       "obtenido": "recibido=10",
       "estado": "PASS",
-      "duracionMs": 4.6
+      "duracionMs": 5.22
     },
     {
       "id": "014",
@@ -167,7 +167,7 @@
       "esperado": "área de la requisición = Cocina",
       "obtenido": "área=Cocina",
       "estado": "PASS",
-      "duracionMs": 2.99
+      "duracionMs": 2.98
     },
     {
       "id": "015",
@@ -191,7 +191,7 @@
       "esperado": "existencia=90",
       "obtenido": "existencia=90",
       "estado": "PASS",
-      "duracionMs": 3.56
+      "duracionMs": 8.13
     },
     {
       "id": "017",
@@ -203,7 +203,7 @@
       "esperado": "necesario/sugerido = 0.5 KG",
       "obtenido": "necesario=0.5 KG",
       "estado": "PASS",
-      "duracionMs": 4.57
+      "duracionMs": 6.46
     },
     {
       "id": "018",
@@ -215,7 +215,7 @@
       "esperado": "estado=AGOTADO, cantidad disponible=0",
       "obtenido": "estado=AGOTADO, cantidad=0",
       "estado": "PASS",
-      "duracionMs": 2.7
+      "duracionMs": 2.65
     },
     {
       "id": "019",
@@ -239,7 +239,7 @@
       "esperado": "productosConUbicacion=4, sinUbicacion=1, sin lanzar excepción",
       "obtenido": "productosConUbicacion=4, sinUbicacion=1",
       "estado": "PASS",
-      "duracionMs": 2.62
+      "duracionMs": 7.34
     },
     {
       "id": "SEG-001",
@@ -251,7 +251,7 @@
       "esperado": "bloqueado (\"sesión expiró o no es válida\")",
       "obtenido": "Tu sesión expiró o no es válida. Vuelve a iniciar sesión.",
       "estado": "PASS",
-      "duracionMs": 3.27
+      "duracionMs": 5.33
     },
     {
       "id": "SEG-002",
@@ -263,7 +263,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.35
+      "duracionMs": 2.51
     },
     {
       "id": "SEG-003",
@@ -275,7 +275,7 @@
       "esperado": "bloqueado y la propiedad SESION_<token> se elimina",
       "obtenido": "bloqueado=true, propiedadEliminada=true",
       "estado": "PASS",
-      "duracionMs": 2.53
+      "duracionMs": 2.45
     },
     {
       "id": "SEG-004",
@@ -287,7 +287,7 @@
       "esperado": "bloqueado (\"cuenta ya no está activa\")",
       "obtenido": "Tu cuenta ya no está activa. Contacta a un administrador.",
       "estado": "PASS",
-      "duracionMs": 2.5
+      "duracionMs": 6.48
     },
     {
       "id": "SEG-005",
@@ -299,7 +299,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 4.49
+      "duracionMs": 6.41
     },
     {
       "id": "SEG-006",
@@ -311,7 +311,7 @@
       "esperado": "sin error",
       "obtenido": "sin error",
       "estado": "PASS",
-      "duracionMs": 2.74
+      "duracionMs": 2.55
     },
     {
       "id": "SEG-007",
@@ -323,7 +323,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.63
+      "duracionMs": 2.59
     },
     {
       "id": "SEG-008",
@@ -335,7 +335,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 4.3
+      "duracionMs": 6.24
     },
     {
       "id": "SEG-009",
@@ -347,7 +347,7 @@
       "esperado": "sin error, pdf.verUrl presente",
       "obtenido": "productosEntregados=1, pdf=true",
       "estado": "PASS",
-      "duracionMs": 9.44
+      "duracionMs": 8.46
     },
     {
       "id": "SEG-010",
@@ -359,7 +359,7 @@
       "esperado": "sin error (permitido)",
       "obtenido": "sin error",
       "estado": "PASS",
-      "duracionMs": 9.38
+      "duracionMs": 9.12
     },
     {
       "id": "SEG-011",
@@ -371,7 +371,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 9.72
+      "duracionMs": 9.27
     },
     {
       "id": "SEG-012",
@@ -383,7 +383,7 @@
       "esperado": "sin error (fail-open documentado)",
       "obtenido": "sin error",
       "estado": "PASS",
-      "duracionMs": 9.13
+      "duracionMs": 8.65
     },
     {
       "id": "SEG-013",
@@ -395,7 +395,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 9.05
+      "duracionMs": 8.81
     },
     {
       "id": "SEG-014",
@@ -407,7 +407,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 6.28
+      "duracionMs": 7.12
     },
     {
       "id": "SEG-015",
@@ -419,7 +419,7 @@
       "esperado": "sin error (acceso intencional, ya entregado en una fase anterior)",
       "obtenido": "sin error",
       "estado": "PASS",
-      "duracionMs": 2.84
+      "duracionMs": 2.77
     },
     {
       "id": "INV-CASO1",
@@ -431,7 +431,7 @@
       "esperado": "una aplicada y otra rechazada, existencia final=0, 1 sola fila en SALIDA",
       "obtenido": "A=aplicada, B=rechazada(Existencia insuficiente. Disponible: 0), existenciaFinal=0, filasSalida=1",
       "estado": "PASS",
-      "duracionMs": 2.61
+      "duracionMs": 2.55
     },
     {
       "id": "INV-CASO2",
@@ -443,7 +443,7 @@
       "esperado": "existencia final=105",
       "obtenido": "existenciaFinal=105",
       "estado": "PASS",
-      "duracionMs": 2.71
+      "duracionMs": 2.56
     },
     {
       "id": "INV-CASO3",
@@ -455,7 +455,7 @@
       "esperado": "MATRIZ=90, KARDEX.Salida=10 (ExistenciaAnterior=100→Nueva=90), AUDITORIA_AJUSTES.Diferencia=-10",
       "obtenido": "MATRIZ=90, KARDEX.Salida=10, AUDITORIA.Diferencia=-10",
       "estado": "PASS",
-      "duracionMs": 2.95
+      "duracionMs": 2.72
     },
     {
       "id": "INV-CASO4",
@@ -467,7 +467,7 @@
       "esperado": "1ª: yaProcesada=false, MATRIZ=90, 1 fila Kardex, 1 fila Auditoría. 2ª: yaProcesada=true, todo igual (sin duplicar)",
       "obtenido": "1ª: yaProcesada=false, MATRIZ=90, kardex=1, auditoria=1 | 2ª: yaProcesada=true, MATRIZ=90, kardex=1, auditoria=1",
       "estado": "PASS",
-      "duracionMs": 5.23
+      "duracionMs": 5.4
     },
     {
       "id": "INV-CASO5",
@@ -479,7 +479,7 @@
       "esperado": "MATRIZ se mantiene en 100 todo el tiempo; sin fila nueva en KARDEX; el cierre no crea ajuste en AUDITORIA_AJUSTES",
       "obtenido": "trasRechazo: MATRIZ=100, kardex=0, estado=RECHAZADO | trasCierre: MATRIZ=100, auditoriaAjustes=0",
       "estado": "PASS",
-      "duracionMs": 10.75
+      "duracionMs": 10.19
     },
     {
       "id": "INV-006",
@@ -491,7 +491,7 @@
       "esperado": "MATRIZ=45, 1 fila nueva en AUDITORIA_AJUSTES",
       "obtenido": "MATRIZ=45, auditoriaAjustes=1",
       "estado": "PASS",
-      "duracionMs": 9.59
+      "duracionMs": 8.48
     },
     {
       "id": "COM-001",
@@ -503,7 +503,7 @@
       "esperado": "3 líneas en el detalle, ninguna perdida",
       "obtenido": "productos=3, códigos=COD-001,COD-002,COD-003",
       "estado": "PASS",
-      "duracionMs": 10.26
+      "duracionMs": 3.65
     },
     {
       "id": "COM-002",
@@ -515,7 +515,7 @@
       "esperado": "folios distintos, cada OC conserva su proveedor y solo su propio producto",
       "obtenido": "folio1≠folio2=true, prov1=PROVEEDOR A, prov2=PROVEEDOR B, items1=1, items2=1",
       "estado": "PASS",
-      "duracionMs": 7.6
+      "duracionMs": 5.4
     },
     {
       "id": "COM-003",
@@ -527,7 +527,7 @@
       "esperado": "estado=PARCIAL, recibido=12",
       "obtenido": "estado=PARCIAL, recibido=12",
       "estado": "PASS",
-      "duracionMs": 3.26
+      "duracionMs": 3.38
     },
     {
       "id": "COM-004",
@@ -539,7 +539,7 @@
       "esperado": "estado=RECIBIDA, recibido=20, existencia=120",
       "obtenido": "estado=RECIBIDA, recibido=20, existencia=120",
       "estado": "PASS",
-      "duracionMs": 3.64
+      "duracionMs": 3.56
     },
     {
       "id": "COM-005",
@@ -551,7 +551,7 @@
       "esperado": "recibido=10 (topado), estado=RECIBIDA",
       "obtenido": "recibido=10, estado=RECIBIDA",
       "estado": "PASS",
-      "duracionMs": 3.57
+      "duracionMs": 3.18
     },
     {
       "id": "COM-006",
@@ -563,7 +563,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 3.95
+      "duracionMs": 3.31
     },
     {
       "id": "COM-007",
@@ -575,7 +575,7 @@
       "esperado": "bloqueado",
       "obtenido": "Esta orden ya fue recibida, no se puede cancelar.",
       "estado": "PASS",
-      "duracionMs": 3.37
+      "duracionMs": 3.33
     },
     {
       "id": "COM-008",
@@ -587,7 +587,7 @@
       "esperado": "MATRIZ.CostoUnitario=18, 1 fila en HISTORIAL_PRECIOS",
       "obtenido": "costoMatriz=18, filasHistorial=1",
       "estado": "PASS",
-      "duracionMs": 9.66
+      "duracionMs": 3.52
     },
     {
       "id": "COM-009",
@@ -599,7 +599,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.6
+      "duracionMs": 5.56
     },
     {
       "id": "REQ-001",
@@ -611,7 +611,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.44
+      "duracionMs": 2.37
     },
     {
       "id": "REQ-002",
@@ -623,7 +623,7 @@
       "esperado": "bloqueado (\"no tiene un Área asignada\")",
       "obtenido": "Tu usuario no tiene un Área asignada en USUARIOS — pide al administrador que la capture.",
       "estado": "PASS",
-      "duracionMs": 2.54
+      "duracionMs": 2.49
     },
     {
       "id": "REQ-003",
@@ -635,7 +635,7 @@
       "esperado": "Cocina solo ve la suya (1 folio, área=Cocina)",
       "obtenido": "total=1, áreas=Cocina",
       "estado": "PASS",
-      "duracionMs": 2.83
+      "duracionMs": 2.63
     },
     {
       "id": "REQ-004",
@@ -647,7 +647,7 @@
       "esperado": "Admin ve las 2",
       "obtenido": "total=2",
       "estado": "PASS",
-      "duracionMs": 2.53
+      "duracionMs": 2.6
     },
     {
       "id": "REQ-005",
@@ -659,7 +659,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.46
+      "duracionMs": 2.41
     },
     {
       "id": "REQ-006",
@@ -671,7 +671,7 @@
       "esperado": "solo 1 producto entregado, HARINA existencia=90, SAL sin cambio (=50)",
       "obtenido": "productosEntregados=1, harina=90, sal=50",
       "estado": "PASS",
-      "duracionMs": 3.1
+      "duracionMs": 2.98
     },
     {
       "id": "REQ-007",
@@ -683,7 +683,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 5.71
+      "duracionMs": 2.67
     },
     {
       "id": "REQ-008",
@@ -695,7 +695,7 @@
       "esperado": "sinConversionPosible=true, necesario se deja tal cual (300, sin inventar un factor)",
       "obtenido": "sinConversionPosible=true, necesario=300 PZ",
       "estado": "PASS",
-      "duracionMs": 5.78
+      "duracionMs": 2.84
     },
     {
       "id": "REQ-009",
@@ -707,7 +707,7 @@
       "esperado": "necesario acumulado = 3 KG",
       "obtenido": "necesario=3 KG",
       "estado": "PASS",
-      "duracionMs": 3.92
+      "duracionMs": 3.1
     },
     {
       "id": "REC-001",
@@ -719,7 +719,7 @@
       "esperado": "ok:true, aparece en obtenerRecetasApp",
       "obtenido": "ok=true, total=1, nombre=SALSA X",
       "estado": "PASS",
-      "duracionMs": 2.79
+      "duracionMs": 4.8
     },
     {
       "id": "REC-002",
@@ -731,7 +731,7 @@
       "esperado": "bloqueado en el 2º intento",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.74
+      "duracionMs": 2.68
     },
     {
       "id": "REC-003",
@@ -743,7 +743,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.55
+      "duracionMs": 2.53
     },
     {
       "id": "REC-004",
@@ -755,7 +755,7 @@
       "esperado": "rendimiento=\"2 tandas\", 2 ingredientes",
       "obtenido": "rendimiento=2 tandas, ingredientes=2",
       "estado": "PASS",
-      "duracionMs": 2.8
+      "duracionMs": 2.94
     },
     {
       "id": "REC-005",
@@ -767,7 +767,7 @@
       "esperado": "estado=INACTIVA",
       "obtenido": "estado=INACTIVA",
       "estado": "PASS",
-      "duracionMs": 2.58
+      "duracionMs": 2.73
     },
     {
       "id": "REC-006",
@@ -779,7 +779,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 3.59
+      "duracionMs": 2.67
     },
     {
       "id": "PROD-001",
@@ -791,7 +791,7 @@
       "esperado": "existencia=20, 1 lote ACTIVO con cantidadDisponible=20, 1 fila en Kardex",
       "obtenido": "folio=PROD-20260816-001, existencia=20, lotes=1, disponible=20, kardex=1",
       "estado": "PASS",
-      "duracionMs": 3.13
+      "duracionMs": 3.87
     },
     {
       "id": "PROD-002",
@@ -803,7 +803,7 @@
       "esperado": "bloqueado (\"todavía no tiene los insumos entregados\")",
       "obtenido": "La requisición RIR-0001 todavía no tiene los insumos entregados — confírmala primero.",
       "estado": "PASS",
-      "duracionMs": 6.18
+      "duracionMs": 3.26
     },
     {
       "id": "PROD-003",
@@ -815,7 +815,7 @@
       "esperado": "estado=AGOTADO, cantidadDisponible=0, existencia de MATRIZ no cambia por el cierre (=20, sin nuevas salidas)",
       "obtenido": "estado=AGOTADO, disponible=0, existenciaMatriz=20",
       "estado": "PASS",
-      "duracionMs": 5.05
+      "duracionMs": 3.45
     },
     {
       "id": "PROD-004",
@@ -827,7 +827,7 @@
       "esperado": "código=COD-010",
       "obtenido": "código=COD-010",
       "estado": "PASS",
-      "duracionMs": 2.34
+      "duracionMs": 5.65
     },
     {
       "id": "CONC-001",
@@ -839,7 +839,7 @@
       "esperado": "exactamente 2 aplicadas, 1 rechazada, existencia final=0",
       "obtenido": "resultados=[aplicada,aplicada,rechazada], existenciaFinal=0",
       "estado": "PASS",
-      "duracionMs": 2.71
+      "duracionMs": 2.72
     },
     {
       "id": "CONC-002",
@@ -851,7 +851,7 @@
       "esperado": "exactamente 2 folios distintos, consecutivo estricto 001 y 002 (bug J2 corregido: antes podía saltar a -006)",
       "obtenido": "folios=CC-20260816-001,CC-20260816-002",
       "estado": "PASS",
-      "duracionMs": 2.73
+      "duracionMs": 2.79
     },
     {
       "id": "CONC-006",
@@ -863,7 +863,7 @@
       "esperado": "el 2º folio del día es exactamente el siguiente consecutivo (-002), sin importar cuántas filas generó el 1º",
       "obtenido": "folio1=CC-20260816-001, folio2=CC-20260816-002",
       "estado": "PASS",
-      "duracionMs": 2.58
+      "duracionMs": 2.6
     },
     {
       "id": "CONC-003",
@@ -875,7 +875,7 @@
       "esperado": "folios distintos",
       "obtenido": "folio1=OC-20260816-001, folio2=OC-20260816-002",
       "estado": "PASS",
-      "duracionMs": 3.07
+      "duracionMs": 3.54
     },
     {
       "id": "CONC-004",
@@ -887,7 +887,7 @@
       "esperado": "rechazar no hace nada (yaProcesada:true); MATRIZ sigue en 90; 1 sola fila en KARDEX; el estado de la fila se queda en APROBADO, no se pisa a RECHAZADO",
       "obtenido": "aprobar.yaProcesada=false, rechazar.yaProcesada=true, MATRIZ=90, kardex=1, estadoFinalFila=APROBADO",
       "estado": "PASS",
-      "duracionMs": 2.78
+      "duracionMs": 2.61
     },
     {
       "id": "CONC-005",
@@ -899,7 +899,7 @@
       "esperado": "1ª: yaProcesada=false, aplica. 2ª: yaProcesada=true, el comentario del 2º intento NO sobreescribe el del 1º",
       "obtenido": "r1.yaProcesada=false, r2.yaProcesada=true, comentario=primer rechazo",
       "estado": "PASS",
-      "duracionMs": 2.26
+      "duracionMs": 2.3
     },
     {
       "id": "REND-001",
@@ -911,7 +911,7 @@
       "esperado": "1 sola lectura real de la hoja MATRIZ (getDataRange), las otras 2 desde caché",
       "obtenido": "lecturasReales=1",
       "estado": "PASS",
-      "duracionMs": 2.9
+      "duracionMs": 2.65
     },
     {
       "id": "REND-002",
@@ -923,7 +923,7 @@
       "esperado": "KPIs idénticos byte a byte",
       "obtenido": "idénticos",
       "estado": "PASS",
-      "duracionMs": 9.13
+      "duracionMs": 2.57
     },
     {
       "id": "REND-003",
@@ -935,7 +935,7 @@
       "esperado": "la lectura cacheada refleja la existencia real inmediatamente después de escribir (120), no la existencia vieja cacheada (100)",
       "obtenido": "MATRIZ real actualizada=true, lectura cacheada devuelve existencia=120",
       "estado": "PASS",
-      "duracionMs": 2.94
+      "duracionMs": 4.66
     },
     {
       "id": "SUC-001",
@@ -947,7 +947,7 @@
       "esperado": "MATRIZ=120, la hoja EXISTENCIAS_SUCURSAL no se crea",
       "obtenido": "MATRIZ=120, hojaExistenciasSucursalCreada=false",
       "estado": "PASS",
-      "duracionMs": 2.43
+      "duracionMs": 3.15
     },
     {
       "id": "SUC-002",
@@ -959,7 +959,7 @@
       "esperado": "MATRIZ sigue en 100, EXISTENCIAS_SUCURSAL tiene 1 fila (COD-001, S02, 30)",
       "obtenido": "MATRIZ=100, filaSucursal=[\"COD-001\",\"S02\",30]",
       "estado": "PASS",
-      "duracionMs": 2.64
+      "duracionMs": 2.44
     },
     {
       "id": "SUC-003",
@@ -971,7 +971,7 @@
       "esperado": "2 filas: S02=50, S05=40 (10+30, misma fila actualizada, no duplicada)",
       "obtenido": "filas=2, S02=50, S05=40",
       "estado": "PASS",
-      "duracionMs": 2.52
+      "duracionMs": 2.46
     },
     {
       "id": "SUC-004",
@@ -983,7 +983,7 @@
       "esperado": "bloqueado con \"Existencia insuficiente\", MATRIZ (S01) no se toca",
       "obtenido": "Existencia insuficiente en S03. Disponible: 0",
       "estado": "PASS",
-      "duracionMs": 2.48
+      "duracionMs": 2.36
     },
     {
       "id": "SUC-005",
@@ -995,7 +995,7 @@
       "esperado": "100 (leído de MATRIZ)",
       "obtenido": "100",
       "estado": "PASS",
-      "duracionMs": 2.47
+      "duracionMs": 2.43
     },
     {
       "id": "SUC-006",
@@ -1007,7 +1007,7 @@
       "esperado": "total=445; S03 solicita 20 y se bloquea (existencia insuficiente); S06 sigue en 200 sin ninguna acción especial",
       "obtenido": "total=445, s03Bloqueada=true, S06 antes=200 después=200",
       "estado": "PASS",
-      "duracionMs": 2.59
+      "duracionMs": 2.54
     },
     {
       "id": "SUC-007",
@@ -1019,7 +1019,7 @@
       "esperado": "MATRIZ sigue en 5, EXISTENCIAS_SUCURSAL tiene (COD-002, S04, 77)",
       "obtenido": "MATRIZ=5, filaSucursal=[\"COD-002\",\"S04\",77]",
       "estado": "PASS",
-      "duracionMs": 2.83
+      "duracionMs": 2.38
     },
     {
       "id": "SUC-008",
@@ -1031,7 +1031,7 @@
       "esperado": "sucursal=S02, esTodasLasSucursales=false",
       "obtenido": "sucursal=S02, esTodasLasSucursales=false",
       "estado": "PASS",
-      "duracionMs": 5.99
+      "duracionMs": 2.46
     },
     {
       "id": "SUC-009",
@@ -1043,7 +1043,7 @@
       "esperado": "esTodasLasSucursales=true (cae a S01 por default, pero el rol ya le da acceso a todas)",
       "obtenido": "sucursal=S01, esTodasLasSucursales=true",
       "estado": "PASS",
-      "duracionMs": 6.81
+      "duracionMs": 2.32
     },
     {
       "id": "SUC-010",
@@ -1055,7 +1055,7 @@
       "esperado": "esTodasLasSucursales=true",
       "obtenido": "sucursal=TODAS, esTodasLasSucursales=true",
       "estado": "PASS",
-      "duracionMs": 7.17
+      "duracionMs": 2.55
     },
     {
       "id": "SUC-011",
@@ -1067,7 +1067,7 @@
       "esperado": "sucursal=S01 (default), esTodasLasSucursales=false",
       "obtenido": "sucursal=S01, esTodasLasSucursales=false",
       "estado": "PASS",
-      "duracionMs": 8.28
+      "duracionMs": 2.56
     },
     {
       "id": "SUC-012",
@@ -1077,9 +1077,9 @@
       "metodo": "EMPÍRICO",
       "datos": "S02=100 KG, S05=10 KG, transferencia de 30 KG",
       "esperado": "S02=70 KG, S05=40 KG",
-      "obtenido": "S02=70, S05=40, folio=TR-20260816-154844",
+      "obtenido": "S02=70, S05=40, folio=TR-20260816-160542",
       "estado": "PASS",
-      "duracionMs": 8.49
+      "duracionMs": 3.71
     },
     {
       "id": "SUC-013",
@@ -1087,11 +1087,11 @@
       "grupo": "sucursales",
       "objetivo": "transferirEntreSucursalesApp debe generar 2 filas de Kardex (salida en origen, entrada en destino) con el mismo folio",
       "metodo": "EMPÍRICO",
-      "datos": "folio=TR-20260816-154844",
+      "datos": "folio=TR-20260816-160542",
       "esperado": "2 filas de Kardex con ese folio: 1 TRANSFERENCIA-SALIDA (Salida=30, 100→70) y 1 TRANSFERENCIA-ENTRADA (Entrada=30, 10→40)",
       "obtenido": "filas=2, salida=30→70 (mov=), entrada=10→40",
       "estado": "PASS",
-      "duracionMs": 8.23
+      "duracionMs": 3.14
     },
     {
       "id": "SUC-014",
@@ -1103,7 +1103,7 @@
       "esperado": "bloqueado, S02 sigue en 10 y S05 sigue en 5 (nada se mueve)",
       "obtenido": "Existencia insuficiente en S02. Disponible: 10 — S02=10, S05=5",
       "estado": "PASS",
-      "duracionMs": 7.47
+      "duracionMs": 2.74
     },
     {
       "id": "SUC-015",
@@ -1115,7 +1115,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 8.01
+      "duracionMs": 2.75
     },
     {
       "id": "SUC-016",
@@ -1127,7 +1127,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 8.48
+      "duracionMs": 2.51
     },
     {
       "id": "MAESTRA-01",
@@ -1139,7 +1139,7 @@
       "esperado": "S01=100 S02=25 S03=60 S04=10 S05=105 S06=60, MATRIZ sin cambio",
       "obtenido": "S01=100 S02=25 S03=60 S04=10 S05=105 S06=60, MATRIZ después=100",
       "estado": "PASS",
-      "duracionMs": 6.42
+      "duracionMs": 3.78
     },
     {
       "id": "MAESTRA-06",
@@ -1151,7 +1151,7 @@
       "esperado": "bloqueado, S04 sigue en 20",
       "obtenido": "Existencia insuficiente en S04. Disponible: 20 — S04=20",
       "estado": "PASS",
-      "duracionMs": 2.75
+      "duracionMs": 4.4
     },
     {
       "id": "MAESTRA-07",
@@ -1163,7 +1163,7 @@
       "esperado": "lectura cruzada bloqueada; la requisición que sí puede crear queda registrada como S02 (nunca otra sucursal)",
       "obtenido": "lecturaBloqueada=true, sucursalDeSuPropiaRequisicion=S02",
       "estado": "PASS",
-      "duracionMs": 3.16
+      "duracionMs": 3.01
     },
     {
       "id": "MAESTRA-08",
@@ -1175,7 +1175,7 @@
       "esperado": "total=345, sin ninguna fila física con Sucursal=\"TODAS\"",
       "obtenido": "total=345, filaTodasExiste=false",
       "estado": "PASS",
-      "duracionMs": 3.01
+      "duracionMs": 2.77
     },
     {
       "id": "MAESTRA-08B",
@@ -1187,7 +1187,7 @@
       "esperado": "los 4 se bloquean con un mensaje que menciona \"TODAS\", y nunca se crea una fila física",
       "obtenido": "bloqueados=4/4, filaTodasCreada=false",
       "estado": "PASS",
-      "duracionMs": 2.7
+      "duracionMs": 2.54
     },
     {
       "id": "MAESTRA-09",
@@ -1199,7 +1199,7 @@
       "esperado": "exactamente 1 aplicada, existencia final=2, nunca negativa",
       "obtenido": "resultados=[aplicada,rechazada], S02=2",
       "estado": "PASS",
-      "duracionMs": 2.62
+      "duracionMs": 2.67
     },
     {
       "id": "MAESTRA-10",
@@ -1211,7 +1211,7 @@
       "esperado": "la transferencia falla, S02 vuelve a 100 (se revirtió el descuento), S05 sigue en 10 (nunca se aplicó)",
       "obtenido": "falló=true, mensaje=\"No se pudo completar la transferencia — se revirtió el descuento de origen. Fallo simulado de la API de Sheets\", S02=100, S05=10",
       "estado": "PASS",
-      "duracionMs": 2.91
+      "duracionMs": 2.83
     },
     {
       "id": "RS-001",
@@ -1223,7 +1223,7 @@
       "esperado": "sucursal de la requisición = S02, folio con prefijo RS-",
       "obtenido": "sucursal=S02, folio=RS-0001",
       "estado": "PASS",
-      "duracionMs": 2.94
+      "duracionMs": 2.72
     },
     {
       "id": "RS-002",
@@ -1235,7 +1235,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.72
+      "duracionMs": 2.75
     },
     {
       "id": "RS-003",
@@ -1247,7 +1247,7 @@
       "esperado": "S02 solo ve la suya",
       "obtenido": "total=1, sucursales=S02",
       "estado": "PASS",
-      "duracionMs": 2.94
+      "duracionMs": 3.44
     },
     {
       "id": "RS-004",
@@ -1259,7 +1259,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 2.78
+      "duracionMs": 2.83
     },
     {
       "id": "RS-005",
@@ -1271,7 +1271,7 @@
       "esperado": "existencia mostrada=8 (la de S02, no la de MATRIZ), sugerido=min(20,8)=8",
       "obtenido": "existencia=8, sugerido=8",
       "estado": "PASS",
-      "duracionMs": 6.64
+      "duracionMs": 3.25
     },
     {
       "id": "RS-006",
@@ -1283,7 +1283,7 @@
       "esperado": "S02=40, S04=30 sin cambio, MATRIZ=100 sin cambio, 1 fila en Kardex",
       "obtenido": "productosEntregados=1, S02=40, S04=30, MATRIZ=100, kardex=1",
       "estado": "PASS",
-      "duracionMs": 9.87
+      "duracionMs": 2.99
     },
     {
       "id": "RS-007",
@@ -1295,7 +1295,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 8.8
+      "duracionMs": 3.31
     },
     {
       "id": "RS-008",
@@ -1307,7 +1307,7 @@
       "esperado": "bloqueado",
       "obtenido": "bloqueado",
       "estado": "PASS",
-      "duracionMs": 9.21
+      "duracionMs": 3.07
     },
     {
       "id": "LEG-001",
@@ -1319,7 +1319,7 @@
       "esperado": "MATRIZ=120 (no solo Kardex), resultado.existenciaNueva=120",
       "obtenido": "MATRIZ=120, resultado.existenciaNueva=120",
       "estado": "PASS",
-      "duracionMs": 9.22
+      "duracionMs": 2.9
     },
     {
       "id": "LEG-002",
@@ -1331,7 +1331,7 @@
       "esperado": "MATRIZ=70, resultado.existenciaNueva=70",
       "obtenido": "MATRIZ=70, resultado.existenciaNueva=70",
       "estado": "PASS",
-      "duracionMs": 9.47
+      "duracionMs": 2.75
     },
     {
       "id": "LEG-003",
@@ -1343,7 +1343,7 @@
       "esperado": "bloqueado, MATRIZ sin cambio, sin filas huérfanas en SALIDA ni KARDEX",
       "obtenido": "Existencia insuficiente. Disponible: 5 — MATRIZ=5, filasSalida=0, filasKardex=0",
       "estado": "PASS",
-      "duracionMs": 9.33
+      "duracionMs": 2.67
     },
     {
       "id": "LEG-004",
@@ -1355,7 +1355,67 @@
       "esperado": "Kardex.ExistenciaAnterior=50, ExistenciaNueva=62, igual a MATRIZ=62",
       "obtenido": "kardex: 50→62, MATRIZ=62",
       "estado": "PASS",
-      "duracionMs": 7.52
+      "duracionMs": 2.76
+    },
+    {
+      "id": "LEG-005",
+      "nombre": "onEdit: escribir Cantidad en ENTRADA sí mueve MATRIZ",
+      "grupo": "legado",
+      "objetivo": "Editar directo la columna Cantidad de la hoja ENTRADA debe sumar a la Existencia real de MATRIZ, no solo escribir un Kardex calculado a mano",
+      "metodo": "EMPÍRICO",
+      "datos": "existencia inicial=100, se escribe Cantidad=25 directo en ENTRADA fila 4",
+      "esperado": "MATRIZ=125, Kardex.ExistenciaAnterior=100/Nueva=125 (coincide con el movimiento real, no un número leído sin mover nada)",
+      "obtenido": "MATRIZ=125, kardex=100→125",
+      "estado": "PASS",
+      "duracionMs": 5.62
+    },
+    {
+      "id": "LEG-006",
+      "nombre": "onEdit: escribir Cantidad en SALIDA sí descuenta MATRIZ",
+      "grupo": "legado",
+      "objetivo": "Editar directo la columna Cantidad de la hoja SALIDA debe restar de la Existencia real de MATRIZ",
+      "metodo": "EMPÍRICO",
+      "datos": "existencia inicial=100, se escribe Cantidad=40 directo en SALIDA fila 4",
+      "esperado": "MATRIZ=60, Kardex.ExistenciaAnterior=100/Nueva=60",
+      "obtenido": "MATRIZ=60, kardex=100→60",
+      "estado": "PASS",
+      "duracionMs": 2.6
+    },
+    {
+      "id": "LEG-007",
+      "nombre": "onEdit: SALIDA sin existencia suficiente se bloquea y avisa por toast",
+      "grupo": "legado",
+      "objetivo": "No debe mover MATRIZ ni escribir Kardex si la cantidad excede la existencia disponible; debe avisar con SpreadsheetApp.toast (no un getUi().alert que pueda tronar)",
+      "metodo": "EMPÍRICO",
+      "datos": "COD-002 existencia=5, se escribe Cantidad=999 en SALIDA",
+      "esperado": "MATRIZ sin cambio (=5), sin fila nueva en Kardex, se avisó por toast",
+      "obtenido": "MATRIZ=5, filasKardex=0, toasts=[{\"mensaje\":\"Existencia insuficiente. Disponible: 5\",\"titulo\":\"⚠️ Movimiento no aplicado\"}]",
+      "estado": "PASS",
+      "duracionMs": 2.6
+    },
+    {
+      "id": "LEG-008",
+      "nombre": "onEdit: código inexistente no rompe y avisa por toast",
+      "grupo": "legado",
+      "objetivo": "Un código que no existe en MATRIZ no debe tronar el trigger ni escribir un Kardex fantasma",
+      "metodo": "EMPÍRICO",
+      "datos": "código sin fila en MATRIZ, se escribe Cantidad=10 en ENTRADA",
+      "esperado": "no truena, sin fila en Kardex, avisa por toast",
+      "obtenido": "error=null, filasKardex=0, toasts=[{\"mensaje\":\"Código COD-NO-EXISTE no encontrado en MATRIZ — no se movió existencia ni se registró Kardex.\",\"titulo\":\"⚠️ Movimiento no aplicado\"}]",
+      "estado": "PASS",
+      "duracionMs": 2.55
+    },
+    {
+      "id": "LEG-009",
+      "nombre": "onEdit: editar una cantidad YA existente no dispara un segundo movimiento",
+      "grupo": "legado",
+      "objetivo": "El guard de e.oldValue (comportamiento preexistente, no tocado) debe seguir ignorando ediciones sobre una celda que ya tenía valor — solo la PRIMERA captura cuenta como movimiento",
+      "metodo": "EMPÍRICO",
+      "datos": "primera captura=20 (con oldValue=\"\"), luego se corrige a mano a 30 (oldValue=\"20\")",
+      "esperado": "solo la primera cuenta: MATRIZ=120, 1 sola fila en Kardex",
+      "obtenido": "MATRIZ=120, filasKardex=1",
+      "estado": "PASS",
+      "duracionMs": 2.57
     }
   ]
 }

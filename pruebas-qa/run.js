@@ -35,6 +35,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'sucursales/prueba-maestra-6-sucursales.test.js',
   'requisiciones-sucursal/requisiciones-sucursal.test.js',
   'legado/movimientos-dashboard.test.js',
+  'legado/onedit-entrada-salida.test.js',
 ];
 
 function cargarTodasLasPruebas() {
