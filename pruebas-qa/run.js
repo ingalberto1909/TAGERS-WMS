@@ -32,6 +32,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'concurrencia/concurrencia.test.js',
   'rendimiento/rendimiento.test.js',
   'sucursales/sucursales.test.js',
+  'sucursales/prueba-maestra-6-sucursales.test.js',
   'requisiciones-sucursal/requisiciones-sucursal.test.js',
 ];
 

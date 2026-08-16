@@ -201,6 +201,13 @@ function registrarEntradaInterna_(datos, usuario, folioPersonalizado, observacio
     observacionPersonalizada || "Entrada desde app móvil"
   ]);
 
+  // Escribe Kardex directo (no vía registrarKardex, que recalcularía su
+  // propia fecha) — pero SÍ debe invalidar la misma caché de 20s que
+  // usa registrarKardex, o toda entrada/salida (la operación más
+  // frecuente del sistema) deja el Kardex cacheado desactualizado hasta
+  // por 20s (hallazgo de auditoría, no relacionado con sucursales).
+  invalidarCacheHoja_("KARDEX");
+
   return true;
 }
 
@@ -280,6 +287,9 @@ function registrarSalidaInterna_(datos, usuario){
     usuario,
     datos.observacion || (datos.area ? ("Salida a " + datos.area) : "Salida desde app móvil")
   ]);
+
+  // Ver el mismo comentario en registrarEntradaInterna_.
+  invalidarCacheHoja_("KARDEX");
 
   SpreadsheetApp.flush();
 
@@ -2906,18 +2916,33 @@ function buscarFilaMatrizPorCodigo_(codigo){
 }
 
 // ============================================
-// Existencia de MATRIZ — FUENTE ÚNICA DE VERDAD
+// Existencia — FUENTE ÚNICA DE VERDAD, capa central multi-sucursal
 // ============================================
 //
-// La columna K (Existencia) de MATRIZ ya NO debe tener fórmula: es un
-// valor fijo que SOLO esta función puede escribir. Todo movimiento
-// (Entrada, Salida, Conteo Cíclico, Inventario Mensual) pasa por aquí —
-// así nunca hay dos lugares del código actualizando existencia por su
-// cuenta ni una fórmula peleándose con un valor puesto a mano.
+// MATRIZ sigue siendo el catálogo maestro (una sola fila por Código,
+// misma estructura de siempre) y la fuente de verdad de S01, la única
+// sucursal operativa hoy — por compatibilidad, su columna K (Existencia)
+// se sigue usando tal cual para S01. Cualquier OTRA sucursal (S02-S06...)
+// vive en la hoja aparte EXISTENCIAS_SUCURSAL (Código | Sucursal |
+// Existencia) y NUNCA toca MATRIZ. Esa decisión — "¿S01/MATRIZ o
+// EXISTENCIAS_SUCURSAL?" — se resuelve en UN SOLO lugar:
+// resolverAjusteExistencia_ (escritura) y obtenerExistenciaSucursal_
+// (lectura). Ninguna otra función del proyecto debe volver a preguntar
+// "¿es S01?" por su cuenta — todas las pantallas (Entradas, Salidas,
+// Requisiciones, Conteos, Transferencias, Ajustes, Recepciones) pasan
+// por aquí.
 //
 // El Kardex sigue siendo el historial completo de movimientos (no se
 // toca su lógica); los reportes mensuales deben LEER filtrando por fecha
 // (de KARDEX/ENTRADA/SALIDA/HISTORIAL_*), nunca escribir aquí.
+//
+// Migración futura documentada (Fase 19 del pedido): el día que se
+// decida migrar S01 también a EXISTENCIAS_SUCURSAL, el único cambio es
+// dentro de resolverAjusteExistencia_/obtenerExistenciaSucursal_ (dejar
+// de tratar SUCURSAL_DEFAULT_ como caso especial de MATRIZ) — ninguna
+// pantalla ni función que ya llama a los escritores/lectores de abajo
+// tendría que tocarse, porque ninguna de ellas sabe ni le importa en
+// qué hoja vive el número.
 
 /**
  * FASE DE CONCURRENCIA: helper único para proteger con LockService las
@@ -2946,148 +2971,16 @@ function conBloqueoApp_(funcion, esperaMs){
   }
 }
 
-/**
- * ÚNICA función autorizada para modificar la Existencia (columna K) de
- * MATRIZ. Recibe el valor FINAL que debe quedar (no un delta) — quien
- * llama ya hizo la suma/resta o ya tiene el conteo físico.
- *
- * @param {string} codigo          Código del producto en MATRIZ
- * @param {number} nuevaExistencia Valor final de existencia
- * @return {number|null} La existencia que había ANTES del cambio (null si el código no existe en MATRIZ)
- */
-function actualizarExistenciaMatriz_(codigo, nuevaExistencia, sucursal){
-
-  // FUNDACIÓN MULTI-SUCURSAL (Opción B, ver EXISTENCIAS_SUCURSAL_ más
-  // abajo): si se pide una sucursal real (no la única que opera hoy),
-  // se desvía a su hoja propia SIN tocar MATRIZ. Ningún llamador actual
-  // manda este parámetro — mientras eso siga así, todo lo de abajo
-  // corre exactamente como antes, byte por byte.
-  if(esSucursalNoDefault_(sucursal)){
-    return ajustarExistenciaSucursal_(codigo, sucursal, null, nuevaExistencia);
-  }
-
-  const fila = buscarFilaMatrizPorCodigo_(codigo);
-  if(fila === -1) return null;
-
-  return conBloqueoApp_(function(){
-
-    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-    const celda = matriz.getRange(fila, 11); // K = Existencia
-
-    const existenciaAnterior = Number(celda.getValue()) || 0;
-    const existenciaNueva = Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000;
-
-    celda.setValue(existenciaNueva);
-    invalidarCacheHoja_("MATRIZ");
-
-    return existenciaAnterior;
-
-  });
-
-}
-
-/**
- * Variante por DELTA: suma (o resta, con delta negativo) a la existencia
- * actual del producto y la deja fija. Útil para Entradas/Salidas, donde
- * lo que se conoce es "cuánto entró/salió", no el total final.
- * Regresa {anterior, nueva} o null si el código no existe en MATRIZ.
- */
-function ajustarExistenciaMatrizPorDelta_(codigo, delta, sucursal){
-
-  if(esSucursalNoDefault_(sucursal)){
-    return ajustarExistenciaSucursal_(codigo, sucursal, delta, null);
-  }
-
-  const fila = buscarFilaMatrizPorCodigo_(codigo);
-  if(fila === -1) return null;
-
-  return conBloqueoApp_(function(){
-
-    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-    const celda = matriz.getRange(fila, 11);
-
-    const anterior = Number(celda.getValue()) || 0;
-    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
-
-    celda.setValue(nueva);
-    invalidarCacheHoja_("MATRIZ");
-
-    return { anterior: anterior, nueva: nueva };
-
-  });
-
-}
-
-/**
- * Variante de ajustarExistenciaMatrizPorDelta_ para SALIDAS: valida que
- * quede suficiente existencia DENTRO del mismo lock que aplica el
- * descuento, en vez de validar antes y descontar después por separado.
- * Antes, dos salidas casi simultáneas del mismo producto podían leer la
- * misma existencia "anterior" cada una fuera del lock, pasar su propia
- * validación por separado, y solo entonces disputarse el lock para
- * restar — la segunda en aplicar su resta ya no volvía a comprobar nada
- * y podía dejar la existencia en negativo. Aquí la lectura, la
- * validación y la escritura son un solo paso atómico: si no alcanza,
- * lanza el error y no escribe nada. Es la segunda función (además de
- * actualizarExistenciaMatriz_/ajustarExistenciaMatrizPorDelta_)
- * autorizada a tocar la columna K de MATRIZ, para este caso específico.
- */
-function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta, sucursal){
-
-  if(esSucursalNoDefault_(sucursal)){
-    return ajustarExistenciaSucursal_(codigo, sucursal, delta, null, true);
-  }
-
-  const fila = buscarFilaMatrizPorCodigo_(codigo);
-  if(fila === -1){
-    throw new Error("Producto no encontrado en MATRIZ");
-  }
-
-  return conBloqueoApp_(function(){
-
-    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-    const celda = matriz.getRange(fila, 11);
-
-    const anterior = Number(celda.getValue()) || 0;
-    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
-
-    if(nueva < 0){
-      throw new Error("Existencia insuficiente. Disponible: " + anterior);
-    }
-
-    celda.setValue(nueva);
-    invalidarCacheHoja_("MATRIZ");
-
-    return { anterior: anterior, nueva: nueva };
-
-  });
-
-}
-
-// ============================================
-// FUNDACIÓN MULTI-SUCURSAL — Opción B del diseño de arquitectura
-// (ver el reporte de la etapa anterior, sección L). NADA de esto se usa
-// todavía desde ninguna pantalla: no hay UI, no hay columna Sucursal en
-// USUARIOS, ningún llamador real pasa una sucursal distinta a la
-// default. Es infraestructura aditiva y reversible — su único efecto
-// hoy es dejar lista la ruta de datos para cuando se autorice conectar
-// una sucursal real, sin haber tocado ni el esquema ni el comportamiento
-// de MATRIZ/Kardex/Requisiciones/Compras/Conteos que ya funcionan.
-//
-// Diseño (por qué esta forma y no otra): MATRIZ sigue siendo el
-// catálogo maestro y la fuente de verdad de la ÚNICA sucursal operativa
-// hoy (SUCURSAL_DEFAULT_). Una sucursal adicional real NUNCA toca
-// MATRIZ — su existencia vive en la hoja nueva EXISTENCIAS_SUCURSAL,
-// leída/escrita solo por las funciones de abajo. Así se evita migrar o
-// arriesgar los datos de catálogo/existencia que ya están en producción.
-// ============================================
-
 const SUCURSAL_DEFAULT_ = "S01";
+const SUCURSAL_TODAS_ = "TODAS";
 
 function normalizarSucursal_(sucursal){
   return String(sucursal || SUCURSAL_DEFAULT_).trim().toUpperCase();
 }
 
+// Se conserva por compatibilidad — nada la usaba ya fuera de este
+// archivo, pero varias funciones más abajo la llamaban antes de que
+// existiera resolverAjusteExistencia_.
 function esSucursalNoDefault_(sucursal){
   if(sucursal === undefined || sucursal === null || sucursal === "") return false;
   return normalizarSucursal_(sucursal) !== SUCURSAL_DEFAULT_;
@@ -3118,12 +3011,21 @@ function buscarFilaExistenciaSucursal_(hoja, codigo, sucursal){
 }
 
 /**
- * Lee la existencia de un producto en una sucursal. Para la sucursal
- * default sin fila propia en EXISTENCIAS_SUCURSAL, cae a MATRIZ.Existencia
- * (así se comporta igual que hoy hasta que exista una migración real).
+ * LECTURA CENTRAL — la única forma correcta de conocer la existencia de
+ * un producto en una sucursal específica. Para S01 sin fila propia en
+ * EXISTENCIAS_SUCURSAL todavía, cae a MATRIZ.Existencia (así se comporta
+ * igual que hoy, sin necesitar ninguna migración). "TODAS" NUNCA es una
+ * sucursal física — no tiene existencia propia, así que aquí se rechaza
+ * explícitamente; para una vista agregada usa
+ * obtenerExistenciaConsolidadaApp.
  */
 function obtenerExistenciaSucursal_(codigo, sucursal){
   sucursal = normalizarSucursal_(sucursal);
+
+  if(sucursal === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — usa obtenerExistenciaConsolidadaApp para una vista agregada.');
+  }
+
   const hoja = obtenerHojaExistenciasSucursal_();
   const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
 
@@ -3139,100 +3041,196 @@ function obtenerExistenciaSucursal_(codigo, sucursal){
 }
 
 /**
- * Escritor único y centralizado de EXISTENCIAS_SUCURSAL — el equivalente
- * de actualizarExistenciaMatriz_/ajustarExistenciaMatrizPorDelta_
- * /ajustarExistenciaMatrizPorDeltaValidado_, pero para una sucursal que
- * NO es la default. Nunca se llama directo desde afuera de este bloque:
- * las 3 funciones de arriba desvían aquí cuando reciben una sucursal
- * real. `nuevaExistencia` (valor absoluto) tiene prioridad sobre `delta`
- * si ambos llegan; `validar` exige que el resultado no quede negativo.
+ * Vista CONSOLIDADA ("TODAS") de existencia: suma la de cada sucursal
+ * que ya tenga fila propia en EXISTENCIAS_SUCURSAL, más S01 (MATRIZ, si
+ * todavía no migró). Nunca se guarda una fila física "TODAS" — esto es
+ * puramente un cálculo de lectura, cada vez que se pide.
  */
-function ajustarExistenciaSucursal_(codigo, sucursal, delta, nuevaExistencia, validar){
-  sucursal = normalizarSucursal_(sucursal);
+function obtenerExistenciaConsolidadaApp(codigo, token){
+  requerirSesionActivaApp_(token);
+  codigo = String(codigo||"").trim();
 
-  return conBloqueoApp_(function(){
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const datos = hoja.getLastRow() > 1 ? hoja.getRange(2, 1, hoja.getLastRow()-1, 3).getValues() : [];
 
-    const hoja = obtenerHojaExistenciasSucursal_();
-    let fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
-    const anterior = fila !== -1
-      ? (Number(hoja.getRange(fila, 3).getValue()) || 0)
-      : obtenerExistenciaSucursal_(codigo, sucursal); // primera vez: hereda de MATRIZ si es la default
+  const porSucursal = {};
+  datos.forEach(f => {
+    if(String(f[0]||"").trim() !== codigo) return;
+    porSucursal[normalizarSucursal_(f[1])] = Number(f[2]) || 0;
+  });
 
-    const nueva = (nuevaExistencia !== null && nuevaExistencia !== undefined)
-      ? Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000
-      : Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+  if(porSucursal[SUCURSAL_DEFAULT_] === undefined){
+    porSucursal[SUCURSAL_DEFAULT_] = obtenerExistenciaSucursal_(codigo, SUCURSAL_DEFAULT_);
+  }
 
-    if(validar && nueva < 0){
+  const total = Object.keys(porSucursal).reduce((suma, suc) => suma + porSucursal[suc], 0);
+
+  return { codigo: codigo, total: total, porSucursal: porSucursal };
+}
+
+/**
+ * NÚCLEO ÚNICO DE ESCRITURA — la única función de todo el proyecto que
+ * decide "MATRIZ o EXISTENCIAS_SUCURSAL" y hace el
+ * leer-validar-calcular-escribir real. Todos los escritores públicos de
+ * abajo (actualizarExistenciaMatriz_, ajustarExistenciaMatrizPorDelta_,
+ * ajustarExistenciaMatrizPorDeltaValidado_, ajustarExistenciaSucursal_,
+ * ajustarUnaCeldaExistenciaSinLock_) son envoltorios delgados sobre
+ * esta — cada uno preserva su propio contrato de retorno/errores para
+ * no romper a sus llamadores actuales (ver auditoría), pero la lógica
+ * real vive en un solo lugar.
+ *
+ * NO adquiere ningún lock por sí misma — quien la llama decide (algunos
+ * necesitan mover DOS sucursales dentro de un solo lock atómico, como
+ * transferirEntreSucursalesApp).
+ *
+ * @param {string} codigo
+ * @param {string} sucursal Ya normalizada.
+ * @param {Object} opciones
+ * @param {number}  [opciones.delta]            Cuánto sumar/restar (se ignora si viene nuevaExistencia).
+ * @param {number}  [opciones.nuevaExistencia]   Valor absoluto a fijar — tiene prioridad sobre delta.
+ * @param {boolean} [opciones.validar]           Si true, lanza error si el resultado quedaría negativo.
+ * @param {boolean} [opciones.lanzarSiNoExiste]  Default true. Si false, regresa null en vez de lanzar
+ *        cuando el código no existe en MATRIZ (solo aplica a S01 — en EXISTENCIAS_SUCURSAL
+ *        la fila se crea sola, "no existe" no es un caso de error ahí).
+ * @return {{anterior:number, nueva:number}|null}
+ */
+function resolverAjusteExistencia_(codigo, sucursal, opciones){
+
+  opciones = opciones || {};
+
+  if(sucursal === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — no se puede ajustar existencia ahí. Úsala solo para consultar/agrupar.');
+  }
+
+  const calcularNueva = function(anterior){
+    return (opciones.nuevaExistencia !== null && opciones.nuevaExistencia !== undefined)
+      ? Math.round((Number(opciones.nuevaExistencia) || 0) * 1000) / 1000
+      : Math.round((anterior + (Number(opciones.delta) || 0)) * 1000) / 1000;
+  };
+
+  if(sucursal === SUCURSAL_DEFAULT_){
+
+    const fila = buscarFilaMatrizPorCodigo_(codigo);
+    if(fila === -1){
+      if(opciones.lanzarSiNoExiste === false) return null;
+      throw new Error("Producto no encontrado en MATRIZ");
+    }
+
+    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+    const celda = matriz.getRange(fila, 11); // K = Existencia
+    const anterior = Number(celda.getValue()) || 0;
+    const nueva = calcularNueva(anterior);
+
+    if(opciones.validar && nueva < 0){
       throw new Error("Existencia insuficiente. Disponible: " + anterior);
     }
 
-    if(fila === -1){
-      hoja.appendRow([codigo, sucursal, nueva]);
-    } else {
-      hoja.getRange(fila, 3).setValue(nueva);
-    }
-
-    invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
-
+    celda.setValue(nueva);
+    invalidarCacheHoja_("MATRIZ");
     return { anterior: anterior, nueva: nueva };
+  }
 
+  // Cualquier sucursal que no sea S01 -> EXISTENCIAS_SUCURSAL. Una fila
+  // que todavía no existe arranca en 0 (nunca hereda de MATRIZ: MATRIZ
+  // es la existencia de S01, no un valor por default de las demás).
+  const hoja = obtenerHojaExistenciasSucursal_();
+  let fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  const anterior = fila !== -1 ? (Number(hoja.getRange(fila, 3).getValue()) || 0) : 0;
+  const nueva = calcularNueva(anterior);
+
+  if(opciones.validar && nueva < 0){
+    throw new Error("Existencia insuficiente en " + sucursal + ". Disponible: " + anterior);
+  }
+
+  if(fila === -1){
+    hoja.appendRow([codigo, sucursal, nueva]);
+  } else {
+    hoja.getRange(fila, 3).setValue(nueva);
+  }
+
+  invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
+  return { anterior: anterior, nueva: nueva };
+
+}
+
+/**
+ * ÚNICA función pública autorizada para FIJAR (valor absoluto) la
+ * Existencia de un producto. Quien llama ya hizo la suma/resta o ya
+ * tiene el conteo físico. Sin `sucursal` (o con "S01"), escribe en
+ * MATRIZ exactamente como siempre; con otra sucursal, en
+ * EXISTENCIAS_SUCURSAL — la decisión real vive en resolverAjusteExistencia_.
+ *
+ * @return {number|null} La existencia que había ANTES del cambio (null si el código no existe en MATRIZ)
+ */
+function actualizarExistenciaMatriz_(codigo, nuevaExistencia, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    const resultado = resolverAjusteExistencia_(codigo, sucursal, { nuevaExistencia: nuevaExistencia, lanzarSiNoExiste: false });
+    return resultado ? resultado.anterior : null;
+  });
+}
+
+/**
+ * Variante por DELTA: suma (o resta, con delta negativo) a la existencia
+ * actual del producto y la deja fija. Útil para Entradas/Salidas, donde
+ * lo que se conoce es "cuánto entró/salió", no el total final.
+ * Regresa {anterior, nueva} o null si el código no existe en MATRIZ.
+ */
+function ajustarExistenciaMatrizPorDelta_(codigo, delta, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, lanzarSiNoExiste: false });
+  });
+}
+
+/**
+ * Variante de ajustarExistenciaMatrizPorDelta_ para SALIDAS: valida que
+ * quede suficiente existencia DENTRO del mismo lock que aplica el
+ * descuento, en vez de validar antes y descontar después por separado.
+ * Antes, dos salidas casi simultáneas del mismo producto podían leer la
+ * misma existencia "anterior" cada una fuera del lock, pasar su propia
+ * validación por separado, y solo entonces disputarse el lock para
+ * restar — la segunda en aplicar su resta ya no volvía a comprobar nada
+ * y podía dejar la existencia en negativo. Aquí la lectura, la
+ * validación y la escritura son un solo paso atómico: si no alcanza,
+ * lanza el error y no escribe nada.
+ */
+function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, validar: true });
+  });
+}
+
+/**
+ * Escritor de EXISTENCIAS_SUCURSAL con su propio lock — envoltorio sobre
+ * resolverAjusteExistencia_. `nuevaExistencia` (valor absoluto) tiene
+ * prioridad sobre `delta` si ambos llegan; `validar` exige que el
+ * resultado no quede negativo. Se conserva por compatibilidad (nombre
+ * usado desde hace una sesión), aunque hoy nada la llama fuera de este
+ * archivo — los 3 escritores públicos ya van directo al núcleo.
+ */
+function ajustarExistenciaSucursal_(codigo, sucursal, delta, nuevaExistencia, validar){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, nuevaExistencia: nuevaExistencia, validar: validar });
   });
 }
 
 // ============================================
-// FASE 12 — TRANSFERENCIAS ENTRE SUCURSALES (diseño previo ya
-// autorizado a implementar). Mueve existencia de una sucursal a otra
-// dentro de UN SOLO conBloqueoApp_: origen y destino se ajustan en el
-// mismo lock para que la operación sea atómica de verdad — a
-// propósito NO reutiliza ajustarExistenciaSucursal_/
-// ajustarExistenciaMatrizPorDeltaValidado_ para cada lado (cada una
-// abre y CIERRA su propio lock; encadenar dos de esas dejaría una
-// ventana entre el descuento de origen y el alta en destino donde otra
-// escritura podría colarse). ajustarUnaCeldaExistenciaSinLock_ es el
-// único punto que duplica esa lógica de lectura/validación/escritura,
-// deliberadamente, para no tocar los escritores públicos ya probados.
+// FASE 12 — TRANSFERENCIAS ENTRE SUCURSALES. Mueve existencia de una
+// sucursal a otra dentro de UN SOLO conBloqueoApp_: origen y destino se
+// ajustan en el mismo lock para que la operación sea atómica de verdad
+// — por eso transferirEntreSucursalesApp llama a
+// ajustarUnaCeldaExistenciaSinLock_ (que NO abre su propio lock) en vez
+// de a los escritores públicos de arriba (cada uno abre y CIERRA el
+// suyo; encadenar dos dejaría una ventana entre el descuento de origen
+// y el alta en destino donde otra escritura podría colarse).
 // ============================================
 
 function ajustarUnaCeldaExistenciaSinLock_(codigo, sucursal, delta, validar){
-
-  if(esSucursalNoDefault_(sucursal)){
-    const hoja = obtenerHojaExistenciasSucursal_();
-    let fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
-    const anterior = fila !== -1 ? (Number(hoja.getRange(fila, 3).getValue()) || 0) : obtenerExistenciaSucursal_(codigo, sucursal);
-    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
-
-    if(validar && nueva < 0){
-      throw new Error("Existencia insuficiente en " + sucursal + ". Disponible: " + anterior);
-    }
-
-    if(fila === -1){
-      hoja.appendRow([codigo, sucursal, nueva]);
-    } else {
-      hoja.getRange(fila, 3).setValue(nueva);
-    }
-
-    invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
-    return { anterior: anterior, nueva: nueva };
-  }
-
-  const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
-  if(filaMatriz === -1){
-    throw new Error("Producto no encontrado en MATRIZ");
-  }
-
-  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const celda = matriz.getRange(filaMatriz, 11);
-  const anterior = Number(celda.getValue()) || 0;
-  const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
-
-  if(validar && nueva < 0){
-    throw new Error("Existencia insuficiente en " + sucursal + ". Disponible: " + anterior);
-  }
-
-  celda.setValue(nueva);
-  invalidarCacheHoja_("MATRIZ");
-  return { anterior: anterior, nueva: nueva };
-
+  sucursal = normalizarSucursal_(sucursal);
+  return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, validar: validar });
 }
 
 /**
@@ -3252,6 +3250,9 @@ function transferirEntreSucursalesApp(codigo, sucursalOrigen, sucursalDestino, c
 
   if(!codigo){
     throw new Error("Indica el producto a transferir.");
+  }
+  if(sucursalOrigen === SUCURSAL_TODAS_ || sucursalDestino === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — indica la sucursal real de origen y destino.');
   }
   if(sucursalOrigen === sucursalDestino){
     throw new Error("La sucursal de origen y destino no pueden ser la misma.");
@@ -3277,9 +3278,22 @@ function transferirEntreSucursalesApp(codigo, sucursalOrigen, sucursalDestino, c
     anteriorOrigen = resOrigen.anterior;
     nuevaOrigen = resOrigen.nueva;
 
-    const resDestino = ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalDestino, cantidad, false);
-    anteriorDestino = resDestino.anterior;
-    nuevaDestino = resDestino.nueva;
+    // Apps Script/Sheets no tiene una transacción real que cubra dos
+    // celdas de dos hojas distintas — una vez que el descuento de origen
+    // se escribió, ya quedó. Si el alta en destino truena (rarísimo: ya
+    // se validó código/sucursal antes de llegar aquí, así que solo un
+    // error transitorio de la API podría causarlo), se revierte el
+    // descuento de origen DENTRO del mismo lock antes de propagar el
+    // error — mejor esfuerzo para que la transferencia completa quede
+    // sin efecto neto en vez de a medias.
+    try{
+      const resDestino = ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalDestino, cantidad, false);
+      anteriorDestino = resDestino.anterior;
+      nuevaDestino = resDestino.nueva;
+    }catch(errorDestino){
+      ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalOrigen, cantidad, false);
+      throw new Error("No se pudo completar la transferencia — se revirtió el descuento de origen. " + errorDestino.message);
+    }
 
   });
 
@@ -3352,6 +3366,17 @@ function migrarCostoUnitarioAPorUnidadApp(token){
 
 }
 
+/**
+ * EXCEPCIÓN DOCUMENTADA a la capa central de existencia (auditoría de
+ * arquitectura multi-sucursal): esta es una herramienta de migración de
+ * un solo uso (congela la fórmula de la columna K a valor fijo), no un
+ * movimiento de negocio — por eso escribe directo a MATRIZ en vez de
+ * pasar por resolverAjusteExistencia_. No cambia ningún número (solo el
+ * tipo de celda, de fórmula a valor), así que no rompe la garantía de
+ * "K = fuente única de verdad". Se deja fuera de la capa central a
+ * propósito, para no confundir una herramienta de mantenimiento con un
+ * movimiento de inventario real.
+ */
 function congelarFormulasExistenciaMatrizApp(token){
 
   requerirNoConsultaApp_(token);
@@ -4596,7 +4621,7 @@ function obtenerAccesoSucursalApp(token){
   const correo = obtenerCorreoDesdeToken_(token);
   const rol = obtenerRolDesdeToken(token);
   const sucursal = normalizarSucursal_(obtenerSucursalUsuarioPorCorreo_(correo));
-  const esTodasLasSucursales = String(rol||"").toUpperCase() === "ADMIN" || sucursal === "TODAS";
+  const esTodasLasSucursales = String(rol||"").toUpperCase() === "ADMIN" || sucursal === SUCURSAL_TODAS_;
   return { sucursal: sucursal, esTodasLasSucursales: esTodasLasSucursales };
 }
 
