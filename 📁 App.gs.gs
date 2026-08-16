@@ -8,6 +8,58 @@ function ubicacionVacia_(valor){
   return limpio === "" || /^-+$/.test(limpio);
 }
 
+/**
+ * FASE 5 — RENDIMIENTO: lectura completa de una hoja (todas las
+ * columnas, incluye el encabezado en la fila 0 — igual que
+ * getDataRange().getValues()) con una caché de solo 20 segundos
+ * (CacheService, compartida por todo el proyecto). El panel de Inicio,
+ * por ejemplo, hacía ~5 lecturas completas de MATRIZ y ~4 de KARDEX en
+ * una sola visita — cada una en una llamada de google.script.run
+ * independiente, así que una variable normal de JavaScript no ayuda
+ * (cada llamada corre en su propia ejecución, sin memoria compartida).
+ * CacheService sí persiste esos 20s entre ejecuciones separadas.
+ *
+ * SOLO se usa en funciones de SOLO LECTURA para pantallas (Inicio,
+ * notificaciones, mapa de calor, valor de inventario, detalle de
+ * producto) — nunca en una ruta que vaya a escribir después (esas
+ * siguen leyendo directo de la hoja, sin caché, como siempre: la
+ * existencia real de un producto y cualquier decisión de negocio deben
+ * verse con el dato más fresco posible, no con hasta 20s de retraso).
+ *
+ * Los valores se guardan como JSON — Utilities.formatDate ya se sigue
+ * usando en cada función lectora tal como antes, y cada consumidor de
+ * fechas en este proyecto ya maneja el caso "esto no es un objeto Date"
+ * con el patrón `fila[0] instanceof Date ? fila[0] : new Date(fila[0])`,
+ * así que una fecha que cruzó por JSON (queda como texto ISO) se
+ * reconstruye exactamente igual. JSON.parse siempre regresa un arreglo
+ * nuevo, así que cada llamador puede hacerle .shift()/.sort() sin
+ * afectar a los demás que lean la misma caché dentro de esos 20s.
+ */
+function obtenerFilasHojaCacheadas_(nombreHoja){
+  const cache = CacheService.getScriptCache();
+  const clave = "TAGERS_HOJA_" + nombreHoja + "_V1";
+
+  try{
+    const cacheado = cache.get(clave);
+    if(cacheado) return JSON.parse(cacheado);
+  }catch(e){
+    // si algo sale mal leyendo/parseando la caché, se sigue como si no hubiera caché
+  }
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName(nombreHoja);
+  const datos = hoja ? hoja.getDataRange().getValues() : [];
+
+  try{
+    cache.put(clave, JSON.stringify(datos), 20);
+  }catch(e){
+    // CacheService tiene un límite de 100KB por valor — si la hoja es
+    // demasiado grande para caber, simplemente no se cachea esta vez,
+    // sin romper la lectura actual.
+  }
+
+  return datos;
+}
+
 function doGet(e) {
 
   const pagina = (e && e.parameter && e.parameter.page) 
@@ -231,10 +283,11 @@ function obtenerKardex(limite) {
   if (ultimaFila <= 1) return [];
 
   // Ajustamos el límite por defecto
-  const maxFilas = limite || 8; 
-  
+  const maxFilas = limite || 8;
+
   // Obtenemos los datos de la hoja
-  const datos = kardex.getRange(2, 1, ultimaFila - 1, 12).getValues();
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
   let movimientos = [];
 
   // Recorremos de abajo hacia arriba (más reciente a más antiguo) para ahorrar tiempo
@@ -938,8 +991,7 @@ function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
 }
 
 function obtenerProductosBajoMinimo(){
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   return datos
@@ -973,8 +1025,8 @@ function obtenerProductosBajoMinimo(){
 function obtenerDetalleProductoApp(codigo){
 
   const ss = SpreadsheetApp.getActive();
-  const matriz = ss.getSheetByName("MATRIZ");
-  const datos = matriz.getRange(2, 1, matriz.getLastRow() - 1, 17).getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  datos.shift();
 
   const codigoBuscado = String(codigo || "").trim().toUpperCase();
   let producto = null;
@@ -1009,7 +1061,8 @@ function obtenerDetalleProductoApp(codigo){
 
   if (kardex && kardex.getLastRow() > 1) {
 
-    const movs = kardex.getRange(2, 1, kardex.getLastRow() - 1, 12).getValues();
+    const movs = obtenerFilasHojaCacheadas_("KARDEX");
+    movs.shift();
     let fechaMasReciente = null;
 
     for (let i = 0; i < movs.length; i++) {
@@ -1082,7 +1135,7 @@ function obtenerEntradasSalidas7dias(){
     return { labels: [], entradas: [], salidas: [] };
   }
 
-  const datos = kardex.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
   datos.shift();
 
   const hoy = new Date();
@@ -1126,8 +1179,7 @@ function obtenerEntradasSalidas7dias(){
 function obtenerDashboardMovil(){
   const ss = SpreadsheetApp.getActive();
 
-  const matriz = ss.getSheetByName("MATRIZ");
-  const datos = matriz.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   let productos = datos.length;
@@ -1169,7 +1221,7 @@ function obtenerDashboardMovil(){
   const kardex = ss.getSheetByName("KARDEX");
 
   if(kardex){
-    const mov = kardex.getDataRange().getValues();
+    const mov = obtenerFilasHojaCacheadas_("KARDEX");
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
 
@@ -1576,8 +1628,7 @@ function obtenerContadoresControl(){
  * NUEVO: agrupa MATRIZ por RACK x NIVEL para el "mapa de calor" de Inicio.
  */
 function obtenerMapaCalorRacks(){
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   const celdas = {};
@@ -1634,7 +1685,8 @@ function obtenerTopMovimientosMesApp(){
 
   if(!kardex || kardex.getLastRow() < 2) return vacio;
 
-  const datos = kardex.getRange(2, 1, kardex.getLastRow()-1, 12).getValues();
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
 
   const hoy = new Date();
   const mesActual = hoy.getMonth();
@@ -1708,7 +1760,8 @@ function obtenerValorInventarioApp(){
     return { total: 0, productosConCosto: 0, productosSinCosto: 0 };
   }
 
-  const datos = matriz.getRange(2, 1, matriz.getLastRow()-1, 20).getValues(); // A..T
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ"); // A..T (o lo que la hoja tenga)
+  datos.shift();
 
   let total = 0;
   let productosConCosto = 0;
