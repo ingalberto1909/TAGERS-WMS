@@ -3771,7 +3771,7 @@ function descargarPDFRequisicion(folio){
           ventana.location.href = res.verUrl;
         })
         .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-        [llamada](folio);
+        [llamada](folio, obtenerTokenSesion());
 
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })

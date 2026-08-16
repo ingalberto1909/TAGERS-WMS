@@ -4701,7 +4701,7 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
   registrarAuditoria(usuario, "REQUISICIONES", "ENTREGA CONFIRMADA", folio, "", "", 0, 0,
     productosEntregados + " producto(s) entregados a " + areaReq);
 
-  const pdf = generarYGuardarPDFRequisicion_(folio);
+  const pdf = generarYGuardarPDFRequisicion_(folio, token);
 
   return { productosEntregados: productosEntregados, pdf: pdf };
 
@@ -4717,9 +4717,9 @@ function obtenerCarpetaRequisiciones_(){
   return DriveApp.createFolder(CARPETA_REQUISICIONES_);
 }
 
-function construirHtmlRequisicion_(folio){
+function construirHtmlRequisicion_(folio, token){
 
-  const datos = obtenerDetalleRequisicionApp(folio);
+  const datos = obtenerDetalleRequisicionApp(folio, token);
 
   const filasHtml = datos.items.map((it,i) => `
     <tr style="background:${i%2===0?'#ffffff':'#F9F5EF'}">
@@ -4753,9 +4753,9 @@ function construirHtmlRequisicion_(folio){
 
 }
 
-function generarYGuardarPDFRequisicion_(folio){
+function generarYGuardarPDFRequisicion_(folio, token){
 
-  const html = construirHtmlRequisicion_(folio);
+  const html = construirHtmlRequisicion_(folio, token);
   const pdfBlob = HtmlService.createHtmlOutput(html).getAs("application/pdf").setName(folio + ".pdf");
 
   const carpeta = obtenerCarpetaRequisiciones_();
@@ -4773,8 +4773,8 @@ function generarYGuardarPDFRequisicion_(folio){
 
 }
 
-function obtenerPDFRequisicionApp(folio){
-  return generarYGuardarPDFRequisicion_(folio);
+function obtenerPDFRequisicionApp(folio, token){
+  return generarYGuardarPDFRequisicion_(folio, token);
 }
 
 
