@@ -334,3 +334,24 @@ prueba({
     return { datos: 'rol=OPERADOR', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO', pasa: bloqueado };
   },
 });
+
+prueba({
+  id: 'SUC-017', grupo: 'sucursales', nombre: 'Lista de sucursales conocidas crece sola con el uso real', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerSucursalesConocidasApp debe incluir S01 siempre, más cualquier sucursal que ya tenga usuario o movimiento — sin duplicados, sin "TODAS"',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    // sucursal2@tagers.com (S02) y sucursal4@tagers.com (S04) ya existen en el fixture de USUARIOS.
+    // corporativo@tagers.com tiene Sucursal=TODAS — no debe aparecer en la lista.
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 10, 'S06'); // S06 solo por movimiento, sin usuario
+
+    const lista = entorno.invocar('obtenerSucursalesConocidasApp', tokenAdmin);
+
+    return {
+      datos: 'USUARIOS tiene S02 y S04 capturadas (+ TODAS en un usuario corporativo); S06 solo tiene un movimiento en EXISTENCIAS_SUCURSAL',
+      esperado: 'la lista incluye S01, S02, S04, S06 — sin duplicados, sin "TODAS"',
+      obtenido: `lista=${JSON.stringify(lista)}`,
+      pasa: lista.includes('S01') && lista.includes('S02') && lista.includes('S04') && lista.includes('S06') && !lista.includes('TODAS') && lista.length === new Set(lista).size,
+    };
+  },
+});

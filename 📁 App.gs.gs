@@ -4625,6 +4625,43 @@ function obtenerAccesoSucursalApp(token){
   return { sucursal: sucursal, esTodasLasSucursales: esTodasLasSucursales };
 }
 
+/**
+ * Lista las sucursales que el sistema ya conoce — para poblar un
+ * selector con buscador (Transferencias, etc.) sin tener que teclear el
+ * código a mano y arriesgar un typo. No hay una hoja "catálogo de
+ * sucursales" (a propósito, ver diseño de Opción B): se arma juntando
+ * los valores distintos de USUARIOS.Sucursal y de
+ * EXISTENCIAS_SUCURSAL.Sucursal, sin duplicados, sin "TODAS" (no es una
+ * sucursal física), y siempre incluye SUCURSAL_DEFAULT_ ("S01") aunque
+ * todavía no tenga fila propia en ningún lado — es la única que opera
+ * hoy. La lista crece sola en cuanto una sucursal nueva (S07, S08...)
+ * tenga al menos un usuario o un movimiento — no requiere tocar código.
+ */
+function obtenerSucursalesConocidasApp(token){
+  requerirSesionActivaApp_(token);
+
+  const encontradas = {};
+  encontradas[SUCURSAL_DEFAULT_] = true;
+
+  const usuarios = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(usuarios && usuarios.getLastRow() > 1){
+    usuarios.getRange(2, 7, usuarios.getLastRow() - 1, 1).getValues().forEach(f => {
+      const suc = normalizarSucursal_(f[0]);
+      if(suc && suc !== SUCURSAL_TODAS_) encontradas[suc] = true;
+    });
+  }
+
+  const existenciasSucursal = obtenerHojaExistenciasSucursal_();
+  if(existenciasSucursal.getLastRow() > 1){
+    existenciasSucursal.getRange(2, 2, existenciasSucursal.getLastRow() - 1, 1).getValues().forEach(f => {
+      const suc = normalizarSucursal_(f[0]);
+      if(suc && suc !== SUCURSAL_TODAS_) encontradas[suc] = true;
+    });
+  }
+
+  return Object.keys(encontradas).sort();
+}
+
 // Mismo patrón que obtenerNombreDesdeToken/obtenerRolDesdeToken de
 // Sesiones.gs — no se modifica ese archivo, solo se reutiliza.
 function obtenerCorreoDesdeToken_(token){
