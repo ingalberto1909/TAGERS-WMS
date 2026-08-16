@@ -1630,6 +1630,8 @@ observacion
     observacion
   ]);
 
+  invalidarCacheHoja_("KARDEX");
+
 }
 
 function obtenerProductoPorCodigo(codigo) {

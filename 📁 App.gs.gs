@@ -60,6 +60,23 @@ function obtenerFilasHojaCacheadas_(nombreHoja){
   return datos;
 }
 
+/**
+ * Invalida la caché de 20s de obtenerFilasHojaCacheadas_ para una hoja.
+ * Se llama desde los puntos ÚNICOS y autorizados que escriben esa hoja
+ * (los 3 escritores de la columna Existencia de MATRIZ, y registrarKardex
+ * para KARDEX) — así una pantalla que lea justo después de una
+ * entrada/salida/ajuste ve el dato real de inmediato, en vez de esperar
+ * hasta 20s a que expire sola. Si la clave no estaba cacheada, remove()
+ * simplemente no hace nada.
+ */
+function invalidarCacheHoja_(nombreHoja){
+  try{
+    CacheService.getScriptCache().remove("TAGERS_HOJA_" + nombreHoja + "_V1");
+  }catch(e){
+    // nunca debe tronar un guardado real por un problema de caché
+  }
+}
+
 function doGet(e) {
 
   const pagina = (e && e.parameter && e.parameter.page) 
@@ -2947,6 +2964,7 @@ function actualizarExistenciaMatriz_(codigo, nuevaExistencia){
     const existenciaNueva = Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000;
 
     celda.setValue(existenciaNueva);
+    invalidarCacheHoja_("MATRIZ");
 
     return existenciaAnterior;
 
@@ -2974,6 +2992,7 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
     const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
 
     celda.setValue(nueva);
+    invalidarCacheHoja_("MATRIZ");
 
     return { anterior: anterior, nueva: nueva };
 
@@ -3015,6 +3034,7 @@ function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta){
     }
 
     celda.setValue(nueva);
+    invalidarCacheHoja_("MATRIZ");
 
     return { anterior: anterior, nueva: nueva };
 
