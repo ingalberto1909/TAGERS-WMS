@@ -1010,11 +1010,15 @@ function generarConteoRacks(racks){
         .getValues()
         .flat();
 
-      const conteosHoy = folios.filter(f =>
-        f.toString().includes("CC-"+fechaCodigo)
+      // Contar folios DISTINTOS, no filas (un folio = varias filas, una
+      // por producto) — mismo fix que generarConteoRacksApp.
+      const foliosHoy = new Set(
+        folios
+          .filter(f => f.toString().includes("CC-"+fechaCodigo))
+          .map(f => f.toString())
       );
 
-      consecutivo = conteosHoy.length + 1;
+      consecutivo = foliosHoy.size + 1;
 
     }
 
@@ -1247,13 +1251,26 @@ function rechazarDiscrepancia(fila, comentario, token){
     .getActive()
     .getSheetByName("DISCREPANCIAS");
 
+  // Idempotencia/consistencia: si esta fila ya se resolvió antes (aprobada
+  // o rechazada — doble clic, reintento, o dos personas viendo la misma
+  // fila pendiente), no se vuelve a escribir nada. Antes, rechazar una
+  // fila YA APROBADA sobreescribía el estado a RECHAZADO/"SIN AJUSTE"
+  // aunque el ajuste ya se hubiera aplicado a MATRIZ y Kardex — la fila
+  // quedaba contando una historia distinta a lo que realmente pasó, sin
+  // revertir ni duplicar ningún movimiento real. Mismo criterio que ya
+  // usa aprobarDiscrepancia.
+  const estadoActual = String(hoja.getRange(fila, 10).getValue() || "").trim().toUpperCase();
+  if(estadoActual === "APROBADO" || estadoActual === "RECHAZADO"){
+    return { ok: true, yaProcesada: true };
+  }
+
   hoja.getRange(fila,10).setValue("RECHAZADO");
   hoja.getRange(fila,11).setValue(obtenerUsuario());
   hoja.getRange(fila,12).setValue(new Date());
   hoja.getRange(fila,13).setValue(comentario);
   hoja.getRange(fila,14).setValue("SIN AJUSTE");
 
-  return true;
+  return { ok: true, yaProcesada: false };
 
 }
 

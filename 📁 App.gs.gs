@@ -1327,8 +1327,13 @@ function generarConteoRacksApp(racks, token){
 
     if(conteo.getLastRow() > 1){
       const folios = conteo.getRange(2,1,conteo.getLastRow()-1,1).getValues().flat();
-      const conteosHoy = folios.filter(f => f.toString().includes("CC-"+fechaCodigo));
-      consecutivo = conteosHoy.length + 1;
+      // Un folio genera UNA fila por producto contado, así que contar filas
+      // (en vez de folios distintos) hacía que el consecutivo del día
+      // saltara números (p. ej. el 2° conteo del día salía "-006" en vez
+      // de "-002" si el 1° abarcó 5 productos). Nunca colisionaba, pero
+      // no era estrictamente consecutivo.
+      const foliosHoy = new Set(folios.filter(f => f.toString().includes("CC-"+fechaCodigo)).map(f => f.toString()));
+      consecutivo = foliosHoy.size + 1;
     }
 
     folioConteo = "CC-"+fechaCodigo+"-"+Utilities.formatString("%03d", consecutivo);
