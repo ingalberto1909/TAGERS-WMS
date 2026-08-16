@@ -150,3 +150,43 @@ prueba({
     return { datos: 'solicitado=0', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'permitido', pasa: bloqueado };
   },
 });
+
+prueba({
+  id: 'RS-009', grupo: 'requisiciones-sucursal', nombre: 'El buscador muestra la existencia de LA SUCURSAL del que busca, no de MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'buscarProductoParaRequisicionSucursalApp debe devolver existencia vía obtenerExistenciaSucursal_ para la sucursal del token, más Mínimo/Máximo del catálogo',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    // MATRIZ(S01) tiene 100 de COD-001 (mínimo=10, máximo=200), pero S02 solo tiene 7 unidades propias.
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 7, 'S02');
+    const resultados = entorno.invocar('buscarProductoParaRequisicionSucursalApp', 'harina', token);
+    const item = resultados.find(r => r.codigo === 'COD-001');
+    return {
+      datos: 'MATRIZ(S01)=100, S02 propia=7, mínimo=10, máximo=200',
+      esperado: 'existencia=7 (de S02, no 100), minimo=10, maximo=200',
+      obtenido: `existencia=${item.existencia}, minimo=${item.minimo}, maximo=${item.maximo}`,
+      pasa: item.existencia === 7 && item.minimo === 10 && item.maximo === 200,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-010', grupo: 'requisiciones-sucursal', nombre: 'Dos sucursales distintas ven existencias distintas del mismo producto', metodo: 'EMPÍRICO',
+  objetivo: 'El aislamiento por sucursal debe reflejarse en el buscador: S02 y S04 ven números distintos para el mismo código',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 15, 'S02');
+    entorno.invocar('ajustarExistenciaMatrizPorDeltaValidado_', 'COD-001', 40, 'S04');
+    const tokenS02 = entorno.invocar('crearSesion_', 'sucursal2@tagers.com', 'Operador S02', 'OPERADOR');
+    const tokenS04 = entorno.invocar('crearSesion_', 'sucursal4@tagers.com', 'Operador S04', 'OPERADOR');
+
+    const resS02 = entorno.invocar('buscarProductoParaRequisicionSucursalApp', 'harina', tokenS02).find(r => r.codigo === 'COD-001');
+    const resS04 = entorno.invocar('buscarProductoParaRequisicionSucursalApp', 'harina', tokenS04).find(r => r.codigo === 'COD-001');
+
+    return {
+      datos: 'S02=15, S04=40, mismo producto',
+      esperado: 'el buscador de S02 muestra 15, el de S04 muestra 40',
+      obtenido: `S02 ve=${resS02.existencia}, S04 ve=${resS04.existencia}`,
+      pasa: resS02.existencia === 15 && resS04.existencia === 40,
+    };
+  },
+});

@@ -3351,25 +3351,45 @@ function abrirRequisicionesSucursal(){
 
   <div class="vista-animada">
 
-  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("ubicacion",20)} Requisiciones por Sucursal</h2>
-  <p style="font-size:12.5px;color:var(--text-muted);margin-top:-6px">
-    Aparte de "Requisiciones internas": esta pantalla pide a nombre de TU sucursal
-    (se toma de tu usuario, no se puede elegir) y descuenta la existencia propia de esa sucursal.
-  </p>
+  <div class="cardProducto" style="border-left:4px solid var(--guinda);margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:flex-start">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted)">Requisición por sucursal</div>
+        <h2 style="margin:2px 0 0;display:flex;align-items:center;gap:8px">${tgIcon("ubicacion",20)} <span id="identidadSucursalReqSuc">Cargando…</span></h2>
+        <p style="margin:2px 0 0;font-size:12px;color:var(--text-muted)">Solicitud de productos al CEDIS — descuenta la existencia propia de tu sucursal, nunca la de MATRIZ ni la de otra sucursal</p>
+      </div>
+      <div style="text-align:right;font-size:12.5px;color:var(--text-muted);white-space:nowrap">
+        <div id="identidadSolicitanteReqSuc">—</div>
+        <div id="identidadFechaReqSuc">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cardProducto" style="margin-bottom:16px">
+    <h3 style="margin:0 0 10px">Agregar productos</h3>
+    <div style="position:relative;max-width:620px">
+      <input id="buscarProductoRequisicionSucursal" placeholder="🔎 Buscar producto, código..." oninput="buscarProductoParaRequisicionSucursal()" autocomplete="off">
+      <div id="resultadosProductoRequisicionSucursal" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:280px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+  </div>
+
+  <div class="cardProducto" style="margin-bottom:16px">
+
+    <div id="resumenReqSuc" class="kpiGrid" style="margin-bottom:16px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:10px">
+      <h3 style="margin:0">Productos solicitados</h3>
+      <span class="boton secundario" style="width:auto;padding:8px 14px;margin:0;font-size:12.5px" onclick="calcularSugerenciasRequisicionSucursal()">✨ Calcular cantidades sugeridas</span>
+    </div>
+
+    <div id="tablaNuevaRequisicionSucursal" style="overflow:auto;max-height:45vh"></div>
+
+  </div>
 
   <div class="cardProducto">
 
     <label>Observaciones (opcional)</label>
     <input id="observacionesRequisicionSucursal" placeholder="Notas para quien surte">
-
-    <div style="position:relative;max-width:500px;margin:14px 0">
-      <label>Buscar producto para agregar</label>
-      <input id="buscarProductoRequisicionSucursal" placeholder="Nombre o código..." oninput="buscarProductoParaRequisicionSucursal()" autocomplete="off">
-      <div id="resultadosProductoRequisicionSucursal" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
-    </div>
-    <p style="font-size:11px;color:var(--text-muted);margin-top:-10px">El "disponible" del buscador es de referencia general — lo que realmente se puede entregar depende de la existencia propia de tu sucursal.</p>
-
-    <div id="tablaNuevaRequisicionSucursal" style="overflow:auto;max-height:45vh"></div>
 
     <div id="mensajeRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -3390,6 +3410,28 @@ function abrirRequisicionesSucursal(){
 
   dibujarTablaNuevaRequisicionSucursal();
   cargarListaRequisicionesSucursal();
+  cargarIdentidadRequisicionSucursal();
+
+}
+
+/** Encabezado del documento — Sucursal SIEMPRE del servidor (obtenerAccesoSucursalApp), nunca editable. */
+function cargarIdentidadRequisicionSucursal(){
+
+  const elSucursal = document.getElementById("identidadSucursalReqSuc");
+  const elSolicitante = document.getElementById("identidadSolicitanteReqSuc");
+  const elFecha = document.getElementById("identidadFechaReqSuc");
+  if(!elSucursal) return;
+
+  const ahora = new Date();
+  if(elFecha) elFecha.textContent = ahora.toLocaleDateString("es-MX", { day:"2-digit", month:"short", year:"numeric" }) + " " + ahora.toLocaleTimeString("es-MX", { hour:"2-digit", minute:"2-digit" });
+
+  google.script.run
+    .withSuccessHandler(function(acceso){
+      elSucursal.textContent = "Sucursal " + acceso.sucursal;
+      if(elSolicitante) elSolicitante.textContent = (typeof USUARIO_ACTUAL !== "undefined" && USUARIO_ACTUAL.nombre) || "";
+    })
+    .withFailureHandler(function(e){ elSucursal.textContent = "⚠️ " + e.message; })
+    .obtenerAccesoSucursalApp(obtenerTokenSesion());
 
 }
 
@@ -3418,12 +3460,28 @@ function buscarProductoParaRequisicionSucursal(){
           return;
         }
 
-        cont.innerHTML = lista.map(p => `
-          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
-            onclick='agregarProductoARequisicionSucursal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
-            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo}) — referencia: ${p.existencia} ${p.udm||""}</span>
-          </div>
-        `).join("");
+        cont.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+            <thead>
+              <tr style="text-align:left;color:var(--text-muted);font-size:11px">
+                <th style="padding:6px 10px">Producto</th><th>UDM</th>
+                <th style="text-align:right">Existencia</th><th style="text-align:right">Mín</th><th style="text-align:right;padding-right:10px">Máx</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lista.map(p => `
+                <tr style="cursor:pointer;border-top:1px solid var(--border)"
+                  onclick='agregarProductoARequisicionSucursal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+                  <td style="padding:8px 10px">${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span></td>
+                  <td>${p.udm||""}</td>
+                  <td style="text-align:right;font-weight:700;color:${p.existencia <= 0 ? 'var(--guinda)' : (p.existencia <= p.minimo ? 'var(--terracota)' : 'var(--oliva)')}">${p.existencia}</td>
+                  <td style="text-align:right;color:var(--text-muted)">${p.minimo}</td>
+                  <td style="text-align:right;color:var(--text-muted);padding-right:10px">${p.maximo}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
         cont.style.display = "block";
 
       })
@@ -3431,7 +3489,7 @@ function buscarProductoParaRequisicionSucursal(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRequisicionApp(texto);
+      .buscarProductoParaRequisicionSucursalApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -3452,7 +3510,9 @@ function agregarProductoARequisicionSucursal(producto){
     mostrarMensajeTemporal("mensajeRequisicionSucursal", "Ese producto ya está en la lista", "error");
   } else {
     window.itemsRequisicionSucursal.push({
-      codigo: producto.codigo, producto: producto.producto, unidad: producto.udm, solicitado: 1
+      codigo: producto.codigo, producto: producto.producto, unidad: producto.udm,
+      existencia: producto.existencia, minimo: producto.minimo, maximo: producto.maximo,
+      solicitado: 1
     });
     dibujarTablaNuevaRequisicionSucursal();
   }
@@ -3477,11 +3537,92 @@ function ajustarCantidadRequisicionSucursal(indice, delta){
   dibujarTablaNuevaRequisicionSucursal();
 }
 
+/**
+ * "✨ Calcular cantidades sugeridas": para cada producto agregado cuya
+ * existencia de SU sucursal esté por debajo del mínimo, sugiere
+ * Máximo − Existencia (hasta llegar al máximo del catálogo). El usuario
+ * siempre puede corregir el número después — es una sugerencia, no una
+ * orden automática.
+ */
+function calcularSugerenciasRequisicionSucursal(){
+
+  sincronizarSolicitadosRequisicionSucursal();
+  const lista = window.itemsRequisicionSucursal || [];
+  if(!lista.length) return;
+
+  let ajustados = 0;
+
+  lista.forEach(p => {
+    if(p.existencia < p.minimo){
+      p.solicitado = Math.max(0, Math.round(((p.maximo || 0) - p.existencia) * 1000) / 1000);
+      ajustados++;
+    }
+  });
+
+  dibujarTablaNuevaRequisicionSucursal();
+
+  mostrarMensajeTemporal(
+    "mensajeRequisicionSucursal",
+    ajustados > 0 ? `✨ ${ajustados} producto(s) actualizados a Máximo − Existencia` : "Ningún producto agregado está bajo su mínimo",
+    ajustados > 0 ? "ok" : "error"
+  );
+
+}
+
+function calcularResumenRequisicionSucursal(lista){
+
+  const productos = lista.length;
+  const unidades = lista.reduce((suma, p) => suma + (Number(p.solicitado) || 0), 0);
+  const bajoMinimo = lista.filter(p => p.existencia < p.minimo).length;
+  const sinExistencia = lista.filter(p => p.existencia <= 0).length;
+
+  return { productos, unidades, bajoMinimo, sinExistencia };
+
+}
+
+function dibujarResumenRequisicionSucursal(lista){
+
+  const cont = document.getElementById("resumenReqSuc");
+  if(!cont) return;
+
+  const r = calcularResumenRequisicionSucursal(lista);
+
+  cont.innerHTML = `
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("paquete",18)}</div>
+      <div class="kpiLabel">Productos</div>
+      <div class="kpiValor">${r.productos}</div>
+      <div class="kpiNota">en esta requisición</div>
+    </div>
+    <div class="kpiCard tono-oliva">
+      <div class="kpiIcono">${tgIcon("cajas",18)}</div>
+      <div class="kpiLabel">Unidades</div>
+      <div class="kpiValor">${r.unidades}</div>
+      <div class="kpiNota">solicitadas en total</div>
+    </div>
+    <div class="kpiCard tono-terracota">
+      <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
+      <div class="kpiLabel">Bajo mínimo</div>
+      <div class="kpiValor">${r.bajoMinimo}</div>
+      <div class="kpiNota">en tu sucursal</div>
+    </div>
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("xCirculo",18)}</div>
+      <div class="kpiLabel">Sin existencia</div>
+      <div class="kpiValor">${r.sinExistencia}</div>
+      <div class="kpiNota">en tu sucursal</div>
+    </div>
+  `;
+
+}
+
 function dibujarTablaNuevaRequisicionSucursal(){
 
   const cont = document.getElementById("tablaNuevaRequisicionSucursal");
   if(!cont) return;
   const lista = window.itemsRequisicionSucursal || [];
+
+  dibujarResumenRequisicionSucursal(lista);
 
   if(!lista.length){
     cont.innerHTML = "<p style='color:var(--text-muted);font-size:13px'>Agrega productos con el buscador de arriba.</p>";
@@ -3490,17 +3631,32 @@ function dibujarTablaNuevaRequisicionSucursal(){
 
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
-      <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th></th></tr></thead>
+      <thead>
+        <tr>
+          <th>#</th><th>Producto</th>
+          <th style="text-align:right">Existencia</th><th style="text-align:right">Mín</th><th style="text-align:right">Máx</th>
+          <th style="text-align:right">Solicitar</th><th></th>
+        </tr>
+      </thead>
       <tbody>
         ${lista.map((p,i) => `
           <tr>
-            <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span></td>
+            <td style="color:var(--text-muted)">${i+1}</td>
+            <td>
+              ${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span>
+              ${p.existencia <= 0
+                ? `<br><span style="font-size:10.5px;color:var(--guinda)">🔴 Sin existencia</span>`
+                : (p.existencia < p.minimo ? `<br><span style="font-size:10.5px;color:var(--terracota)">⚠️ Bajo mínimo</span>` : '')}
+            </td>
+            <td style="text-align:right;font-weight:700">${p.existencia} ${p.unidad||""}</td>
+            <td style="text-align:right;color:var(--text-muted)">${p.minimo}</td>
+            <td style="text-align:right;color:var(--text-muted)">${p.maximo}</td>
             <td style="text-align:right">
               <div style="display:inline-flex;align-items:center;gap:8px;justify-content:flex-end">
                 <span onclick="ajustarCantidadRequisicionSucursal(${i},-1)" title="Restar 1"
                   style="cursor:pointer;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-weight:700;user-select:none">−</span>
                 <input type="number" id="solicitadoReqSuc${i}" value="${p.solicitado}" min="0"
-                  oninput="sincronizarSolicitadosRequisicionSucursal()"
+                  oninput="sincronizarSolicitadosRequisicionSucursal(); dibujarResumenRequisicionSucursal(window.itemsRequisicionSucursal)"
                   style="width:52px;max-width:52px;text-align:center;margin:0;padding:6px">
                 <span onclick="ajustarCantidadRequisicionSucursal(${i},1)" title="Sumar 1"
                   style="cursor:pointer;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-weight:700;user-select:none">+</span>

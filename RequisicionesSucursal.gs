@@ -20,6 +20,53 @@
 // el alcance; se puede agregar después siguiendo el mismo patrón de
 // construirHtmlRequisicion_/generarYGuardarPDFRequisicion_.
 
+/**
+ * Búsqueda de producto para Requisiciones por Sucursal — a diferencia de
+ * buscarProductoParaRequisicionApp (Requisiciones por Área, que muestra
+ * la existencia de MATRIZ), esta muestra la existencia REAL de la
+ * sucursal del usuario que busca (server-derived vía
+ * obtenerAccesoSucursalApp — nunca la manda el cliente), nunca la de
+ * MATRIZ ni la de otra sucursal. Mínimo/Máximo siguen siendo del
+ * catálogo (MATRIZ) — no hay todavía un mínimo/máximo por sucursal, así
+ * que son el mismo valor de referencia para las 6.
+ */
+function buscarProductoParaRequisicionSucursalApp(texto, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  const busqueda = normalizarTexto_(texto);
+  if(!busqueda) return [];
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  datos.shift();
+
+  const resultados = [];
+
+  for(let i = 0; i < datos.length; i++){
+    const f = datos[i];
+    const ubicacion = String(f[9]||"").trim();
+    if(ubicacionVacia_(ubicacion)) continue;
+
+    const coincide = normalizarTexto_(f[0]).indexOf(busqueda) !== -1 || normalizarTexto_(f[4]).indexOf(busqueda) !== -1;
+    if(!coincide) continue;
+
+    const codigo = String(f[4]).trim();
+
+    resultados.push({
+      codigo: codigo,
+      producto: f[0],
+      udm: f[1],
+      existencia: obtenerExistenciaSucursal_(codigo, acceso.sucursal),
+      minimo: Number(f[11]) || 0,
+      maximo: Number(f[12]) || 0
+    });
+
+    if(resultados.length >= 15) break;
+  }
+
+  return resultados;
+
+}
+
 function obtenerHojaRequisicionesSucursal_(){
   const ss = SpreadsheetApp.getActive();
   let hoja = ss.getSheetByName("REQUISICIONES_SUCURSAL");
