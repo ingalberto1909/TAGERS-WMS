@@ -49,6 +49,7 @@ pruebas-qa/
 ├── produccion/       Registrar/cerrar lotes, autocompletar producto terminado
 ├── concurrencia/     Folios sin colisión, salidas simultáneas, aprobar/rechazar a la vez
 ├── rendimiento/      Caché de lecturas, prueba Dashboard ANTES/DESPUÉS
+├── sucursales/       Fundación multi-sucursal (Opción B): aislamiento por EXISTENCIAS_SUCURSAL
 ├── baseline/          baseline.json generado por --baseline (no se edita a mano)
 └── run.js             Punto de entrada de la CLI
 ```
@@ -65,6 +66,20 @@ node run.js --comparar         # corre todo y compara contra la baseline guardad
                                 # (una prueba que antes PASABA y ahora no)
 node run.js --json=salida.json # además del reporte en consola, guarda el detalle en JSON
 ```
+
+## Fundación multi-sucursal (Opción B)
+
+Los 3 escritores centralizados de existencia (`actualizarExistenciaMatriz_`,
+`ajustarExistenciaMatrizPorDelta_`, `ajustarExistenciaMatrizPorDeltaValidado_`,
+todos en `📁 App.gs.gs`) aceptan ahora un parámetro opcional `sucursal`.
+Sin pasarlo (el 100% de las llamadas reales hoy), su comportamiento es
+exactamente el de antes — byte por byte, confirmado por el resto de la
+suite sin haber cambiado una sola línea de esas pruebas. Al pasar una
+sucursal distinta a `"S01"`, la escritura se desvía a una hoja nueva e
+independiente, `EXISTENCIAS_SUCURSAL` (Código | Sucursal | Existencia),
+sin tocar MATRIZ. Es infraestructura aditiva y dormida: no hay todavía
+ninguna pantalla, columna en USUARIOS, ni flujo de negocio que la
+invoque con una sucursal real. Pruebas en `sucursales/`.
 
 ## Flujo recomendado antes de tocar código de producción
 

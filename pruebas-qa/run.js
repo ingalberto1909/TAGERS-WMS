@@ -31,6 +31,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'produccion/produccion.test.js',
   'concurrencia/concurrencia.test.js',
   'rendimiento/rendimiento.test.js',
+  'sucursales/sucursales.test.js',
 ];
 
 function cargarTodasLasPruebas() {

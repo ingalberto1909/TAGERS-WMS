@@ -2955,7 +2955,16 @@ function conBloqueoApp_(funcion, esperaMs){
  * @param {number} nuevaExistencia Valor final de existencia
  * @return {number|null} La existencia que había ANTES del cambio (null si el código no existe en MATRIZ)
  */
-function actualizarExistenciaMatriz_(codigo, nuevaExistencia){
+function actualizarExistenciaMatriz_(codigo, nuevaExistencia, sucursal){
+
+  // FUNDACIÓN MULTI-SUCURSAL (Opción B, ver EXISTENCIAS_SUCURSAL_ más
+  // abajo): si se pide una sucursal real (no la única que opera hoy),
+  // se desvía a su hoja propia SIN tocar MATRIZ. Ningún llamador actual
+  // manda este parámetro — mientras eso siga así, todo lo de abajo
+  // corre exactamente como antes, byte por byte.
+  if(esSucursalNoDefault_(sucursal)){
+    return ajustarExistenciaSucursal_(codigo, sucursal, null, nuevaExistencia);
+  }
 
   const fila = buscarFilaMatrizPorCodigo_(codigo);
   if(fila === -1) return null;
@@ -2983,7 +2992,11 @@ function actualizarExistenciaMatriz_(codigo, nuevaExistencia){
  * lo que se conoce es "cuánto entró/salió", no el total final.
  * Regresa {anterior, nueva} o null si el código no existe en MATRIZ.
  */
-function ajustarExistenciaMatrizPorDelta_(codigo, delta){
+function ajustarExistenciaMatrizPorDelta_(codigo, delta, sucursal){
+
+  if(esSucursalNoDefault_(sucursal)){
+    return ajustarExistenciaSucursal_(codigo, sucursal, delta, null);
+  }
 
   const fila = buscarFilaMatrizPorCodigo_(codigo);
   if(fila === -1) return null;
@@ -3019,7 +3032,11 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
  * actualizarExistenciaMatriz_/ajustarExistenciaMatrizPorDelta_)
  * autorizada a tocar la columna K de MATRIZ, para este caso específico.
  */
-function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta){
+function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta, sucursal){
+
+  if(esSucursalNoDefault_(sucursal)){
+    return ajustarExistenciaSucursal_(codigo, sucursal, delta, null, true);
+  }
 
   const fila = buscarFilaMatrizPorCodigo_(codigo);
   if(fila === -1){
@@ -3045,6 +3062,121 @@ function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta){
 
   });
 
+}
+
+// ============================================
+// FUNDACIÓN MULTI-SUCURSAL — Opción B del diseño de arquitectura
+// (ver el reporte de la etapa anterior, sección L). NADA de esto se usa
+// todavía desde ninguna pantalla: no hay UI, no hay columna Sucursal en
+// USUARIOS, ningún llamador real pasa una sucursal distinta a la
+// default. Es infraestructura aditiva y reversible — su único efecto
+// hoy es dejar lista la ruta de datos para cuando se autorice conectar
+// una sucursal real, sin haber tocado ni el esquema ni el comportamiento
+// de MATRIZ/Kardex/Requisiciones/Compras/Conteos que ya funcionan.
+//
+// Diseño (por qué esta forma y no otra): MATRIZ sigue siendo el
+// catálogo maestro y la fuente de verdad de la ÚNICA sucursal operativa
+// hoy (SUCURSAL_DEFAULT_). Una sucursal adicional real NUNCA toca
+// MATRIZ — su existencia vive en la hoja nueva EXISTENCIAS_SUCURSAL,
+// leída/escrita solo por las funciones de abajo. Así se evita migrar o
+// arriesgar los datos de catálogo/existencia que ya están en producción.
+// ============================================
+
+const SUCURSAL_DEFAULT_ = "S01";
+
+function normalizarSucursal_(sucursal){
+  return String(sucursal || SUCURSAL_DEFAULT_).trim().toUpperCase();
+}
+
+function esSucursalNoDefault_(sucursal){
+  if(sucursal === undefined || sucursal === null || sucursal === "") return false;
+  return normalizarSucursal_(sucursal) !== SUCURSAL_DEFAULT_;
+}
+
+function obtenerHojaExistenciasSucursal_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("EXISTENCIAS_SUCURSAL");
+  if(!hoja){
+    hoja = ss.insertSheet("EXISTENCIAS_SUCURSAL");
+    hoja.appendRow(["Código", "Sucursal", "Existencia"]);
+  }
+  return hoja;
+}
+
+function buscarFilaExistenciaSucursal_(hoja, codigo, sucursal){
+  const ultimaFila = hoja.getLastRow();
+  if(ultimaFila < 2) return -1;
+  const datos = hoja.getRange(2, 1, ultimaFila - 1, 2).getValues();
+  const codigoBuscado = String(codigo || "").trim();
+  const sucursalBuscada = normalizarSucursal_(sucursal);
+  for(let i = 0; i < datos.length; i++){
+    if(String(datos[i][0]||"").trim() === codigoBuscado && normalizarSucursal_(datos[i][1]) === sucursalBuscada){
+      return i + 2;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Lee la existencia de un producto en una sucursal. Para la sucursal
+ * default sin fila propia en EXISTENCIAS_SUCURSAL, cae a MATRIZ.Existencia
+ * (así se comporta igual que hoy hasta que exista una migración real).
+ */
+function obtenerExistenciaSucursal_(codigo, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+
+  if(fila !== -1){
+    return Number(hoja.getRange(fila, 3).getValue()) || 0;
+  }
+  if(sucursal === SUCURSAL_DEFAULT_){
+    const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+    if(filaMatriz === -1) return 0;
+    return Number(SpreadsheetApp.getActive().getSheetByName("MATRIZ").getRange(filaMatriz, 11).getValue()) || 0;
+  }
+  return 0;
+}
+
+/**
+ * Escritor único y centralizado de EXISTENCIAS_SUCURSAL — el equivalente
+ * de actualizarExistenciaMatriz_/ajustarExistenciaMatrizPorDelta_
+ * /ajustarExistenciaMatrizPorDeltaValidado_, pero para una sucursal que
+ * NO es la default. Nunca se llama directo desde afuera de este bloque:
+ * las 3 funciones de arriba desvían aquí cuando reciben una sucursal
+ * real. `nuevaExistencia` (valor absoluto) tiene prioridad sobre `delta`
+ * si ambos llegan; `validar` exige que el resultado no quede negativo.
+ */
+function ajustarExistenciaSucursal_(codigo, sucursal, delta, nuevaExistencia, validar){
+  sucursal = normalizarSucursal_(sucursal);
+
+  return conBloqueoApp_(function(){
+
+    const hoja = obtenerHojaExistenciasSucursal_();
+    let fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+    const anterior = fila !== -1
+      ? (Number(hoja.getRange(fila, 3).getValue()) || 0)
+      : obtenerExistenciaSucursal_(codigo, sucursal); // primera vez: hereda de MATRIZ si es la default
+
+    const nueva = (nuevaExistencia !== null && nuevaExistencia !== undefined)
+      ? Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000
+      : Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+
+    if(validar && nueva < 0){
+      throw new Error("Existencia insuficiente. Disponible: " + anterior);
+    }
+
+    if(fila === -1){
+      hoja.appendRow([codigo, sucursal, nueva]);
+    } else {
+      hoja.getRange(fila, 3).setValue(nueva);
+    }
+
+    invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
+
+    return { anterior: anterior, nueva: nueva };
+
+  });
 }
 
 /**
