@@ -44,6 +44,7 @@
   function forzarResponsiveSiHaceFalta(){
     if(!window.screen || !window.screen.width) return;
     var anchoReal = window.screen.width;
+    var tocoAlgo = false;
     try{
       for (var s = 0; s < document.styleSheets.length; s++){
         var reglas;
@@ -54,13 +55,29 @@
           if(regla.type !== CSSRule.MEDIA_RULE) continue;
           var texto = regla.media.mediaText;
           var coincide = texto.match(/max-width:\s*(\d+)px/);
-          if(coincide && anchoReal <= parseInt(coincide[1], 10)){
+          if(coincide && anchoReal <= parseInt(coincide[1], 10) && texto !== 'all'){
             regla.media.mediaText = 'all';
+            tocoAlgo = true;
           }
         }
       }
     }catch(e){ /* si el navegador no deja tocar cssRules, se queda como estaba */ }
+    // Mutar reglas de @media vía CSSOM a veces deja al navegador con los
+    // estilos recalculados pero SIN repintar el contenido ya existente
+    // (se queda "atorado" hasta que el usuario toca algo, que es lo que
+    // fuerza el repintado) — leer una propiedad de layout obliga un
+    // reflow/repintado inmediato y sincrónico, sin esperar a esa
+    // interacción del usuario.
+    if(tocoAlgo && document.body){
+      void document.body.offsetHeight;
+    }
   }
+
+  // Se expone para poder volver a forzarlo justo antes de abrir el menú o
+  // el buscador en móvil (toggleSidebarMovil/toggleBuscadorHeaderMovil),
+  // por si el usuario interactúa antes de que corra alguno de los
+  // reintentos programados abajo.
+  window.tgForzarResponsive = forzarResponsiveSiHaceFalta;
 
   ajustarViewport();
   window.addEventListener('load', function(){ ajustarViewport(); forzarResponsiveSiHaceFalta(); });
@@ -1945,7 +1962,19 @@ border-radius:var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .modalDetalleCaja{
-padding:20px;
+padding:16px;
+}
+
+.modalListaHead{
+padding:14px 16px 10px;
+}
+
+.modalListaBuscar{
+padding:10px 16px;
+}
+
+.modalListaBody{
+padding:6px 16px 16px;
 }
 
 /* El panel de notificaciones tiene un ancho fijo (320px) pensado para
@@ -1995,21 +2024,23 @@ width:100%;
 display:block;
 border:1px solid var(--border);
 border-radius:var(--radius-md);
-margin-bottom:10px;
-padding:4px 12px;
+margin-bottom:6px;
+padding:0 12px;
 background:var(--bg-panel);
 box-shadow:var(--shadow-sm);
+font-size:12.5px;
 }
 
 .tablaTop td, .tablaActividad td, .tablaImportar td{
 display:flex;
 align-items:center;
 justify-content:space-between;
-gap:14px;
-padding:8px 0;
+gap:10px;
+padding:5px 0;
 border-bottom:1px solid var(--border);
 text-align:right;
 white-space:normal;
+line-height:1.25;
 }
 
 .tablaTop td:last-child, .tablaActividad td:last-child, .tablaImportar td:last-child{
@@ -2019,7 +2050,7 @@ border-bottom:none;
 .tablaTop td::before, .tablaActividad td::before, .tablaImportar td::before{
 content:attr(data-label);
 font-weight:700;
-font-size:11px;
+font-size:10px;
 text-transform:uppercase;
 letter-spacing:.3px;
 color:var(--text-muted);
@@ -2369,7 +2400,7 @@ const ICONOS_MENU = {
   btnRevisarDiscrepancias:"buscar", btnAprobarDiscrepancias:"checkCirculo", btnCerrarConteo:"recibo",
   btnNuevaRequisicion:"mas", btnNuevaRequisicionReceta:"receta", btnMisRequisiciones:"documento",
   btnRequisicionesPendientes:"reloj", btnPreparacionRequisicion:"paquete", btnEntregasRequisicion:"checkCirculo",
-  btnHistorialRequisicion:"reloj", btnCentroReabastecimiento:"refrescar", btnOrdenesCompra:"recibo",
+  btnHistorialRequisicion:"reloj", btnRequisicionesSucursal:"ubicacion", btnTransferenciasSucursal:"camion", btnCentroReabastecimiento:"refrescar", btnOrdenesCompra:"recibo",
   btnRecepcionMercancia:"camion", btnHistorialCompras:"reloj", btnAnalisisCostos:"dinero",
   btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
@@ -2659,11 +2690,22 @@ function cerrarBuscadorHeaderYAbrirProducto(codigo){
   abrirDetalleProducto(codigo);
 }
 
+// window.innerWidth mide el ancho del iframe que arma script.google.com,
+// que puede reportar un ancho de escritorio aunque el celular sea angosto
+// (ver el fix de zoom en <head>). window.screen.width es el ancho físico
+// real del dispositivo y no tiene ese problema — se usa aquí para que las
+// decisiones de "¿estoy en móvil?" en JS coincidan con lo que ya fuerza
+// el CSS, en vez de quedarse en modo escritorio por error.
+function anchoRealDispositivo(){
+  return (window.screen && window.screen.width) || window.innerWidth;
+}
+
 // En pantallas angostas (≤480px) el buscador del header vive colapsado a
 // solo su ícono (ver CSS de Fase 8) — este toggle lo expande/contrae sin
 // afectar en nada su comportamiento en pantallas más anchas.
 function toggleBuscadorHeaderMovil(){
-  if(window.innerWidth > 480) return;
+  if(window.tgForzarResponsive) window.tgForzarResponsive();
+  if(anchoRealDispositivo() > 480) return;
   const cont = document.getElementById("buscadorHeaderContenedor");
   if(!cont) return;
   const expandiendo = !cont.classList.contains("expandido");
@@ -2679,7 +2721,7 @@ document.addEventListener("click", function(e){
   if(buscador && !buscador.contains(e.target)){
     const resultados = document.getElementById("resultadosBuscadorHeader");
     if(resultados) resultados.style.display = "none";
-    if(window.innerWidth <= 480) buscador.classList.remove("expandido");
+    if(anchoRealDispositivo() <= 480) buscador.classList.remove("expandido");
   }
 });
 
@@ -2714,30 +2756,47 @@ function cerrarSesionTAGERS(){
 const PERMISOS_ROL = {
   "ADMIN": null, // null = ve todo, sin restricciones
   "SUPERVISOR": [
-    "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas","btnAjustes",
+    // Ya NO incluye Operaciones (btnEntradas/btnSalidas/btnImportarSalidas/
+    // btnAjustes) — a partir de ahora exclusivo de ADMIN/OPERADOR. Se agregó
+    // acceso completo a Compras e Inventario mensual.
+    "btnInicio",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
+    "btnTransferenciasSucursal",
+    "btnCentroReabastecimiento","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
+    "btnAnalisisCostos","btnAnalisisCompras","btnProveedores",
+    "btnGenerarInventarioMensual","btnCapturarInventarioMensual","btnRevisarDiferenciasMensual",
+    "btnCerrarInventarioMensual","btnHistorialInventarioMensual","btnDashboardInventarioMensual",
+    // Ya se veían para este rol antes de que estos 3 botones tuvieran id
+    // (aplicarPermisosPorRol no podía ocultarlos) — se agregan aquí para
+    // que sigan viéndose exactamente igual que hoy, sin ganar ni perder nada.
+    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
   ],
   "OPERADOR": [
     "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
     "btnCapturarConteo","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
+    // Mismo motivo que en SUPERVISOR: ya se veían, se preservan tal cual.
+    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
   ],
   "CONSULTA": [
     // Solo lectura: ve inicio, inventario, kardex, mapa y ubicaciones.
     // NO tiene entradas, salidas, ajustes, ni ninguna pantalla de conteo cíclico.
+    // NO tiene Configuración (btnConfig...) ni Compras/Inventario mensual.
     // Sí puede crear/ver SUS PROPIAS requisiciones (Panadería/Cocina/Repostería) —
     // las 3 pantallas exclusivas de Almacén se ocultan aparte, por Área real,
     // no por rol (ver aplicarAccesoRequisicionesMenu()).
     // Recetas: puede consultar/buscar (crear/editar se oculta aparte, por rol real).
+    // Producción: acceso completo, igual que cualquier otro módulo permitido.
     "btnInicio","btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
-    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion"
+    "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
+    "btnRegistrarProduccion","btnLotesProduccion"
   ]
 };
 
@@ -2791,7 +2850,7 @@ function ejecutarMigracionExistencia(){
     .withFailureHandler(function(e){
       alert("⚠️ " + e.message);
     })
-    .congelarFormulasExistenciaMatrizApp();
+    .congelarFormulasExistenciaMatrizApp(obtenerTokenSesion());
 
 }
 
@@ -2814,7 +2873,7 @@ function ejecutarMigracionCostoUnitario(){
     .withFailureHandler(function(e){
       alert("⚠️ " + e.message);
     })
-    .migrarCostoUnitarioAPorUnidadApp();
+    .migrarCostoUnitarioAPorUnidadApp(obtenerTokenSesion());
 
 }
 
@@ -3024,8 +3083,16 @@ function abrirNuevaRequisicion(){
 
     <p style="font-size:12.5px;color:var(--text-muted)">El área se toma de tu usuario automáticamente.</p>
 
-    <label>Observaciones (opcional)</label>
-    <input id="observacionesRequisicion" placeholder="Notas para almacén">
+    <div class="gridFormulario">
+      <div class="campo">
+        <label>Observaciones (opcional)</label>
+        <input id="observacionesRequisicion" placeholder="Notas para almacén">
+      </div>
+      <div class="campo">
+        <label>Fecha requerida (opcional)</label>
+        <input id="fechaRequeridaRequisicion" type="date">
+      </div>
+    </div>
 
     <div id="sugeridosRequisicion" style="margin:14px 0"></div>
 
@@ -3199,6 +3266,7 @@ function dibujarTablaNuevaRequisicion(){
 function enviarNuevaRequisicion(){
 
   const observaciones = document.getElementById("observacionesRequisicion").value.trim();
+  const fechaRequerida = document.getElementById("fechaRequeridaRequisicion").value || "";
   const lista = window.itemsNuevaRequisicion || [];
 
   const items = lista.map((p,i) => {
@@ -3228,7 +3296,7 @@ function enviarNuevaRequisicion(){
       activarCargaBoton("btnEnviarRequisicion", false);
       mostrarMensajeTemporal("mensajeRequisicion", "⚠️ " + e.message, "error");
     })
-    .crearRequisicionApp(observaciones, items, obtenerTokenSesion());
+    .crearRequisicionApp(observaciones, items, obtenerTokenSesion(), fechaRequerida);
 
 }
 
@@ -3248,7 +3316,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
-        <tr><th>Folio</th><th>Área</th><th>Solicitante</th><th>Fecha</th><th>Estado</th><th></th></tr>
+        <tr><th>Folio</th><th>Área</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
       <tbody>
         ${lista.map(r => `
@@ -3257,6 +3325,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td>${r.area}</td>
             <td>${r.solicitante}</td>
             <td>${r.fecha}</td>
+            <td>${r.fechaRequerida || "—"}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
             <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
               <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
@@ -3268,6 +3337,753 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
       </tbody>
     </table>
   `;
+
+}
+
+// ============================================
+// REQUISICIONES POR SUCURSAL — pantalla APARTE de "Requisiciones
+// internas" (por Área). Mismo flujo (crear / consultar / entregar),
+// pero pide/filtra por la Sucursal del usuario en vez de su Área,
+// contra RequisicionesSucursal.gs. No comparte función, DOM ni estado
+// con la sección de arriba — solo reutiliza buscarProductoParaRequisicionApp
+// para el buscador de productos (catálogo de MATRIZ, es de solo lectura
+// y no depende de sucursal).
+// ============================================
+
+function abrirRequisicionesSucursal(){
+
+  marcarActivo("btnRequisicionesSucursal");
+
+  const contenedor = document.querySelector(".contenedor");
+  window.itemsRequisicionSucursal = [];
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <div class="cardProducto" style="border-left:4px solid var(--guinda);margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:flex-start">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted)">Requisición por sucursal</div>
+        <h2 style="margin:2px 0 0;display:flex;align-items:center;gap:8px">${tgIcon("ubicacion",20)} <span id="identidadSucursalReqSuc">Cargando…</span></h2>
+        <p style="margin:2px 0 0;font-size:12px;color:var(--text-muted)">Solicitud de productos al CEDIS — descuenta la existencia propia de tu sucursal, nunca la de MATRIZ ni la de otra sucursal</p>
+      </div>
+      <div style="text-align:right;font-size:12.5px;color:var(--text-muted);white-space:nowrap">
+        <div id="identidadSolicitanteReqSuc">—</div>
+        <div id="identidadFechaReqSuc">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cardProducto" style="margin-bottom:16px">
+    <h3 style="margin:0 0 10px">Agregar productos</h3>
+    <div style="position:relative;max-width:620px">
+      <input id="buscarProductoRequisicionSucursal" placeholder="🔎 Buscar producto, código..." oninput="buscarProductoParaRequisicionSucursal()" autocomplete="off">
+      <div id="resultadosProductoRequisicionSucursal" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:280px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+  </div>
+
+  <div class="cardProducto" style="margin-bottom:16px">
+
+    <div id="resumenReqSuc" class="kpiGrid" style="margin-bottom:16px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:10px">
+      <h3 style="margin:0">Productos solicitados</h3>
+      <span class="boton secundario" style="width:auto;padding:8px 14px;margin:0;font-size:12.5px" onclick="calcularSugerenciasRequisicionSucursal()">✨ Calcular cantidades sugeridas</span>
+    </div>
+
+    <div id="tablaNuevaRequisicionSucursal" style="overflow:auto;max-height:45vh"></div>
+
+  </div>
+
+  <div class="cardProducto">
+
+    <div class="gridFormulario">
+      <div class="campo">
+        <label>Observaciones (opcional)</label>
+        <input id="observacionesRequisicionSucursal" placeholder="Notas para quien surte">
+      </div>
+      <div class="campo">
+        <label>Fecha requerida (opcional)</label>
+        <input id="fechaRequeridaRequisicionSucursal" type="date">
+      </div>
+    </div>
+
+    <div id="mensajeRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" id="btnEnviarRequisicionSucursal" style="margin-top:16px" onclick="enviarNuevaRequisicionSucursal()">${tgIcon("enviar",17)} Enviar requisición</div>
+
+  </div>
+
+  <div class="cardProducto" style="margin-top:18px">
+    <h3 style="margin:0 0 10px">Requisiciones de tu sucursal</h3>
+    <div id="listaRequisicionesSucursal"></div>
+  </div>
+
+  <div id="detalleRequisicionSucursal" style="margin-top:18px"></div>
+
+  </div>
+
+  `;
+
+  dibujarTablaNuevaRequisicionSucursal();
+  cargarListaRequisicionesSucursal();
+  cargarIdentidadRequisicionSucursal();
+
+}
+
+/** Encabezado del documento — Sucursal SIEMPRE del servidor (obtenerAccesoSucursalApp), nunca editable. */
+function cargarIdentidadRequisicionSucursal(){
+
+  const elSucursal = document.getElementById("identidadSucursalReqSuc");
+  const elSolicitante = document.getElementById("identidadSolicitanteReqSuc");
+  const elFecha = document.getElementById("identidadFechaReqSuc");
+  if(!elSucursal) return;
+
+  const ahora = new Date();
+  if(elFecha) elFecha.textContent = ahora.toLocaleDateString("es-MX", { day:"2-digit", month:"short", year:"numeric" }) + " " + ahora.toLocaleTimeString("es-MX", { hour:"2-digit", minute:"2-digit" });
+
+  google.script.run
+    .withSuccessHandler(function(acceso){
+      elSucursal.textContent = "Sucursal " + acceso.sucursal;
+      if(elSolicitante) elSolicitante.textContent = (typeof USUARIO_ACTUAL !== "undefined" && USUARIO_ACTUAL.nombre) || "";
+    })
+    .withFailureHandler(function(e){ elSucursal.textContent = "⚠️ " + e.message; })
+    .obtenerAccesoSucursalApp(obtenerTokenSesion());
+
+}
+
+let temporizadorBuscarProductoRequisicionSucursal;
+
+function buscarProductoParaRequisicionSucursal(){
+
+  clearTimeout(temporizadorBuscarProductoRequisicionSucursal);
+
+  const texto = document.getElementById("buscarProductoRequisicionSucursal").value.trim();
+  const cont = document.getElementById("resultadosProductoRequisicionSucursal");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoRequisicionSucursal = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+            <thead>
+              <tr style="text-align:left;color:var(--text-muted);font-size:11px">
+                <th style="padding:6px 10px">Producto</th><th>UDM</th>
+                <th style="text-align:right">Existencia</th><th style="text-align:right">Mín</th><th style="text-align:right;padding-right:10px">Máx</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lista.map(p => `
+                <tr style="cursor:pointer;border-top:1px solid var(--border)"
+                  onclick='agregarProductoARequisicionSucursal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+                  <td style="padding:8px 10px">${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span></td>
+                  <td>${p.udm||""}</td>
+                  <td style="text-align:right;font-weight:700;color:${p.existencia <= 0 ? 'var(--guinda)' : (p.existencia <= p.minimo ? 'var(--terracota)' : 'var(--oliva)')}">${p.existencia}</td>
+                  <td style="text-align:right;color:var(--text-muted)">${p.minimo}</td>
+                  <td style="text-align:right;color:var(--text-muted);padding-right:10px">${p.maximo}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        cont.innerHTML = "⚠️ " + e.message;
+        cont.style.display = "block";
+      })
+      .buscarProductoParaRequisicionSucursalApp(texto, obtenerTokenSesion());
+
+  }, 300);
+
+}
+
+function sincronizarSolicitadosRequisicionSucursal(){
+  (window.itemsRequisicionSucursal || []).forEach((p,i) => {
+    const input = document.getElementById("solicitadoReqSuc"+i);
+    if(input) p.solicitado = Number(input.value) || 0;
+  });
+}
+
+function agregarProductoARequisicionSucursal(producto){
+
+  sincronizarSolicitadosRequisicionSucursal();
+
+  if(window.itemsRequisicionSucursal.some(p => p.codigo === producto.codigo)){
+    mostrarMensajeTemporal("mensajeRequisicionSucursal", "Ese producto ya está en la lista", "error");
+  } else {
+    window.itemsRequisicionSucursal.push({
+      codigo: producto.codigo, producto: producto.producto, unidad: producto.udm,
+      existencia: producto.existencia, minimo: producto.minimo, maximo: producto.maximo,
+      solicitado: 1
+    });
+    dibujarTablaNuevaRequisicionSucursal();
+  }
+
+  document.getElementById("buscarProductoRequisicionSucursal").value = "";
+  document.getElementById("resultadosProductoRequisicionSucursal").innerHTML = "";
+  document.getElementById("resultadosProductoRequisicionSucursal").style.display = "none";
+
+}
+
+function quitarProductoRequisicionSucursal(indice){
+  sincronizarSolicitadosRequisicionSucursal();
+  window.itemsRequisicionSucursal.splice(indice, 1);
+  dibujarTablaNuevaRequisicionSucursal();
+}
+
+function ajustarCantidadRequisicionSucursal(indice, delta){
+  sincronizarSolicitadosRequisicionSucursal();
+  const item = (window.itemsRequisicionSucursal || [])[indice];
+  if(!item) return;
+  item.solicitado = Math.max(0, (Number(item.solicitado) || 0) + delta);
+  dibujarTablaNuevaRequisicionSucursal();
+}
+
+/**
+ * "✨ Calcular cantidades sugeridas": para cada producto agregado cuya
+ * existencia de SU sucursal esté por debajo del mínimo, sugiere
+ * Máximo − Existencia (hasta llegar al máximo del catálogo). El usuario
+ * siempre puede corregir el número después — es una sugerencia, no una
+ * orden automática.
+ */
+function calcularSugerenciasRequisicionSucursal(){
+
+  sincronizarSolicitadosRequisicionSucursal();
+  const lista = window.itemsRequisicionSucursal || [];
+  if(!lista.length) return;
+
+  let ajustados = 0;
+
+  lista.forEach(p => {
+    if(p.existencia < p.minimo){
+      p.solicitado = Math.max(0, Math.round(((p.maximo || 0) - p.existencia) * 1000) / 1000);
+      ajustados++;
+    }
+  });
+
+  dibujarTablaNuevaRequisicionSucursal();
+
+  mostrarMensajeTemporal(
+    "mensajeRequisicionSucursal",
+    ajustados > 0 ? `✨ ${ajustados} producto(s) actualizados a Máximo − Existencia` : "Ningún producto agregado está bajo su mínimo",
+    ajustados > 0 ? "ok" : "error"
+  );
+
+}
+
+function calcularResumenRequisicionSucursal(lista){
+
+  const productos = lista.length;
+  const unidades = lista.reduce((suma, p) => suma + (Number(p.solicitado) || 0), 0);
+  const bajoMinimo = lista.filter(p => p.existencia < p.minimo).length;
+  const sinExistencia = lista.filter(p => p.existencia <= 0).length;
+
+  return { productos, unidades, bajoMinimo, sinExistencia };
+
+}
+
+function dibujarResumenRequisicionSucursal(lista){
+
+  const cont = document.getElementById("resumenReqSuc");
+  if(!cont) return;
+
+  const r = calcularResumenRequisicionSucursal(lista);
+
+  cont.innerHTML = `
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("paquete",18)}</div>
+      <div class="kpiLabel">Productos</div>
+      <div class="kpiValor">${r.productos}</div>
+      <div class="kpiNota">en esta requisición</div>
+    </div>
+    <div class="kpiCard tono-oliva">
+      <div class="kpiIcono">${tgIcon("cajas",18)}</div>
+      <div class="kpiLabel">Unidades</div>
+      <div class="kpiValor">${r.unidades}</div>
+      <div class="kpiNota">solicitadas en total</div>
+    </div>
+    <div class="kpiCard tono-terracota">
+      <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
+      <div class="kpiLabel">Bajo mínimo</div>
+      <div class="kpiValor">${r.bajoMinimo}</div>
+      <div class="kpiNota">en tu sucursal</div>
+    </div>
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("xCirculo",18)}</div>
+      <div class="kpiLabel">Sin existencia</div>
+      <div class="kpiValor">${r.sinExistencia}</div>
+      <div class="kpiNota">en tu sucursal</div>
+    </div>
+  `;
+
+}
+
+function dibujarTablaNuevaRequisicionSucursal(){
+
+  const cont = document.getElementById("tablaNuevaRequisicionSucursal");
+  if(!cont) return;
+  const lista = window.itemsRequisicionSucursal || [];
+
+  dibujarResumenRequisicionSucursal(lista);
+
+  if(!lista.length){
+    cont.innerHTML = "<p style='color:var(--text-muted);font-size:13px'>Agrega productos con el buscador de arriba.</p>";
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead>
+        <tr>
+          <th>#</th><th>Producto</th>
+          <th style="text-align:right">Existencia</th><th style="text-align:right">Mín</th><th style="text-align:right">Máx</th>
+          <th style="text-align:right">Solicitar</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lista.map((p,i) => `
+          <tr>
+            <td style="color:var(--text-muted)">${i+1}</td>
+            <td>
+              ${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span>
+              ${p.existencia <= 0
+                ? `<br><span style="font-size:10.5px;color:var(--guinda)">🔴 Sin existencia</span>`
+                : (p.existencia < p.minimo ? `<br><span style="font-size:10.5px;color:var(--terracota)">⚠️ Bajo mínimo</span>` : '')}
+            </td>
+            <td style="text-align:right;font-weight:700">${p.existencia} ${p.unidad||""}</td>
+            <td style="text-align:right;color:var(--text-muted)">${p.minimo}</td>
+            <td style="text-align:right;color:var(--text-muted)">${p.maximo}</td>
+            <td style="text-align:right">
+              <div style="display:inline-flex;align-items:center;gap:8px;justify-content:flex-end">
+                <span onclick="ajustarCantidadRequisicionSucursal(${i},-1)" title="Restar 1"
+                  style="cursor:pointer;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-weight:700;user-select:none">−</span>
+                <input type="number" id="solicitadoReqSuc${i}" value="${p.solicitado}" min="0"
+                  oninput="sincronizarSolicitadosRequisicionSucursal(); dibujarResumenRequisicionSucursal(window.itemsRequisicionSucursal)"
+                  style="width:52px;max-width:52px;text-align:center;margin:0;padding:6px">
+                <span onclick="ajustarCantidadRequisicionSucursal(${i},1)" title="Sumar 1"
+                  style="cursor:pointer;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-weight:700;user-select:none">+</span>
+              </div>
+            </td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoRequisicionSucursal(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function enviarNuevaRequisicionSucursal(){
+
+  const observaciones = document.getElementById("observacionesRequisicionSucursal").value.trim();
+  const fechaRequerida = document.getElementById("fechaRequeridaRequisicionSucursal").value || "";
+  const lista = window.itemsRequisicionSucursal || [];
+
+  const items = lista.map((p,i) => {
+    const input = document.getElementById("solicitadoReqSuc"+i);
+    return {
+      codigo: p.codigo, producto: p.producto, unidad: p.unidad,
+      solicitado: input ? Number(input.value) || 0 : 0
+    };
+  }).filter(it => it.solicitado > 0);
+
+  if(!items.length){
+    mostrarMensajeTemporal("mensajeRequisicionSucursal", "Agrega al menos un producto con cantidad", "error");
+    return;
+  }
+
+  activarCargaBoton("btnEnviarRequisicionSucursal", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnEnviarRequisicionSucursal", false);
+      mostrarMensajeTemporal("mensajeRequisicionSucursal", "✅ Requisición " + resultado.folio + " enviada (" + resultado.sucursal + ")", "ok");
+      window.itemsRequisicionSucursal = [];
+      dibujarTablaNuevaRequisicionSucursal();
+      document.getElementById("observacionesRequisicionSucursal").value = "";
+      document.getElementById("fechaRequeridaRequisicionSucursal").value = "";
+      cargarListaRequisicionesSucursal();
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnEnviarRequisicionSucursal", false);
+      mostrarMensajeTemporal("mensajeRequisicionSucursal", "⚠️ " + e.message, "error");
+    })
+    .crearRequisicionSucursalApp(observaciones, items, obtenerTokenSesion(), fechaRequerida);
+
+}
+
+function cargarListaRequisicionesSucursal(){
+
+  const cont = document.getElementById("listaRequisicionesSucursal");
+  if(!cont) return;
+
+  google.script.run
+    .withSuccessHandler(function(lista){ dibujarTablaRequisicionesSucursal(lista); })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerRequisicionesSucursalApp(obtenerTokenSesion());
+
+}
+
+function dibujarTablaRequisicionesSucursal(lista){
+
+  const cont = document.getElementById("listaRequisicionesSucursal");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("documento", "No hay requisiciones de sucursal todavía");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead>
+        <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${lista.map(r => `
+          <tr>
+            <td><b>${r.folio}</b></td>
+            <td>${r.sucursal}</td>
+            <td>${r.solicitante}</td>
+            <td>${r.fecha}</td>
+            <td>${r.fechaRequerida || "—"}</td>
+            <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
+            <td><span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSucursal('${r.folio}')">${tgIcon("buscar",15)}</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function verDetalleRequisicionSucursal(folio){
+
+  const cont = document.getElementById("detalleRequisicionSucursal");
+  if(!cont) return;
+
+  cont.innerHTML = `<div class="cardProducto">Cargando…</div>`;
+
+  google.script.run
+    .withSuccessHandler(function(acceso){
+
+      google.script.run
+        .withSuccessHandler(function(detalle){
+
+          const puedeEntregar = acceso.esTodasLasSucursales && detalle.estado === "PENDIENTE";
+
+          cont.innerHTML = `
+            <div class="cardProducto">
+              <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:9px">${tgIcon("documento",18)} ${detalle.folio} — Sucursal ${detalle.sucursal}</h3>
+              <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
+                Solicitó: ${detalle.solicitante} — ${detalle.fecha}${detalle.fechaRequerida ? " — Requerida: " + detalle.fechaRequerida : ""} — ${dibujarBadgeEstadoRequisicion(detalle.estado)}
+              </p>
+              <table class="tablaTop" style="font-size:13px">
+                <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia en ${detalle.sucursal}</th>${puedeEntregar ? '<th style="text-align:right">Entregar</th>' : '<th style="text-align:right">Entregado</th>'}</tr></thead>
+                <tbody>
+                  ${detalle.items.map((it,i) => `
+                    <tr>
+                      <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}</span></td>
+                      <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
+                      <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+                      <td style="text-align:right">${
+                        puedeEntregar
+                          ? `<input type="number" id="entregarReqSuc${i}" value="${it.entregarSugerido}" min="0" max="${it.existencia}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">`
+                          : (it.entregado || 0) + " " + (it.unidad||"")
+                      }</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+              <div id="mensajeDetalleRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+              ${puedeEntregar ? `<div class="boton" id="btnConfirmarEntregaSucursal" style="margin-top:16px" onclick="confirmarEntregaRequisicionSucursalUI('${detalle.folio}')">${tgIcon("check",17)} Confirmar entrega</div>` : ""}
+            </div>
+          `;
+
+          window.detalleRequisicionSucursalActual = detalle;
+
+        })
+        .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
+        .obtenerDetalleRequisicionSucursalApp(folio, obtenerTokenSesion());
+
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
+    .obtenerAccesoSucursalApp(obtenerTokenSesion());
+
+}
+
+function confirmarEntregaRequisicionSucursalUI(folio){
+
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+
+  const entregas = detalle.items.map((it,i) => {
+    const input = document.getElementById("entregarReqSuc"+i);
+    return { codigo: it.codigo, cantidadEntregada: input ? Number(input.value) || 0 : 0 };
+  }).filter(e => e.cantidadEntregada > 0);
+
+  if(!entregas.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad a entregar", "error");
+    return;
+  }
+
+  if(!confirm("¿Confirmar la entrega de " + folio + "? Esto descuenta la existencia de la sucursal y no se puede deshacer.")) return;
+
+  activarCargaBoton("btnConfirmarEntregaSucursal", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Entrega confirmada — " + resultado.productosEntregados + " producto(s)", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnConfirmarEntregaSucursal", false);
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error");
+    })
+    .confirmarEntregaRequisicionSucursalApp(folio, entregas, obtenerTokenSesion());
+
+}
+
+// ============================================
+// TRANSFERENCIAS ENTRE SUCURSALES — llama a transferirEntreSucursalesApp
+// (📁 App.gs.gs, Fase 12). Solo Almacén/Admin puede transferir — el
+// backend ya lo exige (requerirAccesoAlmacenApp_); en el sidebar este
+// botón se muestra con el mismo criterio que Compras/Recepción.
+// ============================================
+
+function abrirTransferenciasSucursal(){
+
+  marcarActivo("btnTransferenciasSucursal");
+
+  const contenedor = document.querySelector(".contenedor");
+  window.productoTransferenciaSucursal = null;
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("camion",20)} Transferencias entre Sucursales</h2>
+  <p style="font-size:12.5px;color:var(--text-muted);margin-top:-6px">
+    Mueve existencia de una sucursal a otra. Genera Kardex en ambas — no se puede deshacer.
+  </p>
+
+  <div class="cardProducto">
+
+    <div style="position:relative;max-width:500px;margin:14px 0">
+      <label>Producto</label>
+      <input id="buscarProductoTransferenciaSucursal" placeholder="Nombre o código..." oninput="buscarProductoParaTransferenciaSucursal()" autocomplete="off">
+      <div id="resultadosProductoTransferenciaSucursal" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+
+    <div id="productoSeleccionadoTransferenciaSucursal" style="font-size:13px;margin-bottom:10px"></div>
+
+    <div class="gridFormulario">
+      <div class="campo" style="position:relative">
+        <label>Sucursal origen</label>
+        <input id="buscarSucursalOrigen" placeholder="Buscar sucursal..." autocomplete="off" oninput="buscarSucursalTransferencia('origen')" onfocus="buscarSucursalTransferencia('origen')">
+        <input type="hidden" id="sucursalOrigenTransferencia">
+        <div id="resultadosSucursalOrigen" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+      </div>
+      <div class="campo" style="position:relative">
+        <label>Sucursal destino</label>
+        <input id="buscarSucursalDestino" placeholder="Buscar sucursal..." autocomplete="off" oninput="buscarSucursalTransferencia('destino')" onfocus="buscarSucursalTransferencia('destino')">
+        <input type="hidden" id="sucursalDestinoTransferencia">
+        <div id="resultadosSucursalDestino" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+      </div>
+      <div class="campo">
+        <label>Cantidad</label>
+        <input id="cantidadTransferencia" type="number" min="0" placeholder="0">
+      </div>
+    </div>
+
+    <div id="mensajeTransferenciaSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" id="btnConfirmarTransferenciaSucursal" style="margin-top:16px" onclick="confirmarTransferenciaSucursal()">${tgIcon("enviar",17)} Transferir</div>
+
+  </div>
+
+  </div>
+
+  `;
+
+}
+
+/**
+ * Selector de sucursal con buscador (como el de proveedor/tienda en
+ * MarketMan): escribe para filtrar, haz clic en una opción para
+ * elegirla. La lista sale de obtenerSucursalesConocidasApp — crece
+ * sola en cuanto una sucursal nueva tenga usuario o movimiento, sin
+ * tener que tocar código.
+ */
+function buscarSucursalTransferencia(cual){
+
+  const idBuscar = cual === 'origen' ? 'buscarSucursalOrigen' : 'buscarSucursalDestino';
+  const idOculto = cual === 'origen' ? 'sucursalOrigenTransferencia' : 'sucursalDestinoTransferencia';
+  const idLista = cual === 'origen' ? 'resultadosSucursalOrigen' : 'resultadosSucursalDestino';
+
+  const texto = document.getElementById(idBuscar).value.trim().toUpperCase();
+  const cont = document.getElementById(idLista);
+
+  // Si el usuario borra o cambia el texto sin volver a elegir de la
+  // lista, la sucursal seleccionada anterior ya no es válida.
+  document.getElementById(idOculto).value = '';
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+
+      const filtrada = (lista || []).filter(s => s.includes(texto));
+
+      if(!filtrada.length){
+        cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+        cont.style.display = "block";
+        return;
+      }
+
+      cont.innerHTML = filtrada.map(s => `
+        <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+          onclick="seleccionarSucursalTransferencia('${cual}','${s}')">${s}</div>
+      `).join("");
+      cont.style.display = "block";
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = "⚠️ " + e.message;
+      cont.style.display = "block";
+    })
+    .obtenerSucursalesConocidasApp(obtenerTokenSesion());
+
+}
+
+function seleccionarSucursalTransferencia(cual, sucursal){
+
+  const idBuscar = cual === 'origen' ? 'buscarSucursalOrigen' : 'buscarSucursalDestino';
+  const idOculto = cual === 'origen' ? 'sucursalOrigenTransferencia' : 'sucursalDestinoTransferencia';
+  const idLista = cual === 'origen' ? 'resultadosSucursalOrigen' : 'resultadosSucursalDestino';
+
+  document.getElementById(idBuscar).value = sucursal;
+  document.getElementById(idOculto).value = sucursal;
+  document.getElementById(idLista).innerHTML = '';
+  document.getElementById(idLista).style.display = 'none';
+
+}
+
+let temporizadorBuscarProductoTransferenciaSucursal;
+
+function buscarProductoParaTransferenciaSucursal(){
+
+  clearTimeout(temporizadorBuscarProductoTransferenciaSucursal);
+
+  const texto = document.getElementById("buscarProductoTransferenciaSucursal").value.trim();
+  const cont = document.getElementById("resultadosProductoTransferenciaSucursal");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoTransferenciaSucursal = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='seleccionarProductoTransferenciaSucursal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        cont.innerHTML = "⚠️ " + e.message;
+        cont.style.display = "block";
+      })
+      .buscarProductoParaRequisicionApp(texto);
+
+  }, 300);
+
+}
+
+function seleccionarProductoTransferenciaSucursal(producto){
+
+  window.productoTransferenciaSucursal = producto;
+
+  document.getElementById("productoSeleccionadoTransferenciaSucursal").innerHTML =
+    `Seleccionado: <b>${producto.producto}</b> <span style="color:var(--text-muted)">(${producto.codigo})</span>`;
+
+  document.getElementById("buscarProductoTransferenciaSucursal").value = "";
+  document.getElementById("resultadosProductoTransferenciaSucursal").innerHTML = "";
+  document.getElementById("resultadosProductoTransferenciaSucursal").style.display = "none";
+
+}
+
+function confirmarTransferenciaSucursal(){
+
+  const producto = window.productoTransferenciaSucursal;
+  const sucursalOrigen = document.getElementById("sucursalOrigenTransferencia").value.trim();
+  const sucursalDestino = document.getElementById("sucursalDestinoTransferencia").value.trim();
+  const cantidad = Number(document.getElementById("cantidadTransferencia").value) || 0;
+
+  if(!producto){
+    mostrarMensajeTemporal("mensajeTransferenciaSucursal", "Selecciona un producto", "error");
+    return;
+  }
+  if(!sucursalOrigen || !sucursalDestino){
+    mostrarMensajeTemporal("mensajeTransferenciaSucursal", "Captura sucursal de origen y destino", "error");
+    return;
+  }
+  if(cantidad <= 0){
+    mostrarMensajeTemporal("mensajeTransferenciaSucursal", "Captura una cantidad mayor a cero", "error");
+    return;
+  }
+
+  if(!confirm(`¿Transferir ${cantidad} ${producto.udm||""} de ${producto.producto} de ${sucursalOrigen} a ${sucursalDestino}? No se puede deshacer.`)) return;
+
+  activarCargaBoton("btnConfirmarTransferenciaSucursal", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnConfirmarTransferenciaSucursal", false);
+      mostrarMensajeTemporal(
+        "mensajeTransferenciaSucursal",
+        `✅ Transferencia ${resultado.folio} — ${resultado.sucursalOrigen} ahora tiene ${resultado.existenciaOrigen}, ${resultado.sucursalDestino} ahora tiene ${resultado.existenciaDestino}`,
+        "ok"
+      );
+      window.productoTransferenciaSucursal = null;
+      document.getElementById("productoSeleccionadoTransferenciaSucursal").innerHTML = "";
+      document.getElementById("cantidadTransferencia").value = "";
+      seleccionarSucursalTransferencia("origen", "");
+      seleccionarSucursalTransferencia("destino", "");
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnConfirmarTransferenciaSucursal", false);
+      mostrarMensajeTemporal("mensajeTransferenciaSucursal", "⚠️ " + e.message, "error");
+    })
+    .transferirEntreSucursalesApp(producto.codigo, sucursalOrigen, sucursalDestino, cantidad, obtenerTokenSesion());
 
 }
 
@@ -3425,7 +4241,7 @@ function verDetalleRequisicionProducto(folio){
       `).join("");
 
       document.getElementById("modalListaBody").innerHTML = `
-        <p style="font-size:12.5px;color:var(--text-muted)">${datos.area} — ${datos.solicitante} — ${datos.fecha} — ${dibujarBadgeEstadoRequisicion(datos.estado)}</p>
+        <p style="font-size:12.5px;color:var(--text-muted)">${datos.area} — ${datos.solicitante} — ${datos.fecha}${datos.fechaRequerida ? " — Requerida: " + datos.fechaRequerida : ""} — ${dibujarBadgeEstadoRequisicion(datos.estado)}</p>
         ${datos.observaciones ? `<p style="font-size:12.5px"><b>Observaciones:</b> ${datos.observaciones}</p>` : ""}
         <table class="tablaActividad">
           <thead><tr><th>Producto</th><th>Solicitado</th><th>Entregado</th></tr></thead>
@@ -3437,7 +4253,7 @@ function verDetalleRequisicionProducto(folio){
     .withFailureHandler(function(e){
       document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerDetalleRequisicionApp(folio);
+    .obtenerDetalleRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3489,7 +4305,7 @@ function verDetalleRequisicionReceta(folio){
     .withFailureHandler(function(e){
       document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerCalculoIngredientesRequisicionApp(folio);
+    .obtenerCalculoIngredientesRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3574,7 +4390,7 @@ function cargarPreparacionRequisicionReceta_(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerCalculoIngredientesRequisicionApp(folio);
+    .obtenerCalculoIngredientesRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3660,7 +4476,7 @@ function cargarPreparacionRequisicionProducto_(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerDetalleRequisicionApp(folio);
+    .obtenerDetalleRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -3713,7 +4529,7 @@ function descargarPDFRequisicion(folio){
           ventana.location.href = res.verUrl;
         })
         .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-        [llamada](folio);
+        [llamada](folio, obtenerTokenSesion());
 
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
@@ -4238,12 +5054,17 @@ function alternarModoOscuro(){
 // ===============================
 
 function toggleSidebarMovil(){
+  // Defensivo: por si el usuario toca el menú antes de que corra alguno
+  // de los reintentos programados del fix de responsive (ver <head>),
+  // esto garantiza que el CSS móvil ya esté forzado antes de abrir el
+  // drawer, en vez de arriesgarse a que abra en modo "solo íconos".
+  if(window.tgForzarResponsive) window.tgForzarResponsive();
   document.getElementById("sidebar").classList.toggle("abierto");
   document.getElementById("overlaySidebar").classList.toggle("mostrar");
 }
 
 function cerrarSidebarMovilSiAplica(){
-  if(window.innerWidth <= 768){
+  if(anchoRealDispositivo() <= 768){
     document.getElementById("sidebar").classList.remove("abierto");
     document.getElementById("overlaySidebar").classList.remove("mostrar");
   }
@@ -4376,7 +5197,7 @@ function cargarFormularioProduccion(folio){
           </p>
 
           <label>Receta producida</label>
-          <select id="recetaProduccion">
+          <select id="recetaProduccion" onchange="autocompletarProductoTerminadoProduccion()">
             ${requisicion.recetas.map(r => `<option value="${r.nombreReceta}">${r.nombreReceta} (pedido: ${formatearCantidadJS(r.cantidadSolicitada)} ${r.udm})</option>`).join("")}
           </select>
 
@@ -4427,13 +5248,13 @@ function cargarFormularioProduccion(folio){
         </div>
       `;
 
-      document.getElementById("codigoProduccion").focus();
+      autocompletarProductoTerminadoProduccion();
 
     })
     .withFailureHandler(function(e){
       cont.innerHTML = `<div class="cardProducto">${tgEmptyState("alertaTriangulo", e.message)}</div>`;
     })
-    .obtenerRequisicionListaParaProduccionApp(folio);
+    .obtenerRequisicionListaParaProduccionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -4457,6 +5278,48 @@ function buscarProductoTerminadoProduccion(){
       mostrarMensajeTemporal("mensajeProduccion", "⚠️ " + e.message, "error");
     })
     .buscarProductoApp(codigo);
+
+}
+
+// Al elegir (o cargar por primera vez) una receta en el formulario de
+// Registrar Producción, busca en MATRIZ un producto con el mismo nombre
+// de la receta y, si lo encuentra, rellena código/producto/UDM/ubicación
+// solas — así solo queda capturar cantidad, caducidad y observaciones.
+// Si ningún producto de MATRIZ tiene ese nombre, deja los campos vacíos
+// para escanear/escribir el código como siempre.
+function autocompletarProductoTerminadoProduccion(){
+
+  const selectReceta = document.getElementById("recetaProduccion");
+  const nombreReceta = selectReceta ? selectReceta.value : "";
+
+  document.getElementById("codigoProduccion").value = "";
+  document.getElementById("productoProduccion").value = "";
+  document.getElementById("udmProduccion").value = "";
+  document.getElementById("ubicacionProduccion").value = "";
+
+  if(!nombreReceta){
+    document.getElementById("codigoProduccion").focus();
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(vinculo){
+      if(vinculo){
+        document.getElementById("codigoProduccion").value = vinculo.codigoProducto;
+        document.getElementById("productoProduccion").value = vinculo.producto;
+        document.getElementById("udmProduccion").value = vinculo.udm;
+        document.getElementById("ubicacionProduccion").value = vinculo.ubicacion;
+        document.getElementById("cantidadProduccion").focus();
+      } else {
+        document.getElementById("codigoProduccion").focus();
+      }
+    })
+    .withFailureHandler(function(){
+      // No bloquea nada: si falla la búsqueda automática, el usuario
+      // sigue pudiendo escanear/escribir el código a mano, igual que antes.
+      document.getElementById("codigoProduccion").focus();
+    })
+    .obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta);
 
 }
 
@@ -4819,11 +5682,17 @@ function dibujarTablaReabasto(){
       </thead>
       <tbody>
         ${lista.map((p,i)=>{
-          const valorInicial = p.convertir ? p.sugeridoPiezas : p.sugerido;
-          const precioPresentacionInicial = p.convertir ? Math.round(p.precio * p.presentacion * 100) / 100 : p.precio;
+          // Si la fila ya se había capturado antes (marcado/cantidadCapturada/
+          // precioCapturado vienen de sincronizarReabastoDesdeInputs), se respeta
+          // eso en vez de recalcular el valor sugerido original — así agregar o
+          // quitar un producto no reinicia lo que el usuario ya había marcado o
+          // escrito en las demás filas.
+          const valorInicial = p.cantidadCapturada !== undefined ? p.cantidadCapturada : (p.convertir ? p.sugeridoPiezas : p.sugerido);
+          const precioPresentacionInicial = p.precioCapturado !== undefined ? p.precioCapturado : (p.convertir ? Math.round(p.precio * p.presentacion * 100) / 100 : p.precio);
+          const marcado = p.marcado !== undefined ? p.marcado : (p.bajoMinimo || p.agregadoManual);
           return `
           <tr style="${p.bajoMinimo?'background:rgba(196,82,42,.06)':''}">
-            <td><input type="checkbox" id="chkReabasto${i}" ${(p.bajoMinimo || p.agregadoManual)?"checked":""}></td>
+            <td><input type="checkbox" id="chkReabasto${i}" ${marcado?"checked":""}></td>
             <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}${p.agregadoManual?' · <span style="color:var(--terracota)">agregado</span>':''}</span></td>
             <td style="text-align:right">${p.existencia}</td>
             <td style="text-align:right">${p.minimo}</td>
@@ -4870,7 +5739,24 @@ function actualizarPreviewPrecioReabasto(indice){
 
 }
 
+// Lee del DOM lo que el usuario ya marcó/escribió en cada fila (checkbox,
+// cantidad, precio) y lo guarda en window.reabastoLista, para que
+// agregar o quitar un producto (que vuelve a dibujar toda la tabla) no
+// reinicie la captura ya hecha en las demás filas — mismo patrón que ya
+// usa sincronizarSolicitadosDesdeInputs() en Requisiciones.
+function sincronizarReabastoDesdeInputs(){
+  (window.reabastoLista || []).forEach((p,i) => {
+    const chk = document.getElementById("chkReabasto"+i);
+    const cantidadInput = document.getElementById("cantReabasto"+i);
+    const precioInput = document.getElementById("precioReabasto"+i);
+    if(chk) p.marcado = chk.checked;
+    if(cantidadInput) p.cantidadCapturada = cantidadInput.value;
+    if(precioInput) p.precioCapturado = precioInput.value;
+  });
+}
+
 function quitarProductoReabasto(indice){
+  sincronizarReabastoDesdeInputs();
   window.reabastoLista.splice(indice, 1);
   dibujarTablaReabasto();
 }
@@ -4921,6 +5807,8 @@ function buscarProductoParaAgregar(){
 }
 
 function agregarProductoManualAReabasto(producto){
+
+  sincronizarReabastoDesdeInputs();
 
   window.reabastoLista = window.reabastoLista || [];
 
@@ -6778,10 +7666,10 @@ function actualizarNotificaciones(){
 
     const vistos = new Set(obtenerVistosNotificaciones());
 
-    // Si ya la viste Y sigue en el mismo estado (Bajo/Agotado), no vuelve
-    // a contar ni a aparecer. Si cambió de estado (ej. Bajo -> Agotado),
-    // se considera nueva otra vez.
-    const nuevas = (lista || []).filter(p => !vistos.has(p.codigo + "|" + p.estado));
+    // Si ya la viste Y sigue igual (misma clave), no vuelve a contar ni a
+    // aparecer. Si cambió (ej. Bajo -> Agotado, o el conteo de conteos
+    // abiertos subió), se considera nueva otra vez.
+    const nuevas = (lista || []).filter(n => !vistos.has(n.clave));
 
     window.notiLista = nuevas;
 
@@ -6802,7 +7690,7 @@ function actualizarNotificaciones(){
     console.error(e.message);
   })
 
-  .obtenerProductosBajoMinimo();
+  .obtenerNotificacionesApp(obtenerTokenSesion());
 
 }
 
@@ -6827,20 +7715,61 @@ function dibujarNotificaciones(){
   const panel = document.getElementById("listaNotificaciones");
 
   if(!window.notiLista || !window.notiLista.length){
-    panel.innerHTML = "<div class='notiItem'>Sin alertas de inventario 🎉</div>";
+    panel.innerHTML = "<div class='notiItem'>Sin alertas pendientes 🎉</div>";
     return;
   }
 
-  panel.innerHTML = window.notiLista.map(p=>{
+  panel.innerHTML = window.notiLista.map(n=>{
 
-    const color = p.estado === "Agotado" ? "var(--guinda)" : "var(--terracota)";
+    const color = n.tipo === "inventario" ? (n.datos.estado === "Agotado" ? "var(--guinda)" : "var(--terracota)")
+                : n.urgente ? "var(--guinda)" : "var(--text-muted)";
 
-    return `<div class="notiItem" style="cursor:pointer" onclick="abrirDetalleProducto('${p.codigo}', '${p.estado}')">
-      <b>${p.producto}</b><br>
-      <span style="color:${color}">${p.estado} — existencia ${p.existencia} (mín. ${p.minimo})</span>
+    const claveJs = n.clave.replace(/'/g,"&apos;");
+    const datosJs = JSON.stringify(n.datos).replace(/'/g,"&apos;");
+
+    return `<div class="notiItem" style="cursor:pointer" onclick='manejarClicNotificacion("${n.tipo}", "${claveJs}", ${datosJs})'>
+      <b>${n.titulo}</b><br>
+      <span style="color:${color}">${n.detalle}</span>
     </div>`;
 
   }).join("");
+
+}
+
+/**
+ * Un solo despachador para los 4 tipos de alerta de la campana. El
+ * inventario conserva exactamente su flujo de antes (abre el modal de
+ * producto, se marca como vista al cerrarlo — ver cerrarModalDetalle).
+ * Conteos/requisiciones no tienen modal propio: navegan a la pantalla
+ * correspondiente y se marcan como vistas de inmediato, al hacer clic.
+ */
+function manejarClicNotificacion(tipo, clave, datos){
+
+  if(tipo === "inventario"){
+    abrirDetalleProducto(datos.codigo, datos.estado, clave);
+    return;
+  }
+
+  const vistos = new Set(obtenerVistosNotificaciones());
+  vistos.add(clave);
+  guardarVistosNotificaciones([...vistos]);
+
+  window.notiLista = (window.notiLista || []).filter(n => n.clave !== clave);
+  const badge = document.getElementById("badgeNotificaciones");
+  if(badge){
+    if(window.notiLista.length > 0){
+      badge.style.display = "flex";
+      badge.innerText = window.notiLista.length > 99 ? "99+" : window.notiLista.length;
+    }else{
+      badge.style.display = "none";
+    }
+  }
+  dibujarNotificaciones();
+  document.getElementById("panelNotificaciones").classList.remove("mostrar");
+
+  if(tipo === "conteo" && typeof abrirCerrarConteo === "function") abrirCerrarConteo();
+  else if(tipo === "requisicion-area" && typeof abrirRequisicionesPendientes === "function") abrirRequisicionesPendientes();
+  else if(tipo === "requisicion-sucursal" && typeof abrirRequisicionesSucursal === "function") abrirRequisicionesSucursal();
 
 }
 
@@ -6848,9 +7777,9 @@ function dibujarNotificaciones(){
 // MODAL: DETALLE DE PRODUCTO (clic en una alerta de inventario)
 // ===============================
 
-function abrirDetalleProducto(codigo, estado){
+function abrirDetalleProducto(codigo, estado, claveNotif){
 
-  window.notifOrigen = estado ? { codigo: codigo, estado: estado } : null;
+  window.notifOrigen = claveNotif ? { clave: claveNotif } : null;
 
   document.getElementById("panelNotificaciones").classList.remove("mostrar");
 
@@ -6936,12 +7865,10 @@ function cerrarModalDetalle(){
   if(window.notifOrigen){
 
     const vistos = new Set(obtenerVistosNotificaciones());
-    vistos.add(window.notifOrigen.codigo + "|" + window.notifOrigen.estado);
+    vistos.add(window.notifOrigen.clave);
     guardarVistosNotificaciones([...vistos]);
 
-    window.notiLista = (window.notiLista || []).filter(p =>
-      !(p.codigo === window.notifOrigen.codigo && p.estado === window.notifOrigen.estado)
-    );
+    window.notiLista = (window.notiLista || []).filter(n => n.clave !== window.notifOrigen.clave);
 
     const badge = document.getElementById("badgeNotificaciones");
     if(badge){
@@ -7050,9 +7977,82 @@ function cerrarEscaner(){
 // INICIO — DASHBOARD EN TIEMPO REAL
 // ===============================
 
+// ===============================
+// VISTA INICIAL SIMPLIFICADA — ROL CONSULTA
+// ===============================
+
+function dibujarInicioConsulta(){
+
+  const contenedor = document.querySelector(".contenedor");
+  if(!contenedor) return;
+
+  contenedor.innerHTML = `
+    <div class="vista-animada" style="max-width:760px;margin:0 auto;padding-top:24px">
+
+      <div style="text-align:center;margin-bottom:30px">
+        <div style="width:64px;height:64px;border-radius:18px;background:var(--bg-panel);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:30px;box-shadow:var(--shadow-sm)">📦</div>
+        <h2 style="margin:0 0 6px">Bienvenido a TAGERS WMS</h2>
+        <p style="color:var(--text-muted);margin:0">
+          Hola, <b>${escaparHtml(USUARIO_ACTUAL.nombre || "usuario")}</b>
+          <span class="badgeEstado" style="background:var(--bg);color:var(--text-muted);margin-left:6px">${escaparHtml(USUARIO_ACTUAL.rol || "CONSULTA")}</span>
+        </p>
+      </div>
+
+      <p style="text-align:center;color:var(--text-soft);font-size:13.5px;margin-bottom:22px">Elige un módulo para consultar información.</p>
+
+      <div id="accesosConsulta" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px"></div>
+
+    </div>
+  `;
+
+  pintarAccesosConsulta();
+
+}
+
+// Arma las tarjetas de acceso leyendo los botones que aplicarPermisosPorRol()
+// YA dejó visibles en el sidebar para este usuario — así siempre coinciden
+// exactamente con PERMISOS_ROL.CONSULTA sin duplicar esa lista aquí (evita
+// que ambas listas se desincronicen si algún día cambian los permisos).
+function pintarAccesosConsulta(){
+
+  const cont = document.getElementById("accesosConsulta");
+  if(!cont) return;
+
+  const botones = [...document.querySelectorAll("#sidebar .menuLateralBtn")]
+    .filter(btn => btn.id && !btn.classList.contains("grupoBtn") && btn.style.display !== "none" && btn.id !== "btnInicio");
+
+  if(!botones.length){
+    cont.innerHTML = tgEmptyState("documento", "No tienes módulos asignados todavía. Contacta a un administrador.");
+    return;
+  }
+
+  cont.innerHTML = botones.map(btn => {
+    const icono = btn.querySelector(".icono");
+    const texto = btn.querySelector(".textoMenu");
+    const onclick = (btn.getAttribute("onclick") || "").replace(/"/g, "&quot;");
+    const titulo = texto ? texto.textContent : (btn.title || "");
+    return `
+      <div class="cardProducto" style="cursor:pointer;text-align:center;padding:22px 14px;margin:0" onclick="${onclick}">
+        <div style="width:42px;height:42px;border-radius:12px;background:var(--bg);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;color:var(--color-primary)">${icono ? icono.innerHTML : ""}</div>
+        <div style="font-weight:700;font-size:13px">${titulo}</div>
+      </div>
+    `;
+  }).join("");
+
+}
+
 function volverInicio(){
 
   marcarActivo("btnInicio");
+
+  // CONSULTA no debe ver el dashboard operativo completo (KPIs, gráficas,
+  // valor de inventario, etc.) — en su lugar, una vista de bienvenida
+  // simplificada con accesos directos a lo que sí puede usar. El resto de
+  // roles conserva exactamente el dashboard de siempre, sin cambios.
+  if(String(USUARIO_ACTUAL.rol).toUpperCase() === "CONSULTA"){
+    dibujarInicioConsulta();
+    return;
+  }
 
   const contenedor=document.querySelector(".contenedor");
 
@@ -7394,7 +8394,7 @@ function generarConteosProgramadosHoy(){
           cargarConteosProgramadosHoy();
           actualizarNotificaciones();
         })
-        .marcarConteoProgramadoGeneradoApp(lista.map(c => c.fila));
+        .marcarConteoProgramadoGeneradoApp(lista.map(c => c.fila), obtenerTokenSesion());
 
     })
     .withFailureHandler(function(error){
@@ -8705,6 +9705,10 @@ function buscarCodigoParaConteo(){
       mostrarMensajeTemporal("mensajeConteo", "Ese código no pertenece al conteo " + window.folioConteoActual, "error");
       return;
     }
+    if(productoYaContadoEnConteo(item)){
+      mostrarProductoYaContado(item);
+      return;
+    }
     mostrarDetalleConteo(item);
   })
 
@@ -8743,6 +9747,13 @@ function cargarSiguientePendiente(){
 
 }
 
+// CONTEO_CICLICO deja "Físico" (columna H) vacío hasta que se guarda un
+// conteo real (ver guardarConteoFisico en Código.gs); 0 es una captura
+// válida (contado y resultó en cero), así que no basta con "falsy".
+function productoYaContadoEnConteo(item){
+  return item.fisico !== "" && item.fisico !== null && item.fisico !== undefined;
+}
+
 function mostrarDetalleConteo(item){
 
   const cont=document.getElementById("detalleConteo");
@@ -8754,6 +9765,7 @@ function mostrarDetalleConteo(item){
   }
 
   window.conteoActual = item;
+  const yaContado = productoYaContadoEnConteo(item);
 
   cont.innerHTML=`
 
@@ -8767,13 +9779,50 @@ function mostrarDetalleConteo(item){
   <input value="${item.existencia}" readonly>
 
   <label>Cantidad física contada</label>
-  <input id="fisicoConteo" type="number">
+  <input id="fisicoConteo" type="number" value="${yaContado ? item.fisico : ""}">
 
   <div class="boton" id="btnGuardarConteo" onclick="guardarFisicoConteo()">${tgIcon("guardar",17)} Guardar Conteo</div>
 
   `;
 
   document.getElementById("fisicoConteo").focus();
+
+}
+
+/**
+ * Se muestra en vez del formulario normal de captura cuando el código
+ * escaneado/tecleado YA tiene un físico guardado en este folio — evita
+ * que volver a pasar el lector sobre el mismo producto lo recuente sin
+ * darse cuenta. Deja un botón explícito para corregirlo a propósito, y
+ * limpia+enfoca el campo de código para seguir escaneando el siguiente.
+ */
+function mostrarProductoYaContado(item){
+
+  const cont=document.getElementById("detalleConteo");
+  if(!cont){ return; }
+
+  window.conteoActual = null;
+
+  const diferencia = Number(item.diferencia) || 0;
+
+  cont.innerHTML=`
+
+  <div class="cardProducto" style="border-left:4px solid var(--terracota);background:rgba(196,82,42,.08);margin-top:14px">
+    <p style="margin:0 0 8px;font-weight:700;color:var(--terracota);display:flex;align-items:center;gap:7px">${tgIcon("alertaTriangulo",17)} Este producto ya fue contado</p>
+    <p style="margin:0 0 4px"><b>${item.producto}</b><br><span style="font-size:12px;color:var(--text-muted)">${item.ubicacion} — ${item.codigo}</span></p>
+    <p style="margin:8px 0 0;font-size:13px;color:var(--text-muted)">Sistema: <b>${item.existencia}</b> · Físico capturado: <b>${item.fisico}</b>${diferencia !== 0 ? ` · Diferencia: <b>${diferencia}</b>` : " · Sin diferencia"}</p>
+    <div class="boton secundario" style="margin-top:14px;width:auto;padding:8px 14px" onclick='mostrarDetalleConteo(${JSON.stringify(item).replace(/'/g,"&apos;")})'>${tgIcon("editar",15)} Corregir de todas formas</div>
+  </div>
+
+  `;
+
+  mostrarMensajeTemporal("mensajeConteo", "Ese producto ya se contó — no se volvió a registrar", "error");
+
+  const campoCodigo = document.getElementById("codigoConteo");
+  if(campoCodigo){
+    campoCodigo.value = "";
+    campoCodigo.focus();
+  }
 
 }
 
@@ -8802,7 +9851,7 @@ function guardarFisicoConteo(){
     mostrarMensajeTemporal("mensajeConteo", "⚠️ " + e.message, "error");
   })
 
-  .guardarConteoFisico(window.conteoActual.fila, fisico);
+  .guardarConteoFisico(window.conteoActual.fila, fisico, obtenerTokenSesion());
 
 }
 
@@ -8963,7 +10012,7 @@ function aprobarDiscrepanciaDesdeApp(fila){
     mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ "+e.message, "error");
   })
 
-  .aprobarDiscrepancia(fila, motivo, comentario);
+  .aprobarDiscrepancia(fila, motivo, comentario, obtenerTokenSesion());
 
 }
 
@@ -8982,7 +10031,7 @@ function rechazarDiscrepanciaDesdeApp(fila){
     mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ "+e.message, "error");
   })
 
-  .rechazarDiscrepancia(fila, comentario);
+  .rechazarDiscrepancia(fila, comentario, obtenerTokenSesion());
 
 }
 
@@ -9028,7 +10077,7 @@ function aprobarTodasLasDiscrepancias(){
     if(btn){ btn.disabled = false; btn.innerText = "⚡ Aprobar todas las de este folio"; }
   })
 
-  .aprobarDiscrepanciasLoteApp(items);
+  .aprobarDiscrepanciasLoteApp(items, obtenerTokenSesion());
 
 }
 
@@ -9229,21 +10278,80 @@ function abrirDashboard(){
 
   <div class="vista-animada">
 
-  <h2>📊 Dashboard</h2>
-
-  <div class="resumen" id="resumenDashboard">Cargando...</div>
-
-  <div class="graficas">
-
-  <div class="cardProducto graficaCaja">
-  <h3>Estado del inventario</h3>
-  <canvas id="chartEstado"></canvas>
+  <div class="dashboardHeader">
+    <div>
+      <h2>${tgIcon("tendenciaSube",20)} Reportes</h2>
+      <p>Valor, tendencia y salud del inventario — vista ejecutiva.</p>
+    </div>
   </div>
 
-  <div class="cardProducto graficaCaja">
-  <h3>Entradas vs salidas (7 días)</h3>
-  <canvas id="chartMovimientos"></canvas>
+  <div class="kpiGrid">
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("dinero",18)}</div>
+      <div class="kpiLabel">Valor de inventario</div>
+      <div class="kpiValor" id="repValorInventario"><span class="skeleton skeletonLinea" style="width:60px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">existencia × costo</div>
+    </div>
+    <div class="kpiCard tono-terracota">
+      <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
+      <div class="kpiLabel">Sin costo asignado</div>
+      <div class="kpiValor" id="repSinCosto"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">no entran al valor de arriba</div>
+    </div>
+    <div class="kpiCard tono-oliva">
+      <div class="kpiIcono">${tgIcon("documento",18)}</div>
+      <div class="kpiLabel">Discrepancias</div>
+      <div class="kpiValor" id="repDiscrepancias"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">pendientes de aprobar</div>
+    </div>
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("refrescar",18)}</div>
+      <div class="kpiLabel">Conteos abiertos</div>
+      <div class="kpiValor" id="repConteos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">ciclos en curso</div>
+    </div>
   </div>
+
+  <div class="cardValorInventario">
+    <div>
+      <div class="etiqueta">${tgIcon("dinero",14)} Valor monetario del inventario</div>
+      <div class="valor" id="repValorGrande"><span class="skeleton skeletonLinea" style="width:140px;height:28px;display:inline-block;background:rgba(255,255,255,.25)"></span></div>
+    </div>
+    <div class="nota" id="repValorGrandeNota"></div>
+  </div>
+
+  <div class="panelesInicio">
+
+    <div class="cardProducto graficaCaja">
+      <h3>Tendencia mensual — Entradas vs. Salidas</h3>
+      <p style="color:var(--text-soft);font-size:12px;margin:-8px 0 8px">Cantidad total movida por mes (kg/pz/etc.), últimos 6 meses</p>
+      <canvas id="chartTendenciaMensual"></canvas>
+    </div>
+
+    <div class="cardProducto graficaCaja">
+      <h3>Valor de inventario por categoría</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:-6px">Top categorías por valor monetario</p>
+      <canvas id="chartValorCategoria"></canvas>
+    </div>
+
+  </div>
+
+  <div class="panelesInicio">
+
+    <div class="cardProducto graficaCaja">
+      <h3>Valor de inventario por proveedor</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:-6px">Top proveedores por valor monetario</p>
+      <canvas id="chartValorProveedor"></canvas>
+    </div>
+
+    <div class="cardProducto">
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("alertaTriangulo",16)} Bajo mínimo — más urgentes</h3>
+      <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Riesgo de quiebre de stock</p>
+      <table class="tablaTop">
+        <thead><tr><th>Producto</th><th style="text-align:right">Exist. / Mín.</th></tr></thead>
+        <tbody id="repTablaBajoMinimo">${filasSkeleton(2,4)}</tbody>
+      </table>
+    </div>
 
   </div>
 
@@ -9251,92 +10359,84 @@ function abrirDashboard(){
 
   `;
 
-  google.script.run
-  .withSuccessHandler(mostrarResumenDashboardReal)
-  .withFailureHandler(function(e){ alert(e.message); })
-  .obtenerDashboardMovil();
-
-  google.script.run
-  .withSuccessHandler(dibujarChartMovimientos)
-  .withFailureHandler(function(e){ console.error(e.message); })
-  .obtenerEntradasSalidas7dias();
+  cargarReporteEjecutivo();
 
 }
 
-function mostrarResumenDashboardReal(datos){
+function cargarReporteEjecutivo(){
 
-  const contenedor=document.getElementById("resumenDashboard");
-  if(!contenedor){ return; }
-
-  contenedor.innerHTML=`
-
-  📦 Productos: <b>${datos.productos}</b>
-  <br>
-  📍 Ubicaciones: <b>${datos.ubicaciones}</b>
-  <br>
-  ⚠️ Bajo inventario: <b>${datos.bajo}</b>
-  <br>
-  ❌ Sin stock: <b>${datos.sinStock}</b>
-  <br>
-  📥 Entradas hoy: <b>${datos.entradas}</b>
-  <br>
-  📤 Salidas hoy: <b>${datos.salidas}</b>
-
-  `;
-
-  dibujarChartEstado(datos);
+  google.script.run
+    .withSuccessHandler(dibujarReporteEjecutivo)
+    .withFailureHandler(function(e){ console.error(e.message); alert("⚠️ " + e.message); })
+    .obtenerReporteEjecutivoApp();
 
 }
 
-function dibujarChartEstado(datos){
+function dibujarReporteEjecutivo(datos){
 
-  const ctx = document.getElementById("chartEstado");
-  if(!ctx){ return; }
+  if(!datos) return;
 
-  if(window.chartEstadoInstancia){
-    window.chartEstadoInstancia.destroy();
+  const elValor = document.getElementById("repValorInventario");
+  const elSinCosto = document.getElementById("repSinCosto");
+  const elDiscrepancias = document.getElementById("repDiscrepancias");
+  const elConteos = document.getElementById("repConteos");
+  const elValorGrande = document.getElementById("repValorGrande");
+  const elValorGrandeNota = document.getElementById("repValorGrandeNota");
+
+  const formatoDinero = n => "$" + Number(n||0).toLocaleString("es-MX", {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  if(elValor) elValor.innerText = formatoDinero(datos.valorInventario.total);
+  if(elSinCosto) elSinCosto.innerText = datos.valorInventario.productosSinCosto;
+  if(elDiscrepancias) elDiscrepancias.innerText = datos.contadores.discrepancias;
+  if(elConteos) elConteos.innerText = datos.contadores.conteosAbiertos;
+  if(elValorGrande) elValorGrande.innerText = formatoDinero(datos.valorInventario.total);
+  if(elValorGrandeNota){
+    const sinCosto = datos.valorInventario.productosSinCosto;
+    elValorGrandeNota.innerText = sinCosto > 0
+      ? sinCosto + " producto(s) en stock sin costo unitario capturado (no se incluyen en el total)"
+      : "Existencia × costo unitario, todos los productos con stock";
   }
 
-  window.chartEstadoInstancia = new Chart(ctx, {
-
-    type: "doughnut",
-
-    data: {
-      labels: ["Normal","Bajo mínimo","Sin stock"],
-      datasets: [{
-        data: [datos.normal, datos.bajo, datos.sinStock],
-        backgroundColor: ["#5C6B2A","#C4522A","#6B2737"]
-      }]
-    },
-
-    options: {
-      plugins: { legend: { position: "bottom", labels: { color: getComputedStyle(document.body).getPropertyValue("--text") } } }
+  const tbodyBajo = document.getElementById("repTablaBajoMinimo");
+  if(tbodyBajo){
+    if(!datos.topBajoMinimo || !datos.topBajoMinimo.length){
+      tbodyBajo.innerHTML = `<tr><td colspan="2">${tgEmptyState("checkCirculo", "Sin productos bajo mínimo")}</td></tr>`;
+    } else {
+      tbodyBajo.innerHTML = datos.topBajoMinimo.map(p=>`
+        <tr style="cursor:pointer" onclick="abrirDetalleProducto('${p.codigo}')">
+          <td>${p.producto}</td>
+          <td class="num" style="color:${p.estado==='Agotado'?'var(--guinda)':'var(--terracota)'}">${p.existencia} / ${p.minimo}</td>
+        </tr>
+      `).join("");
     }
+  }
 
-  });
+  dibujarChartTendenciaMensual(datos.tendenciaMensual);
+  dibujarChartValorAgrupado("chartValorCategoria", "chartValorCategoriaInstancia", datos.valorPorCategoria);
+  dibujarChartValorAgrupado("chartValorProveedor", "chartValorProveedorInstancia", datos.valorPorProveedor);
 
 }
 
-function dibujarChartMovimientos(datos){
+function dibujarChartTendenciaMensual(datos){
 
-  const ctx = document.getElementById("chartMovimientos");
-  if(!ctx){ return; }
+  const ctx = document.getElementById("chartTendenciaMensual");
+  if(!ctx || !datos) return;
 
-  if(window.chartMovInstancia){
-    window.chartMovInstancia.destroy();
+  if(window.chartTendenciaInstancia){
+    window.chartTendenciaInstancia.destroy();
   }
 
   const colorTexto = getComputedStyle(document.body).getPropertyValue("--text");
 
-  window.chartMovInstancia = new Chart(ctx, {
+  window.chartTendenciaInstancia = new Chart(ctx, {
 
-    type: "bar",
+    type: "line",
 
     data: {
       labels: datos.labels,
       datasets: [
-        { label: "Entradas", data: datos.entradas, backgroundColor: "#5C6B2A" },
-        { label: "Salidas", data: datos.salidas, backgroundColor: "#C4522A" }
+        { label: "Entradas", data: datos.entradas, borderColor: "#5C6B2A", backgroundColor: "rgba(92,107,42,.15)", tension: .3, fill: true },
+        { label: "Salidas", data: datos.salidas, borderColor: "#C4522A", backgroundColor: "rgba(196,82,42,.15)", tension: .3, fill: true }
       ]
     },
 
@@ -9346,6 +10446,54 @@ function dibujarChartMovimientos(datos){
       scales: {
         x: { ticks: { color: colorTexto }, grid: { display:false } },
         y: { ticks: { color: colorTexto }, beginAtZero:true }
+      }
+    }
+
+  });
+
+}
+
+function dibujarChartValorAgrupado(idCanvas, idInstancia, lista){
+
+  const ctx = document.getElementById(idCanvas);
+  if(!ctx) return;
+
+  if(window[idInstancia]){
+    window[idInstancia].destroy();
+  }
+
+  const colorTexto = getComputedStyle(document.body).getPropertyValue("--text");
+  const paleta = ["#6B2737","#5C6B2A","#C4522A","#8a3244","#7a8a3a","#d9764a","#4a5820","#a54258"];
+
+  if(!lista || !lista.length){
+    window[idInstancia] = null;
+    ctx.getContext("2d").clearRect(0,0,ctx.width,ctx.height);
+    return;
+  }
+
+  window[idInstancia] = new Chart(ctx, {
+
+    type: "bar",
+
+    data: {
+      labels: lista.map(g => g.nombre),
+      datasets: [{
+        label: "Valor",
+        data: lista.map(g => g.valor),
+        backgroundColor: lista.map((g,i) => paleta[i % paleta.length])
+      }]
+    },
+
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => "$" + Number(c.raw).toLocaleString("es-MX",{minimumFractionDigits:2}) } }
+      },
+      scales: {
+        x: { ticks: { color: colorTexto, callback: v => "$" + Number(v).toLocaleString("es-MX") }, beginAtZero:true },
+        y: { ticks: { color: colorTexto }, grid: { display:false } }
       }
     }
 
@@ -9704,6 +10852,10 @@ function aplicarFiltros(){
   </div>
 </div>
 
+<button class="menuLateralBtn" id="btnRequisicionesSucursal" onclick="abrirRequisicionesSucursal()" title="Requisiciones por sucursal"><span class="icono">🏬</span><span class="textoMenu">Requisiciones por Sucursal</span></button>
+
+<button class="menuLateralBtn" id="btnTransferenciasSucursal" onclick="abrirTransferenciasSucursal()" title="Transferencias entre sucursales"><span class="icono">🚚</span><span class="textoMenu">Transferencias entre Sucursales</span></button>
+
 <div class="grupoMenu">
   <button class="menuLateralBtn grupoBtn" data-icono="fabrica" onclick="toggleGrupo('grupoProduccion')" title="Producción">
   <span class="icono">🏭</span><span class="textoMenu">Producción</span> <span class="flechaGrupo" id="flecha-grupoProduccion">▸</span>
@@ -9756,9 +10908,9 @@ function aplicarFiltros(){
   <span class="icono">⚙️</span><span class="textoMenu">Configuración</span> <span class="flechaGrupo" id="flecha-grupoConfig">▸</span>
   </button>
   <div class="submenu" id="grupoConfig">
-    <button class="menuLateralBtn sub" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
-    <button class="menuLateralBtn sub" data-icono="configuracion" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
-    <button class="menuLateralBtn sub" data-icono="dinero" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigModoOscuro" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigCongelarExistencia" data-icono="configuracion" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigMigrarCosto" data-icono="dinero" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
   </div>
 </div>
 

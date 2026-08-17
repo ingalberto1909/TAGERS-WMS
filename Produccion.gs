@@ -25,7 +25,20 @@ function generarFolioLote_(hoja, fecha){
   return "PROD-" + fechaCodigo + "-" + Utilities.formatString("%03d", consecutivo);
 }
 
-function obtenerRequisicionListaParaProduccionApp(folio){
+function obtenerRequisicionListaParaProduccionApp(folio, token){
+  // Producción es de las pocas pantallas a las que CONSULTA sí tiene
+  // acceso (y no está atado a una sola área como Cocina/Panadería), así
+  // que aquí NO se restringe por área — solo se exige que, cuando llega
+  // un token (la llamada directa desde la SPA), la sesión sea realmente
+  // válida. Cuando no llega token (la llamada interna desde
+  // registrarProduccionApp, que ya exige su propio guard antes de
+  // llegar aquí) se deja pasar igual que antes.
+  if(token){
+    requerirSesionActivaApp_(token);
+  }
+  // Se llama SIN token a propósito: obtenerDetalleRequisicionRecetaApp
+  // solo filtra por área cuando recibe uno, y aquí se quiere mantener el
+  // acceso de Producción a cualquier área (ver comentario arriba).
   const detalle = obtenerDetalleRequisicionRecetaApp(folio);
   if(detalle.estado !== "ENTREGADA"){
     throw new Error("La requisición " + folio + " todavía no tiene los insumos entregados — confírmala primero.");
@@ -101,6 +114,41 @@ function registrarProduccionApp(datos, token){
     receta.nombreReceta + " — " + cantidadProducida + " " + udm + " (Requisición " + folioRequisicion + ")");
 
   return { folio: folioLote, producto: nombreProducto, cantidadProducida: cantidadProducida };
+
+}
+
+/**
+ * Autocompletar "Código de producto terminado" al elegir una receta en
+ * el formulario de Registrar Producción: RECETAS no guarda ningún
+ * vínculo hacia el producto terminado en MATRIZ (columnas A-G, ver
+ * Recetas.gs), pero el producto terminado de cada receta ya existe en
+ * MATRIZ con el MISMO nombre (confirmado por el usuario) — así que se
+ * busca directo por nombre, sin depender de si esa receta ya se produjo
+ * antes. Usa normalizarTexto_ (mayúsculas, sin acentos, sin espacios de
+ * más) para que un match exacto no falle por diferencias de formato. Si
+ * ningún producto de MATRIZ tiene ese nombre, regresa null y el usuario
+ * sigue pudiendo escanear/escribir el código a mano, como ya funcionaba.
+ */
+function obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta){
+
+  const nombreNormalizado = normalizarTexto_(nombreReceta);
+  if(!nombreNormalizado) return null;
+
+  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const datos = matriz.getDataRange().getValues();
+
+  for(let i = 1; i < datos.length; i++){
+    if(normalizarTexto_(datos[i][0]) === nombreNormalizado){
+      return {
+        codigoProducto: String(datos[i][4] || "").trim(),
+        producto: datos[i][0],
+        udm: datos[i][1],
+        ubicacion: datos[i][9]
+      };
+    }
+  }
+
+  return null;
 
 }
 

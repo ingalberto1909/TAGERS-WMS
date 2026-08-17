@@ -8,6 +8,75 @@ function ubicacionVacia_(valor){
   return limpio === "" || /^-+$/.test(limpio);
 }
 
+/**
+ * FASE 5 — RENDIMIENTO: lectura completa de una hoja (todas las
+ * columnas, incluye el encabezado en la fila 0 — igual que
+ * getDataRange().getValues()) con una caché de solo 20 segundos
+ * (CacheService, compartida por todo el proyecto). El panel de Inicio,
+ * por ejemplo, hacía ~5 lecturas completas de MATRIZ y ~4 de KARDEX en
+ * una sola visita — cada una en una llamada de google.script.run
+ * independiente, así que una variable normal de JavaScript no ayuda
+ * (cada llamada corre en su propia ejecución, sin memoria compartida).
+ * CacheService sí persiste esos 20s entre ejecuciones separadas.
+ *
+ * SOLO se usa en funciones de SOLO LECTURA para pantallas (Inicio,
+ * notificaciones, mapa de calor, valor de inventario, detalle de
+ * producto) — nunca en una ruta que vaya a escribir después (esas
+ * siguen leyendo directo de la hoja, sin caché, como siempre: la
+ * existencia real de un producto y cualquier decisión de negocio deben
+ * verse con el dato más fresco posible, no con hasta 20s de retraso).
+ *
+ * Los valores se guardan como JSON — Utilities.formatDate ya se sigue
+ * usando en cada función lectora tal como antes, y cada consumidor de
+ * fechas en este proyecto ya maneja el caso "esto no es un objeto Date"
+ * con el patrón `fila[0] instanceof Date ? fila[0] : new Date(fila[0])`,
+ * así que una fecha que cruzó por JSON (queda como texto ISO) se
+ * reconstruye exactamente igual. JSON.parse siempre regresa un arreglo
+ * nuevo, así que cada llamador puede hacerle .shift()/.sort() sin
+ * afectar a los demás que lean la misma caché dentro de esos 20s.
+ */
+function obtenerFilasHojaCacheadas_(nombreHoja){
+  const cache = CacheService.getScriptCache();
+  const clave = "TAGERS_HOJA_" + nombreHoja + "_V1";
+
+  try{
+    const cacheado = cache.get(clave);
+    if(cacheado) return JSON.parse(cacheado);
+  }catch(e){
+    // si algo sale mal leyendo/parseando la caché, se sigue como si no hubiera caché
+  }
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName(nombreHoja);
+  const datos = hoja ? hoja.getDataRange().getValues() : [];
+
+  try{
+    cache.put(clave, JSON.stringify(datos), 20);
+  }catch(e){
+    // CacheService tiene un límite de 100KB por valor — si la hoja es
+    // demasiado grande para caber, simplemente no se cachea esta vez,
+    // sin romper la lectura actual.
+  }
+
+  return datos;
+}
+
+/**
+ * Invalida la caché de 20s de obtenerFilasHojaCacheadas_ para una hoja.
+ * Se llama desde los puntos ÚNICOS y autorizados que escriben esa hoja
+ * (los 3 escritores de la columna Existencia de MATRIZ, y registrarKardex
+ * para KARDEX) — así una pantalla que lea justo después de una
+ * entrada/salida/ajuste ve el dato real de inmediato, en vez de esperar
+ * hasta 20s a que expire sola. Si la clave no estaba cacheada, remove()
+ * simplemente no hace nada.
+ */
+function invalidarCacheHoja_(nombreHoja){
+  try{
+    CacheService.getScriptCache().remove("TAGERS_HOJA_" + nombreHoja + "_V1");
+  }catch(e){
+    // nunca debe tronar un guardado real por un problema de caché
+  }
+}
+
 function doGet(e) {
 
   const pagina = (e && e.parameter && e.parameter.page) 
@@ -132,10 +201,18 @@ function registrarEntradaInterna_(datos, usuario, folioPersonalizado, observacio
     observacionPersonalizada || "Entrada desde app móvil"
   ]);
 
+  // Escribe Kardex directo (no vía registrarKardex, que recalcularía su
+  // propia fecha) — pero SÍ debe invalidar la misma caché de 20s que
+  // usa registrarKardex, o toda entrada/salida (la operación más
+  // frecuente del sistema) deja el Kardex cacheado desactualizado hasta
+  // por 20s (hallazgo de auditoría, no relacionado con sucursales).
+  invalidarCacheHoja_("KARDEX");
+
   return true;
 }
 
 function guardarEntradaApp(datos){
+  requerirAccesoOperacionesApp_(datos.token);
   return registrarEntradaInterna_(datos, obtenerNombreDesdeToken(datos.token));
 }
 
@@ -162,23 +239,8 @@ function guardarEntradaApp(datos){
  */
 function registrarSalidaInterna_(datos, usuario){
   const ss = SpreadsheetApp.getActive();
-  const matriz = ss.getSheetByName("MATRIZ");
   const salida = ss.getSheetByName("SALIDA");
   const kardex = ss.getSheetByName("KARDEX");
-
-  const datosMatriz = matriz.getDataRange().getValues();
-  let fila = -1;
-
-  for (let i = 1; i < datosMatriz.length; i++){
-    if (String(datosMatriz[i][4]) == String(datos.codigo)){
-      fila = i;
-      break;
-    }
-  }
-
-  if (fila === -1){
-    throw new Error("Producto no encontrado en MATRIZ");
-  }
 
   const cantidad = Number(datos.cantidad);
 
@@ -186,13 +248,16 @@ function registrarSalidaInterna_(datos, usuario){
     throw new Error("Cantidad inválida");
   }
 
-  const existenciaActual = Number(datosMatriz[fila][10]) || 0;
-
-  if (cantidad > existenciaActual){
-    throw new Error("Existencia insuficiente. Disponible: " + existenciaActual);
-  }
-
   const fecha = new Date();
+  const folio = datos.folio || ("SAL-" + fecha.getTime());
+
+  // La validación de existencia suficiente y el descuento ahora ocurren
+  // en un solo paso, dentro del lock (ver ajustarExistenciaMatrizPorDeltaValidado_).
+  // Si no alcanza, esto lanza el error ANTES de escribir nada en
+  // SALIDA/KARDEX — así una salida que falla no deja movimientos huérfanos.
+  const resultadoExistencia = ajustarExistenciaMatrizPorDeltaValidado_(datos.codigo, -cantidad);
+  const existenciaAnterior = resultadoExistencia.anterior;
+  const nuevaExistencia = resultadoExistencia.nueva;
 
   salida.appendRow([
     fecha.getFullYear(),          // A AÑO
@@ -208,14 +273,6 @@ function registrarSalidaInterna_(datos, usuario){
     datos.ubicacion || ""                   // K UBICACION
   ]);
 
-  SpreadsheetApp.flush();
-
-  // Única fuente de verdad para la existencia (antes esta función nunca
-  // la escribía en MATRIZ — dependía de la fórmula de la columna K).
-  const resultadoExistencia = ajustarExistenciaMatrizPorDelta_(datos.codigo, -cantidad);
-  const nuevaExistencia = resultadoExistencia ? resultadoExistencia.nueva : (existenciaActual - cantidad);
-  const folio = datos.folio || ("SAL-" + fecha.getTime());
-
   kardex.appendRow([
     fecha,
     Utilities.formatDate(fecha, Session.getScriptTimeZone(), "HH:mm:ss"),
@@ -225,16 +282,22 @@ function registrarSalidaInterna_(datos, usuario){
     datos.producto,
     0,          // G Entrada — antes aquí se ponía la cantidad por error
     cantidad,   // H Salida — la cantidad va aquí
-    cantidad,
+    existenciaAnterior, // I ExistenciaAnterior — antes aquí se ponía la cantidad por error
     nuevaExistencia,
     usuario,
     datos.observacion || (datos.area ? ("Salida a " + datos.area) : "Salida desde app móvil")
   ]);
 
+  // Ver el mismo comentario en registrarEntradaInterna_.
+  invalidarCacheHoja_("KARDEX");
+
+  SpreadsheetApp.flush();
+
   return { exito: true, existenciaRestante: nuevaExistencia };
 }
 
 function registrarSalidaApp(datos){
+  requerirAccesoOperacionesApp_(datos.token);
   return registrarSalidaInterna_(datos, obtenerNombreDesdeToken(datos.token));
 }
 
@@ -247,10 +310,11 @@ function obtenerKardex(limite) {
   if (ultimaFila <= 1) return [];
 
   // Ajustamos el límite por defecto
-  const maxFilas = limite || 8; 
-  
+  const maxFilas = limite || 8;
+
   // Obtenemos los datos de la hoja
-  const datos = kardex.getRange(2, 1, ultimaFila - 1, 12).getValues();
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
   let movimientos = [];
 
   // Recorremos de abajo hacia arriba (más reciente a más antiguo) para ahorrar tiempo
@@ -388,6 +452,32 @@ function normalizarUDM_(udm){
     "UND":"PZ", "UNIDAD":"PZ", "UNIDADES":"PZ", "PC":"PZ", "PCS":"PZ"
   };
   return mapa[u] || u;
+}
+
+/**
+ * Factor para convertir una CANTIDAD de `udmOrigen` a `udmDestino`,
+ * cuando las dos son la misma magnitud — masa (G/KG) o volumen (ML/L).
+ * Usa normalizarUDM_ primero, así que "GRS"/"Gramos"/"g" se tratan
+ * igual que "G". Si las unidades no son de la misma magnitud (p. ej.
+ * PZ contra KG) no hay un factor fijo posible sin inventar un peso por
+ * pieza — regresa null en vez de adivinar uno.
+ */
+function factorConversionUDM_(udmOrigen, udmDestino){
+  const origen = normalizarUDM_(udmOrigen);
+  const destino = normalizarUDM_(udmDestino);
+  if(origen === destino) return 1;
+
+  const aUnidadBase = { "G": 0.001, "KG": 1, "ML": 0.001, "L": 1 };
+  const familiaMasa = ["G","KG"];
+  const familiaVolumen = ["ML","L"];
+
+  const mismaFamilia =
+    (familiaMasa.includes(origen) && familiaMasa.includes(destino)) ||
+    (familiaVolumen.includes(origen) && familiaVolumen.includes(destino));
+
+  if(!mismaFamilia) return null;
+
+  return aUnidadBase[origen] / aUnidadBase[destino];
 }
 
 /**
@@ -539,15 +629,21 @@ function analizarImportacionSalidasApp(items){
 
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
-  const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow() - 1, 17).getValues();
+  const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow() - 1, 20).getValues();
 
   const catalogo = datosMatriz.map(f => {
-    const info = extraerNombreYPresentacion_(f[0]);
+    // La Presentación real de cada producto vive en la columna T de MATRIZ
+    // (f[19], la misma que usan Órdenes de Compra y la valorización de
+    // inventario) — NO se parsea del nombre, porque el catálogo no trae
+    // el tamaño escrito en el texto (a diferencia del renglón del
+    // documento importado, que sí se sigue analizando con
+    // extraerNombreYPresentacion_ más abajo).
+    const presentacionNumero = Number(f[19]) > 0 ? Number(f[19]) : null;
     return {
-      nombre: info.nombre,
-      presentacionNumero: info.presentacionNumero,
-      presentacionUDM: info.presentacionUDM,
-      presentacionTexto: info.presentacionTexto,
+      nombre: normalizarTexto_(f[0]),
+      presentacionNumero: presentacionNumero,
+      presentacionUDM: presentacionNumero !== null ? normalizarUDM_(f[1]) : "",
+      presentacionTexto: presentacionNumero !== null ? (formatearCantidad_(presentacionNumero) + " " + (f[1]||"")) : "",
       producto: f[0],
       codigo: f[4],
       existencia: Number(f[10]) || 0,
@@ -653,6 +749,8 @@ function analizarImportacionSalidasApp(items){
  * (fase 8).
  */
 function registrarSalidasImportadasApp(filas, token, nombreArchivo){
+
+  requerirAccesoOperacionesApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const folioLote = "IMP-" + new Date().getTime();
@@ -864,7 +962,8 @@ function buscarProductoApp(codigo){
         producto: datos[i][0],
         udm: datos[i][1],
         ubicacion: datos[i][9],
-        existencia: datos[i][10]
+        existencia: datos[i][10],
+        presentacion: datos[i][19]
       };
     }
   }
@@ -876,9 +975,9 @@ function buscarProductoApp(codigo){
  * Recalcula una fila de importación cuando el usuario asigna el
  * código manualmente (filas SIN_COINCIDENCIA o STOCK_INSUFICIENTE).
  * Aplica la MISMA lógica de presentación que el matching automático de
- * analizarImportacionSalidasApp — el factor de conversión sale del
- * nombre del producto ya identificado en MATRIZ, nunca de un número
- * suelto tomado del documento.
+ * analizarImportacionSalidasApp — el factor de conversión sale de la
+ * columna Presentación de MATRIZ (columna T) del producto ya
+ * identificado, nunca de un número suelto tomado del documento.
  */
 function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
 
@@ -886,8 +985,9 @@ function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
   if(!producto) return null;
 
   const cantidad = Number(cantidadPedida) || 0;
-  const info = extraerNombreYPresentacion_(producto.producto);
-  const factor = info.presentacionNumero !== null ? info.presentacionNumero : 1;
+  const presentacionNumero = Number(producto.presentacion) > 0 ? Number(producto.presentacion) : null;
+  const presentacionTexto = presentacionNumero !== null ? (formatearCantidad_(presentacionNumero) + " " + (producto.udm||"")) : "";
+  const factor = presentacionNumero !== null ? presentacionNumero : 1;
   const cantidadADescontar = Math.round(cantidad * factor * 1000) / 1000;
 
   let estado = "OK";
@@ -907,7 +1007,7 @@ function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
     existenciaResultante: (estado === "OK") ? Math.round((producto.existencia - cantidadADescontar) * 1000) / 1000 : "",
     udm: producto.udm,
     ubicacion: producto.ubicacion,
-    presentacionTexto: info.presentacionTexto || "—",
+    presentacionTexto: presentacionTexto || "—",
     factorPresentacion: factor,
     cantidadADescontar: cantidadADescontar,
     score: 1,
@@ -918,8 +1018,7 @@ function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
 }
 
 function obtenerProductosBajoMinimo(){
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   return datos
@@ -953,8 +1052,8 @@ function obtenerProductosBajoMinimo(){
 function obtenerDetalleProductoApp(codigo){
 
   const ss = SpreadsheetApp.getActive();
-  const matriz = ss.getSheetByName("MATRIZ");
-  const datos = matriz.getRange(2, 1, matriz.getLastRow() - 1, 17).getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  datos.shift();
 
   const codigoBuscado = String(codigo || "").trim().toUpperCase();
   let producto = null;
@@ -989,7 +1088,8 @@ function obtenerDetalleProductoApp(codigo){
 
   if (kardex && kardex.getLastRow() > 1) {
 
-    const movs = kardex.getRange(2, 1, kardex.getLastRow() - 1, 12).getValues();
+    const movs = obtenerFilasHojaCacheadas_("KARDEX");
+    movs.shift();
     let fechaMasReciente = null;
 
     for (let i = 0; i < movs.length; i++) {
@@ -1062,7 +1162,7 @@ function obtenerEntradasSalidas7dias(){
     return { labels: [], entradas: [], salidas: [] };
   }
 
-  const datos = kardex.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
   datos.shift();
 
   const hoy = new Date();
@@ -1106,8 +1206,7 @@ function obtenerEntradasSalidas7dias(){
 function obtenerDashboardMovil(){
   const ss = SpreadsheetApp.getActive();
 
-  const matriz = ss.getSheetByName("MATRIZ");
-  const datos = matriz.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   let productos = datos.length;
@@ -1149,7 +1248,7 @@ function obtenerDashboardMovil(){
   const kardex = ss.getSheetByName("KARDEX");
 
   if(kardex){
-    const mov = kardex.getDataRange().getValues();
+    const mov = obtenerFilasHojaCacheadas_("KARDEX");
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
 
@@ -1218,6 +1317,7 @@ function obtenerRacksConteoApp(){
 }
 
 function generarConteoRacksApp(racks, token){
+  requerirAccesoAlmacenApp_(token);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const matriz = ss.getSheetByName("MATRIZ");
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
@@ -1237,8 +1337,13 @@ function generarConteoRacksApp(racks, token){
 
     if(conteo.getLastRow() > 1){
       const folios = conteo.getRange(2,1,conteo.getLastRow()-1,1).getValues().flat();
-      const conteosHoy = folios.filter(f => f.toString().includes("CC-"+fechaCodigo));
-      consecutivo = conteosHoy.length + 1;
+      // Un folio genera UNA fila por producto contado, así que contar filas
+      // (en vez de folios distintos) hacía que el consecutivo del día
+      // saltara números (p. ej. el 2° conteo del día salía "-006" en vez
+      // de "-002" si el 1° abarcó 5 productos). Nunca colisionaba, pero
+      // no era estrictamente consecutivo.
+      const foliosHoy = new Set(folios.filter(f => f.toString().includes("CC-"+fechaCodigo)).map(f => f.toString()));
+      consecutivo = foliosHoy.size + 1;
     }
 
     folioConteo = "CC-"+fechaCodigo+"-"+Utilities.formatString("%03d", consecutivo);
@@ -1346,7 +1451,9 @@ function obtenerConteosProgramadosHoyApp(){
  * para las filas indicadas, después de generar el conteo desde la tarjeta
  * de Inicio — así no se vuelve a sugerir hasta que le vuelva a tocar.
  */
-function marcarConteoProgramadoGeneradoApp(filas){
+function marcarConteoProgramadoGeneradoApp(filas, token){
+
+  requerirAccesoAlmacenApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("PROGRAMACION_CONTEOS");
@@ -1391,6 +1498,7 @@ function revisarDiscrepanciasApp(){
 }
 
 function cerrarConteoFolioApp(folio, token){
+  requerirAccesoAlmacenApp_(token);
   const ss = SpreadsheetApp.getActive();
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
   const historial = ss.getSheetByName("HISTORIAL_CONTEOS");
@@ -1405,6 +1513,21 @@ function cerrarConteoFolioApp(folio, token){
 
   if(ultimaFila < 2){
     throw new Error("No hay conteos para cerrar");
+  }
+
+  // Estado ya resuelto (por folio+código) en DISCREPANCIAS, si alguien ya
+  // pasó por la pantalla de "Aprobar/Rechazar Discrepancias" antes de
+  // cerrar este folio. Si hay varias filas para el mismo folio+código
+  // (p. ej. por una revisión repetida), se queda con la última — el
+  // estado más reciente.
+  const estadoDiscrepanciaPorProducto = {};
+  const hojaDiscrepancias = ss.getSheetByName("DISCREPANCIAS");
+  if(hojaDiscrepancias && hojaDiscrepancias.getLastRow() > 1){
+    const datosDiscrepancias = hojaDiscrepancias.getRange(2, 1, hojaDiscrepancias.getLastRow()-1, 10).getValues();
+    datosDiscrepancias.forEach(d => {
+      if(String(d[1]) !== String(folio)) return; // columna B = Folio
+      estadoDiscrepanciaPorProducto[String(d[2])] = String(d[9]||"").trim().toUpperCase(); // columna C = Código, J = Estado
+    });
   }
 
   const datos = conteo.getRange(2,1,ultimaFila-1,11).getValues();
@@ -1444,7 +1567,16 @@ function cerrarConteoFolioApp(folio, token){
       fila[6], fila[7], fila[8], resultado, new Date(), usuario
     ]);
 
-    if(resultado == "AJUSTADO"){
+    // Si esta diferencia ya se resolvió individualmente en la pantalla de
+    // Aprobar/Rechazar Discrepancias, el cierre del folio ya NO decide
+    // por su cuenta: si fue RECHAZADA, no se toca MATRIZ; si ya fue
+    // APROBADA, el ajuste ya se aplicó en ese momento y no se repite aquí
+    // (antes el cierre ignoraba esto por completo y podía aplicar un
+    // ajuste ya rechazado, o duplicarlo si ya había sido aprobado).
+    const estadoResuelto = estadoDiscrepanciaPorProducto[String(fila[3])];
+    const yaResueltaIndividualmente = estadoResuelto === "RECHAZADO" || estadoResuelto === "APROBADO";
+
+    if(resultado == "AJUSTADO" && !yaResueltaIndividualmente){
       auditoriaDatos.push([
         fechaHoy, fila[3], fila[4], existenciaAnterior, existenciaNueva, diferencia,
         usuario, "Ajuste por conteo cíclico " + folio, fila[10] || ""
@@ -1525,11 +1657,99 @@ function obtenerContadoresControl(){
 }
 
 /**
+ * Campana de notificaciones del header — antes solo mandaba inventario
+ * bajo mínimo/agotado (obtenerProductosBajoMinimo, sin token, visible
+ * para cualquiera, sin cambios aquí). Ahora también junta, en un solo
+ * viaje al servidor, conteos cíclicos sin cerrar y requisiciones
+ * PENDIENTE (Área + Sucursal) — pero esto sí es información operativa
+ * de Almacén/CEDIS, así que usa el MISMO criterio de acceso que ya
+ * protege "Requisiciones Pendientes"/"Entregas Recientes"
+ * (obtenerAccesoRequisicionesApp().esAdmin: rol ADMIN o Área "Almacén").
+ * Un usuario normal de área/sucursal sigue viendo solo sus alertas de
+ * inventario, igual que siempre.
+ *
+ * Cada elemento trae "clave" (para el dedup de "ya vista" en
+ * localStorage, reemplaza el viejo codigo+estado ad-hoc) y "urgente"
+ * (true si la fecha requerida de una requisición ya venció o es
+ * hoy/mañana — así el front puede resaltarla sin tener que rehacer la
+ * cuenta de días).
+ */
+function obtenerNotificacionesApp(token){
+
+  requerirSesionActivaApp_(token);
+
+  const resultado = [];
+
+  (obtenerProductosBajoMinimo() || []).forEach(p => {
+    resultado.push({
+      tipo: "inventario",
+      clave: "inventario|" + p.codigo + "|" + p.estado,
+      titulo: p.producto,
+      detalle: p.estado + " — existencia " + p.existencia + " (mín. " + p.minimo + ")",
+      urgente: p.estado === "Agotado",
+      datos: { codigo: p.codigo, estado: p.estado }
+    });
+  });
+
+  const accesoArea = obtenerAccesoRequisicionesApp(token);
+  if(!accesoArea.esAdmin) return resultado;
+
+  const contadores = obtenerContadoresControl();
+  if(contadores.conteosAbiertos > 0){
+    resultado.push({
+      tipo: "conteo",
+      clave: "conteo|" + contadores.conteosAbiertos,
+      titulo: "Conteos cíclicos pendientes",
+      detalle: contadores.conteosAbiertos + " conteo(s) sin cerrar",
+      urgente: false,
+      datos: {}
+    });
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0,0,0,0);
+
+  function esUrgente_(fechaTexto){
+    if(!fechaTexto) return false;
+    const partes = String(fechaTexto).split("/"); // dd/MM/yyyy, como la devuelve obtenerRequisicionesApp/obtenerRequisicionesSucursalApp
+    if(partes.length !== 3) return false;
+    const fecha = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+    if(isNaN(fecha.getTime())) return false;
+    const dias = Math.round((fecha - hoy) / 86400000);
+    return dias <= 1; // vencida, hoy o mañana
+  }
+
+  obtenerRequisicionesApp(token).filter(r => r.estado === "PENDIENTE").forEach(r => {
+    resultado.push({
+      tipo: "requisicion-area",
+      clave: "requisicion-area|" + r.folio,
+      titulo: "Requisición pendiente — " + r.area,
+      detalle: "Folio " + r.folio + (r.fechaRequerida ? " · Requerida " + r.fechaRequerida : ""),
+      urgente: esUrgente_(r.fechaRequerida),
+      datos: { folio: r.folio }
+    });
+  });
+
+  obtenerRequisicionesSucursalApp(token).filter(r => r.estado === "PENDIENTE").forEach(r => {
+    resultado.push({
+      tipo: "requisicion-sucursal",
+      clave: "requisicion-sucursal|" + r.folio,
+      titulo: "Requisición pendiente — Sucursal " + r.sucursal,
+      detalle: "Folio " + r.folio + (r.fechaRequerida ? " · Requerida " + r.fechaRequerida : ""),
+      urgente: esUrgente_(r.fechaRequerida),
+      datos: { folio: r.folio }
+    });
+  });
+
+  return resultado;
+
+}
+
+/**
  * NUEVO: agrupa MATRIZ por RACK x NIVEL para el "mapa de calor" de Inicio.
  */
 function obtenerMapaCalorRacks(){
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   const celdas = {};
@@ -1586,7 +1806,8 @@ function obtenerTopMovimientosMesApp(){
 
   if(!kardex || kardex.getLastRow() < 2) return vacio;
 
-  const datos = kardex.getRange(2, 1, kardex.getLastRow()-1, 12).getValues();
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
 
   const hoy = new Date();
   const mesActual = hoy.getMonth();
@@ -1660,7 +1881,8 @@ function obtenerValorInventarioApp(){
     return { total: 0, productosConCosto: 0, productosSinCosto: 0 };
   }
 
-  const datos = matriz.getRange(2, 1, matriz.getLastRow()-1, 20).getValues(); // A..T
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ"); // A..T (o lo que la hoja tenga)
+  datos.shift();
 
   let total = 0;
   let productosConCosto = 0;
@@ -1717,6 +1939,117 @@ function obtenerResumenExtraDashboardApp(){
     valorInventario: obtenerValorInventarioApp()
   };
 
+}
+
+/**
+ * REPORTES (dashboard ejecutivo) — a diferencia de Inicio (operativo,
+ * "qué hago ahora"), esto es valor/tendencia/salud del negocio: cuánto
+ * vale el inventario y en qué está concentrado, y cómo se mueve mes a
+ * mes, no día a día. Agrupa MATRIZ (una sola pasada, ya cacheada) por
+ * Categoría y por Proveedor, sumando valor con la MISMA
+ * calcularValorInventario_ que ya usa "Valor monetario del inventario"
+ * en Inicio — ningún cálculo nuevo, solo una agrupación nueva sobre el
+ * mismo número.
+ */
+function obtenerValorInventarioAgrupadoApp_(indiceColumna){
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  datos.shift();
+
+  const porGrupo = {};
+
+  datos.forEach(f=>{
+    const existencia = Number(f[10]) || 0;
+    const costo = Number(f[17]) || 0;
+    if(existencia <= 0 || costo <= 0) return;
+
+    const convertir = f[18];
+    const presentacion = f[19];
+    const valor = calcularValorInventario_(existencia, costo, convertir, presentacion);
+
+    const grupo = String(f[indiceColumna] || "Sin clasificar").trim() || "Sin clasificar";
+    if(!porGrupo[grupo]) porGrupo[grupo] = { nombre: grupo, valor: 0, productos: 0 };
+    porGrupo[grupo].valor += valor;
+    porGrupo[grupo].productos += 1;
+  });
+
+  const lista = Object.values(porGrupo)
+    .map(g => ({ nombre: g.nombre, valor: Math.round(g.valor * 100) / 100, productos: g.productos }))
+    .sort((a,b) => b.valor - a.valor);
+
+  // Top 7 + "Otros" agrupado, para que la gráfica no se llene de rebanadas
+  // ilegibles cuando el catálogo tiene muchas categorías/proveedores.
+  if(lista.length <= 8) return lista;
+
+  const top = lista.slice(0, 7);
+  const resto = lista.slice(7);
+  const otros = resto.reduce((acc, g) => ({
+    nombre: "Otros (" + resto.length + ")", valor: Math.round((acc.valor + g.valor) * 100) / 100, productos: acc.productos + g.productos
+  }), { nombre: "Otros", valor: 0, productos: 0 });
+
+  return top.concat([otros]);
+
+}
+
+/**
+ * Tendencia mensual (últimos 6 meses) — a diferencia de
+ * obtenerEntradasSalidas7dias (productos DISTINTOS por día, para "qué
+ * pasó hoy"), esto sirve para ver ritmo de negocio: CANTIDAD total
+ * movida (kg/pz/etc., sumando la columna Entrada o Salida de KARDEX)
+ * por mes, no un conteo de productos distintos.
+ */
+function obtenerTendenciaMensualApp(){
+
+  const kardex = SpreadsheetApp.getActive().getSheetByName("KARDEX");
+  if(!kardex || kardex.getLastRow() < 2){
+    return { labels: [], entradas: [], salidas: [] };
+  }
+
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
+
+  const hoy = new Date();
+  const meses = [];
+  for(let i = 5; i >= 0; i--){
+    meses.push(new Date(hoy.getFullYear(), hoy.getMonth() - i, 1));
+  }
+
+  const labels = meses.map(m => Utilities.formatDate(m, Session.getScriptTimeZone(), "MMMM").slice(0,3) + " " + m.getFullYear());
+  const entradas = meses.map(() => 0);
+  const salidas = meses.map(() => 0);
+
+  datos.forEach(fila=>{
+    const fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
+    if(isNaN(fecha.getTime())) return;
+
+    const idx = meses.findIndex(m => m.getFullYear() === fecha.getFullYear() && m.getMonth() === fecha.getMonth());
+    if(idx === -1) return;
+
+    const tipo = String(fila[2]||"").toUpperCase();
+    if(tipo === "ENTRADA") entradas[idx] += Number(fila[6]) || 0;
+    if(tipo === "SALIDA") salidas[idx] += Number(fila[7]) || 0;
+  });
+
+  return {
+    labels: labels,
+    entradas: entradas.map(v => Math.round(v * 100) / 100),
+    salidas: salidas.map(v => Math.round(v * 100) / 100)
+  };
+
+}
+
+/**
+ * Un solo viaje al servidor para toda la pantalla de Reportes.
+ */
+function obtenerReporteEjecutivoApp(){
+  return {
+    valorInventario: obtenerValorInventarioApp(),
+    valorPorCategoria: obtenerValorInventarioAgrupadoApp_(2),
+    valorPorProveedor: obtenerValorInventarioAgrupadoApp_(16),
+    tendenciaMensual: obtenerTendenciaMensualApp(),
+    contadores: obtenerContadoresControl(),
+    topBajoMinimo: obtenerTopBajoMinimoApp()
+  };
 }
 
 /**
@@ -2783,18 +3116,33 @@ function buscarFilaMatrizPorCodigo_(codigo){
 }
 
 // ============================================
-// Existencia de MATRIZ — FUENTE ÚNICA DE VERDAD
+// Existencia — FUENTE ÚNICA DE VERDAD, capa central multi-sucursal
 // ============================================
 //
-// La columna K (Existencia) de MATRIZ ya NO debe tener fórmula: es un
-// valor fijo que SOLO esta función puede escribir. Todo movimiento
-// (Entrada, Salida, Conteo Cíclico, Inventario Mensual) pasa por aquí —
-// así nunca hay dos lugares del código actualizando existencia por su
-// cuenta ni una fórmula peleándose con un valor puesto a mano.
+// MATRIZ sigue siendo el catálogo maestro (una sola fila por Código,
+// misma estructura de siempre) y la fuente de verdad de S01, la única
+// sucursal operativa hoy — por compatibilidad, su columna K (Existencia)
+// se sigue usando tal cual para S01. Cualquier OTRA sucursal (S02-S06...)
+// vive en la hoja aparte EXISTENCIAS_SUCURSAL (Código | Sucursal |
+// Existencia) y NUNCA toca MATRIZ. Esa decisión — "¿S01/MATRIZ o
+// EXISTENCIAS_SUCURSAL?" — se resuelve en UN SOLO lugar:
+// resolverAjusteExistencia_ (escritura) y obtenerExistenciaSucursal_
+// (lectura). Ninguna otra función del proyecto debe volver a preguntar
+// "¿es S01?" por su cuenta — todas las pantallas (Entradas, Salidas,
+// Requisiciones, Conteos, Transferencias, Ajustes, Recepciones) pasan
+// por aquí.
 //
 // El Kardex sigue siendo el historial completo de movimientos (no se
 // toca su lógica); los reportes mensuales deben LEER filtrando por fecha
 // (de KARDEX/ENTRADA/SALIDA/HISTORIAL_*), nunca escribir aquí.
+//
+// Migración futura documentada (Fase 19 del pedido): el día que se
+// decida migrar S01 también a EXISTENCIAS_SUCURSAL, el único cambio es
+// dentro de resolverAjusteExistencia_/obtenerExistenciaSucursal_ (dejar
+// de tratar SUCURSAL_DEFAULT_ como caso especial de MATRIZ) — ninguna
+// pantalla ni función que ya llama a los escritores/lectores de abajo
+// tendría que tocarse, porque ninguna de ellas sabe ni le importa en
+// qué hoja vive el número.
 
 /**
  * FASE DE CONCURRENCIA: helper único para proteger con LockService las
@@ -2823,34 +3171,203 @@ function conBloqueoApp_(funcion, esperaMs){
   }
 }
 
+const SUCURSAL_DEFAULT_ = "S01";
+const SUCURSAL_TODAS_ = "TODAS";
+
+function normalizarSucursal_(sucursal){
+  return String(sucursal || SUCURSAL_DEFAULT_).trim().toUpperCase();
+}
+
+// Se conserva por compatibilidad — nada la usaba ya fuera de este
+// archivo, pero varias funciones más abajo la llamaban antes de que
+// existiera resolverAjusteExistencia_.
+function esSucursalNoDefault_(sucursal){
+  if(sucursal === undefined || sucursal === null || sucursal === "") return false;
+  return normalizarSucursal_(sucursal) !== SUCURSAL_DEFAULT_;
+}
+
+function obtenerHojaExistenciasSucursal_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("EXISTENCIAS_SUCURSAL");
+  if(!hoja){
+    hoja = ss.insertSheet("EXISTENCIAS_SUCURSAL");
+    hoja.appendRow(["Código", "Sucursal", "Existencia"]);
+  }
+  return hoja;
+}
+
+function buscarFilaExistenciaSucursal_(hoja, codigo, sucursal){
+  const ultimaFila = hoja.getLastRow();
+  if(ultimaFila < 2) return -1;
+  const datos = hoja.getRange(2, 1, ultimaFila - 1, 2).getValues();
+  const codigoBuscado = String(codigo || "").trim();
+  const sucursalBuscada = normalizarSucursal_(sucursal);
+  for(let i = 0; i < datos.length; i++){
+    if(String(datos[i][0]||"").trim() === codigoBuscado && normalizarSucursal_(datos[i][1]) === sucursalBuscada){
+      return i + 2;
+    }
+  }
+  return -1;
+}
+
 /**
- * ÚNICA función autorizada para modificar la Existencia (columna K) de
- * MATRIZ. Recibe el valor FINAL que debe quedar (no un delta) — quien
- * llama ya hizo la suma/resta o ya tiene el conteo físico.
- *
- * @param {string} codigo          Código del producto en MATRIZ
- * @param {number} nuevaExistencia Valor final de existencia
- * @return {number|null} La existencia que había ANTES del cambio (null si el código no existe en MATRIZ)
+ * LECTURA CENTRAL — la única forma correcta de conocer la existencia de
+ * un producto en una sucursal específica. Para S01 sin fila propia en
+ * EXISTENCIAS_SUCURSAL todavía, cae a MATRIZ.Existencia (así se comporta
+ * igual que hoy, sin necesitar ninguna migración). "TODAS" NUNCA es una
+ * sucursal física — no tiene existencia propia, así que aquí se rechaza
+ * explícitamente; para una vista agregada usa
+ * obtenerExistenciaConsolidadaApp.
  */
-function actualizarExistenciaMatriz_(codigo, nuevaExistencia){
+function obtenerExistenciaSucursal_(codigo, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
 
-  const fila = buscarFilaMatrizPorCodigo_(codigo);
-  if(fila === -1) return null;
+  if(sucursal === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — usa obtenerExistenciaConsolidadaApp para una vista agregada.');
+  }
 
-  return conBloqueoApp_(function(){
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+
+  if(fila !== -1){
+    return Number(hoja.getRange(fila, 3).getValue()) || 0;
+  }
+  if(sucursal === SUCURSAL_DEFAULT_){
+    const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+    if(filaMatriz === -1) return 0;
+    return Number(SpreadsheetApp.getActive().getSheetByName("MATRIZ").getRange(filaMatriz, 11).getValue()) || 0;
+  }
+  return 0;
+}
+
+/**
+ * Vista CONSOLIDADA ("TODAS") de existencia: suma la de cada sucursal
+ * que ya tenga fila propia en EXISTENCIAS_SUCURSAL, más S01 (MATRIZ, si
+ * todavía no migró). Nunca se guarda una fila física "TODAS" — esto es
+ * puramente un cálculo de lectura, cada vez que se pide.
+ */
+function obtenerExistenciaConsolidadaApp(codigo, token){
+  requerirSesionActivaApp_(token);
+  codigo = String(codigo||"").trim();
+
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const datos = hoja.getLastRow() > 1 ? hoja.getRange(2, 1, hoja.getLastRow()-1, 3).getValues() : [];
+
+  const porSucursal = {};
+  datos.forEach(f => {
+    if(String(f[0]||"").trim() !== codigo) return;
+    porSucursal[normalizarSucursal_(f[1])] = Number(f[2]) || 0;
+  });
+
+  if(porSucursal[SUCURSAL_DEFAULT_] === undefined){
+    porSucursal[SUCURSAL_DEFAULT_] = obtenerExistenciaSucursal_(codigo, SUCURSAL_DEFAULT_);
+  }
+
+  const total = Object.keys(porSucursal).reduce((suma, suc) => suma + porSucursal[suc], 0);
+
+  return { codigo: codigo, total: total, porSucursal: porSucursal };
+}
+
+/**
+ * NÚCLEO ÚNICO DE ESCRITURA — la única función de todo el proyecto que
+ * decide "MATRIZ o EXISTENCIAS_SUCURSAL" y hace el
+ * leer-validar-calcular-escribir real. Todos los escritores públicos de
+ * abajo (actualizarExistenciaMatriz_, ajustarExistenciaMatrizPorDelta_,
+ * ajustarExistenciaMatrizPorDeltaValidado_, ajustarExistenciaSucursal_,
+ * ajustarUnaCeldaExistenciaSinLock_) son envoltorios delgados sobre
+ * esta — cada uno preserva su propio contrato de retorno/errores para
+ * no romper a sus llamadores actuales (ver auditoría), pero la lógica
+ * real vive en un solo lugar.
+ *
+ * NO adquiere ningún lock por sí misma — quien la llama decide (algunos
+ * necesitan mover DOS sucursales dentro de un solo lock atómico, como
+ * transferirEntreSucursalesApp).
+ *
+ * @param {string} codigo
+ * @param {string} sucursal Ya normalizada.
+ * @param {Object} opciones
+ * @param {number}  [opciones.delta]            Cuánto sumar/restar (se ignora si viene nuevaExistencia).
+ * @param {number}  [opciones.nuevaExistencia]   Valor absoluto a fijar — tiene prioridad sobre delta.
+ * @param {boolean} [opciones.validar]           Si true, lanza error si el resultado quedaría negativo.
+ * @param {boolean} [opciones.lanzarSiNoExiste]  Default true. Si false, regresa null en vez de lanzar
+ *        cuando el código no existe en MATRIZ (solo aplica a S01 — en EXISTENCIAS_SUCURSAL
+ *        la fila se crea sola, "no existe" no es un caso de error ahí).
+ * @return {{anterior:number, nueva:number}|null}
+ */
+function resolverAjusteExistencia_(codigo, sucursal, opciones){
+
+  opciones = opciones || {};
+
+  if(sucursal === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — no se puede ajustar existencia ahí. Úsala solo para consultar/agrupar.');
+  }
+
+  const calcularNueva = function(anterior){
+    return (opciones.nuevaExistencia !== null && opciones.nuevaExistencia !== undefined)
+      ? Math.round((Number(opciones.nuevaExistencia) || 0) * 1000) / 1000
+      : Math.round((anterior + (Number(opciones.delta) || 0)) * 1000) / 1000;
+  };
+
+  if(sucursal === SUCURSAL_DEFAULT_){
+
+    const fila = buscarFilaMatrizPorCodigo_(codigo);
+    if(fila === -1){
+      if(opciones.lanzarSiNoExiste === false) return null;
+      throw new Error("Producto no encontrado en MATRIZ");
+    }
 
     const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
     const celda = matriz.getRange(fila, 11); // K = Existencia
+    const anterior = Number(celda.getValue()) || 0;
+    const nueva = calcularNueva(anterior);
 
-    const existenciaAnterior = Number(celda.getValue()) || 0;
-    const existenciaNueva = Math.round((Number(nuevaExistencia) || 0) * 1000) / 1000;
+    if(opciones.validar && nueva < 0){
+      throw new Error("Existencia insuficiente. Disponible: " + anterior);
+    }
 
-    celda.setValue(existenciaNueva);
+    celda.setValue(nueva);
+    invalidarCacheHoja_("MATRIZ");
+    return { anterior: anterior, nueva: nueva };
+  }
 
-    return existenciaAnterior;
+  // Cualquier sucursal que no sea S01 -> EXISTENCIAS_SUCURSAL. Una fila
+  // que todavía no existe arranca en 0 (nunca hereda de MATRIZ: MATRIZ
+  // es la existencia de S01, no un valor por default de las demás).
+  const hoja = obtenerHojaExistenciasSucursal_();
+  let fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  const anterior = fila !== -1 ? (Number(hoja.getRange(fila, 3).getValue()) || 0) : 0;
+  const nueva = calcularNueva(anterior);
 
+  if(opciones.validar && nueva < 0){
+    throw new Error("Existencia insuficiente en " + sucursal + ". Disponible: " + anterior);
+  }
+
+  if(fila === -1){
+    hoja.appendRow([codigo, sucursal, nueva]);
+  } else {
+    hoja.getRange(fila, 3).setValue(nueva);
+  }
+
+  invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
+  return { anterior: anterior, nueva: nueva };
+
+}
+
+/**
+ * ÚNICA función pública autorizada para FIJAR (valor absoluto) la
+ * Existencia de un producto. Quien llama ya hizo la suma/resta o ya
+ * tiene el conteo físico. Sin `sucursal` (o con "S01"), escribe en
+ * MATRIZ exactamente como siempre; con otra sucursal, en
+ * EXISTENCIAS_SUCURSAL — la decisión real vive en resolverAjusteExistencia_.
+ *
+ * @return {number|null} La existencia que había ANTES del cambio (null si el código no existe en MATRIZ)
+ */
+function actualizarExistenciaMatriz_(codigo, nuevaExistencia, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    const resultado = resolverAjusteExistencia_(codigo, sucursal, { nuevaExistencia: nuevaExistencia, lanzarSiNoExiste: false });
+    return resultado ? resultado.anterior : null;
   });
-
 }
 
 /**
@@ -2859,24 +3376,145 @@ function actualizarExistenciaMatriz_(codigo, nuevaExistencia){
  * lo que se conoce es "cuánto entró/salió", no el total final.
  * Regresa {anterior, nueva} o null si el código no existe en MATRIZ.
  */
-function ajustarExistenciaMatrizPorDelta_(codigo, delta){
-
-  const fila = buscarFilaMatrizPorCodigo_(codigo);
-  if(fila === -1) return null;
-
+function ajustarExistenciaMatrizPorDelta_(codigo, delta, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
   return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, lanzarSiNoExiste: false });
+  });
+}
 
-    const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-    const celda = matriz.getRange(fila, 11);
+/**
+ * Variante de ajustarExistenciaMatrizPorDelta_ para SALIDAS: valida que
+ * quede suficiente existencia DENTRO del mismo lock que aplica el
+ * descuento, en vez de validar antes y descontar después por separado.
+ * Antes, dos salidas casi simultáneas del mismo producto podían leer la
+ * misma existencia "anterior" cada una fuera del lock, pasar su propia
+ * validación por separado, y solo entonces disputarse el lock para
+ * restar — la segunda en aplicar su resta ya no volvía a comprobar nada
+ * y podía dejar la existencia en negativo. Aquí la lectura, la
+ * validación y la escritura son un solo paso atómico: si no alcanza,
+ * lanza el error y no escribe nada.
+ */
+function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, validar: true });
+  });
+}
 
-    const anterior = Number(celda.getValue()) || 0;
-    const nueva = Math.round((anterior + (Number(delta) || 0)) * 1000) / 1000;
+/**
+ * Escritor de EXISTENCIAS_SUCURSAL con su propio lock — envoltorio sobre
+ * resolverAjusteExistencia_. `nuevaExistencia` (valor absoluto) tiene
+ * prioridad sobre `delta` si ambos llegan; `validar` exige que el
+ * resultado no quede negativo. Se conserva por compatibilidad (nombre
+ * usado desde hace una sesión), aunque hoy nada la llama fuera de este
+ * archivo — los 3 escritores públicos ya van directo al núcleo.
+ */
+function ajustarExistenciaSucursal_(codigo, sucursal, delta, nuevaExistencia, validar){
+  sucursal = normalizarSucursal_(sucursal);
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, nuevaExistencia: nuevaExistencia, validar: validar });
+  });
+}
 
-    celda.setValue(nueva);
+// ============================================
+// FASE 12 — TRANSFERENCIAS ENTRE SUCURSALES. Mueve existencia de una
+// sucursal a otra dentro de UN SOLO conBloqueoApp_: origen y destino se
+// ajustan en el mismo lock para que la operación sea atómica de verdad
+// — por eso transferirEntreSucursalesApp llama a
+// ajustarUnaCeldaExistenciaSinLock_ (que NO abre su propio lock) en vez
+// de a los escritores públicos de arriba (cada uno abre y CIERRA el
+// suyo; encadenar dos dejaría una ventana entre el descuento de origen
+// y el alta en destino donde otra escritura podría colarse).
+// ============================================
 
-    return { anterior: anterior, nueva: nueva };
+function ajustarUnaCeldaExistenciaSinLock_(codigo, sucursal, delta, validar){
+  sucursal = normalizarSucursal_(sucursal);
+  return resolverAjusteExistencia_(codigo, sucursal, { delta: delta, validar: validar });
+}
+
+/**
+ * Transfiere `cantidad` de un producto de sucursalOrigen a
+ * sucursalDestino. Genera Kardex en AMBAS sucursales (una salida, una
+ * entrada), enlazadas por el mismo folio TR-. Solo Almacén/Admin puede
+ * transferir (mismo criterio que Compras/Recepción/Inventario mensual).
+ */
+function transferirEntreSucursalesApp(codigo, sucursalOrigen, sucursalDestino, cantidad, token){
+
+  requerirAccesoAlmacenApp_(token);
+
+  codigo = String(codigo||"").trim();
+  sucursalOrigen = normalizarSucursal_(sucursalOrigen);
+  sucursalDestino = normalizarSucursal_(sucursalDestino);
+  cantidad = Number(cantidad) || 0;
+
+  if(!codigo){
+    throw new Error("Indica el producto a transferir.");
+  }
+  if(sucursalOrigen === SUCURSAL_TODAS_ || sucursalDestino === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — indica la sucursal real de origen y destino.');
+  }
+  if(sucursalOrigen === sucursalDestino){
+    throw new Error("La sucursal de origen y destino no pueden ser la misma.");
+  }
+  if(cantidad <= 0){
+    throw new Error("Captura una cantidad mayor a cero.");
+  }
+
+  const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+  if(filaMatriz === -1){
+    throw new Error("Producto no encontrado en MATRIZ");
+  }
+  const producto = SpreadsheetApp.getActive().getSheetByName("MATRIZ").getRange(filaMatriz, 1).getValue();
+  const usuario = obtenerNombreDesdeToken(token);
+
+  let folioTransferencia, anteriorOrigen, nuevaOrigen, anteriorDestino, nuevaDestino;
+
+  conBloqueoApp_(function(){
+
+    folioTransferencia = "TR-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+
+    const resOrigen = ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalOrigen, -cantidad, true);
+    anteriorOrigen = resOrigen.anterior;
+    nuevaOrigen = resOrigen.nueva;
+
+    // Apps Script/Sheets no tiene una transacción real que cubra dos
+    // celdas de dos hojas distintas — una vez que el descuento de origen
+    // se escribió, ya quedó. Si el alta en destino truena (rarísimo: ya
+    // se validó código/sucursal antes de llegar aquí, así que solo un
+    // error transitorio de la API podría causarlo), se revierte el
+    // descuento de origen DENTRO del mismo lock antes de propagar el
+    // error — mejor esfuerzo para que la transferencia completa quede
+    // sin efecto neto en vez de a medias.
+    try{
+      const resDestino = ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalDestino, cantidad, false);
+      anteriorDestino = resDestino.anterior;
+      nuevaDestino = resDestino.nueva;
+    }catch(errorDestino){
+      ajustarUnaCeldaExistenciaSinLock_(codigo, sucursalOrigen, cantidad, false);
+      throw new Error("No se pudo completar la transferencia — se revirtió el descuento de origen. " + errorDestino.message);
+    }
 
   });
+
+  registrarKardex(
+    "TRANSFERENCIA-SALIDA", folioTransferencia, codigo, producto, "", cantidad,
+    anteriorOrigen, nuevaOrigen, usuario,
+    "Transferencia a " + sucursalDestino + " — folio " + folioTransferencia
+  );
+  registrarKardex(
+    "TRANSFERENCIA-ENTRADA", folioTransferencia, codigo, producto, cantidad, "",
+    anteriorDestino, nuevaDestino, usuario,
+    "Transferencia desde " + sucursalOrigen + " — folio " + folioTransferencia
+  );
+
+  registrarAuditoria(usuario, "TRANSFERENCIAS", "TRANSFERENCIA ENTRE SUCURSALES", folioTransferencia, codigo, producto, cantidad, cantidad,
+    sucursalOrigen + " -> " + sucursalDestino);
+
+  return {
+    folio: folioTransferencia, sucursalOrigen: sucursalOrigen, sucursalDestino: sucursalDestino,
+    cantidad: cantidad, existenciaOrigen: nuevaOrigen, existenciaDestino: nuevaDestino
+  };
 
 }
 
@@ -2895,7 +3533,9 @@ function ajustarExistenciaMatrizPorDelta_(codigo, delta){
  * de 1000 pz), después de correr esto queda en $0.30 (precio por pz).
  * Los productos con Convertir="NO" no se tocan (ya estaban correctos).
  */
-function migrarCostoUnitarioAPorUnidadApp(){
+function migrarCostoUnitarioAPorUnidadApp(token){
+
+  requerirNoConsultaApp_(token);
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(matriz.getLastRow() < 2) return { filas: 0, migrados: 0 };
@@ -2926,7 +3566,20 @@ function migrarCostoUnitarioAPorUnidadApp(){
 
 }
 
-function congelarFormulasExistenciaMatrizApp(){
+/**
+ * EXCEPCIÓN DOCUMENTADA a la capa central de existencia (auditoría de
+ * arquitectura multi-sucursal): esta es una herramienta de migración de
+ * un solo uso (congela la fórmula de la columna K a valor fijo), no un
+ * movimiento de negocio — por eso escribe directo a MATRIZ en vez de
+ * pasar por resolverAjusteExistencia_. No cambia ningún número (solo el
+ * tipo de celda, de fórmula a valor), así que no rompe la garantía de
+ * "K = fuente única de verdad". Se deja fuera de la capa central a
+ * propósito, para no confundir una herramienta de mantenimiento con un
+ * movimiento de inventario real.
+ */
+function congelarFormulasExistenciaMatrizApp(token){
+
+  requerirNoConsultaApp_(token);
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(matriz.getLastRow() < 2) return { filas: 0 };
@@ -3256,6 +3909,8 @@ function obtenerHojaHistorialInventario_(){
 
 function generarInventarioMensualApp(token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
@@ -3402,6 +4057,8 @@ function obtenerSiguientePendienteInventarioMensualApp(folio){
 
 function guardarConteoFisicoInventarioMensualApp(fila, cantidad, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
 
@@ -3508,6 +4165,8 @@ function obtenerDiscrepanciasInventarioMensualApp(folio){
 
 function aprobarDiscrepanciaInventarioMensualApp(fila, comentario, token){
 
+  requerirAccesoAlmacenApp_(token);
+
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
 
@@ -3530,6 +4189,8 @@ function aprobarDiscrepanciaInventarioMensualApp(fila, comentario, token){
  * usada por el botón "Aprobar todas" en Revisar Diferencias.
  */
 function aprobarDiscrepanciasLoteInventarioMensualApp(filas, token){
+
+  requerirAccesoAlmacenApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
@@ -4086,13 +4747,28 @@ function obtenerPDFInventarioMensualCompletoApp(folio){
 // de eso.
 // ================================================================
 
+/**
+ * Convierte la fecha requerida capturada en el front-end (string
+ * "yyyy-MM-dd" de un <input type="date">) a un Date real para guardar en
+ * la hoja. Vacía/inválida → "" (no se guarda), nunca truena la
+ * requisición completa por un dato opcional mal formado. Compartida por
+ * Requisiciones (Área) y Requisiciones por Sucursal.
+ */
+function parsearFechaRequerida_(texto){
+  if(!texto) return "";
+  const partes = String(texto).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!partes) return "";
+  const fecha = new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]));
+  return isNaN(fecha.getTime()) ? "" : fecha;
+}
+
 function obtenerHojaRequisiciones_(){
   const ss = SpreadsheetApp.getActive();
   let hoja = ss.getSheetByName("REQUISICIONES");
   if(!hoja){
     hoja = ss.insertSheet("REQUISICIONES");
-    hoja.appendRow(["Folio","Fecha","Área","Solicitante","Estado","Observaciones","Fecha Entrega","Entregó"]);
-    hoja.getRange(1,1,1,8).setFontWeight("bold");
+    hoja.appendRow(["Folio","Fecha","Área","Solicitante","Estado","Observaciones","Fecha Entrega","Entregó","Fecha Requerida"]);
+    hoja.getRange(1,1,1,9).setFontWeight("bold");
   }
   return hoja;
 }
@@ -4126,11 +4802,126 @@ function obtenerAreaUsuarioPorCorreo_(correo){
   return "";
 }
 
+/**
+ * FASE 11 — modelo de permisos multi-sucursal (diseño previo ya
+ * autorizado a implementar). Columna G ("Sucursal") de USUARIOS, misma
+ * idea que Área (columna F) pero para la ubicación física, no el
+ * departamento. Si la columna no existe todavía o el usuario no tiene
+ * valor capturado, normalizarSucursal_("") la resuelve a
+ * SUCURSAL_DEFAULT_ ("S01") — así ningún usuario existente pierde
+ * acceso el día que se agregue la columna: sigue viendo exactamente lo
+ * mismo que hoy, la única sucursal operativa.
+ */
+function obtenerSucursalUsuarioPorCorreo_(correo){
+  const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(!hoja) return "";
+  const datos = hoja.getDataRange().getValues();
+  const buscado = String(correo||"").toLowerCase().trim();
+  for(let i=1;i<datos.length;i++){
+    if(String(datos[i][0]||"").toLowerCase().trim() === buscado){
+      return String(datos[i][6]||"").trim(); // columna G
+    }
+  }
+  return "";
+}
+
+/**
+ * Acceso del usuario actual a datos por sucursal: su propia sucursal, y
+ * si puede ver/operar TODAS (ADMIN, o Sucursal="TODAS" capturada a
+ * mano para un usuario corporativo). Mismo shape y mismo criterio que
+ * obtenerAccesoRequisicionesApp — a propósito, para que cualquier
+ * pantalla que ya sepa usar uno sepa usar el otro.
+ */
+function obtenerAccesoSucursalApp(token){
+  const correo = obtenerCorreoDesdeToken_(token);
+  const rol = obtenerRolDesdeToken(token);
+  const sucursal = normalizarSucursal_(obtenerSucursalUsuarioPorCorreo_(correo));
+  const esTodasLasSucursales = String(rol||"").toUpperCase() === "ADMIN" || sucursal === SUCURSAL_TODAS_;
+  return { sucursal: sucursal, esTodasLasSucursales: esTodasLasSucursales };
+}
+
+/**
+ * Lista las sucursales que el sistema ya conoce — para poblar un
+ * selector con buscador (Transferencias, etc.) sin tener que teclear el
+ * código a mano y arriesgar un typo. No hay una hoja "catálogo de
+ * sucursales" (a propósito, ver diseño de Opción B): se arma juntando
+ * los valores distintos de USUARIOS.Sucursal y de
+ * EXISTENCIAS_SUCURSAL.Sucursal, sin duplicados, sin "TODAS" (no es una
+ * sucursal física), y siempre incluye SUCURSAL_DEFAULT_ ("S01") aunque
+ * todavía no tenga fila propia en ningún lado — es la única que opera
+ * hoy. La lista crece sola en cuanto una sucursal nueva (S07, S08...)
+ * tenga al menos un usuario o un movimiento — no requiere tocar código.
+ */
+function obtenerSucursalesConocidasApp(token){
+  requerirSesionActivaApp_(token);
+
+  const encontradas = {};
+  encontradas[SUCURSAL_DEFAULT_] = true;
+
+  const usuarios = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(usuarios && usuarios.getLastRow() > 1){
+    usuarios.getRange(2, 7, usuarios.getLastRow() - 1, 1).getValues().forEach(f => {
+      const suc = normalizarSucursal_(f[0]);
+      if(suc && suc !== SUCURSAL_TODAS_) encontradas[suc] = true;
+    });
+  }
+
+  const existenciasSucursal = obtenerHojaExistenciasSucursal_();
+  if(existenciasSucursal.getLastRow() > 1){
+    existenciasSucursal.getRange(2, 2, existenciasSucursal.getLastRow() - 1, 1).getValues().forEach(f => {
+      const suc = normalizarSucursal_(f[0]);
+      if(suc && suc !== SUCURSAL_TODAS_) encontradas[suc] = true;
+    });
+  }
+
+  return Object.keys(encontradas).sort();
+}
+
 // Mismo patrón que obtenerNombreDesdeToken/obtenerRolDesdeToken de
 // Sesiones.gs — no se modifica ese archivo, solo se reutiliza.
 function obtenerCorreoDesdeToken_(token){
   const sesion = obtenerSesion_(token);
   return sesion ? sesion.correo : "";
+}
+
+/**
+ * Estado actual (columna E de USUARIOS) del usuario dueño del correo.
+ * Mismo patrón que obtenerAreaUsuarioPorCorreo_, para el mismo problema:
+ * el rol de la sesión se guarda una sola vez al hacer login y no se
+ * vuelve a leer hasta que el token expira (hasta 8h) — si un admin
+ * desactiva a alguien mientras esa persona ya tiene sesión abierta, con
+ * solo obtenerSesion_() esa sesión seguiría pasando cualquier guard.
+ */
+function obtenerEstadoUsuarioPorCorreo_(correo){
+  const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(!hoja) return "";
+  const datos = hoja.getDataRange().getValues();
+  const buscado = String(correo||"").toLowerCase().trim();
+  for(let i=1;i<datos.length;i++){
+    if(String(datos[i][0]||"").toLowerCase().trim() === buscado){
+      return String(datos[i][4]||"").trim(); // columna E = Estado
+    }
+  }
+  return "";
+}
+
+/**
+ * Reemplaza el simple "obtenerSesion_(token) ? sigue : rechaza" que
+ * usaban los 3 guards de abajo. Además de que el token exista y no haya
+ * expirado, revalida en USUARIOS que el usuario siga ACTIVO — así una
+ * cuenta desactivada después del login pierde acceso de inmediato, en
+ * vez de conservarlo hasta que su token expire.
+ */
+function requerirSesionActivaApp_(token){
+  const sesion = obtenerSesion_(token);
+  if(!sesion){
+    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
+  }
+  const estado = obtenerEstadoUsuarioPorCorreo_(sesion.correo);
+  if(estado && estado.toUpperCase() !== "ACTIVO"){
+    throw new Error("Tu cuenta ya no está activa. Contacta a un administrador.");
+  }
+  return sesion;
 }
 
 /**
@@ -4158,11 +4949,101 @@ function obtenerAccesoRequisicionesApp(token){
  * (obtenerAccesoRequisicionesApp), no se inventa un permiso nuevo.
  */
 function requerirAccesoAlmacenApp_(token){
-  if(!obtenerSesion_(token)){
-    throw new Error("Tu sesión expiró o no es válida. Vuelve a iniciar sesión.");
-  }
+  requerirSesionActivaApp_(token);
+  const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
+  if(rol === "SUPERVISOR") return;
   const acceso = obtenerAccesoRequisicionesApp(token);
   if(!acceso.esAdmin){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+}
+
+/**
+ * Bloquea únicamente al rol CONSULTA. Se usa en funciones administrativas
+ * (migraciones/ajustes de Configuración) que antes no validaban nada —
+ * cualquier rol no listado explícitamente conserva su acceso actual.
+ */
+function requerirNoConsultaApp_(token){
+  requerirSesionActivaApp_(token);
+  const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
+  if(rol === "CONSULTA"){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+}
+
+/**
+ * Bloquea a SUPERVISOR y CONSULTA de las funciones de Operaciones
+ * (Entradas, Salidas, Importar Salidas). El resto de roles conserva su
+ * acceso actual.
+ */
+function requerirAccesoOperacionesApp_(token){
+  requerirSesionActivaApp_(token);
+  const rol = String(obtenerRolDesdeToken(token)||"").toUpperCase();
+  if(rol === "SUPERVISOR" || rol === "CONSULTA"){
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+}
+
+/**
+ * Rol (columna D de USUARIOS) de un correo. Mismo patrón que
+ * obtenerAreaUsuarioPorCorreo_/obtenerEstadoUsuarioPorCorreo_.
+ */
+function obtenerRolUsuarioPorCorreo_(correo){
+  const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
+  if(!hoja) return "";
+  const datos = hoja.getDataRange().getValues();
+  const buscado = String(correo||"").toLowerCase().trim();
+  for(let i=1;i<datos.length;i++){
+    if(String(datos[i][0]||"").toLowerCase().trim() === buscado){
+      return String(datos[i][3]||"").trim(); // columna D = Rol
+    }
+  }
+  return "";
+}
+
+/**
+ * Variantes de requerirAccesoAlmacenApp_/requerirNoConsultaApp_ para
+ * funciones que en Código.gs siguen siendo compartidas por dos
+ * llamadores muy distintos: la SPA (que manda `token` de sesión) y los
+ * diálogos legados de Sheets — CapturaConteo.html, AprobacionDiscrepancias.html,
+ * SeleccionarCierreConteo.html, abiertos desde el menú "📦 Inventario" de
+ * la hoja — que no conocen ese token y siempre han identificado al
+ * usuario con Session.getActiveUser() (obtenerUsuario(), la misma cuenta
+ * de Google que ya usan para el Kardex/Auditoría de esas pantallas).
+ *
+ * Si llega `token`, se valida exactamente igual que en el resto de la
+ * app. Si no llega token, se intenta la MISMA validación de rol pero
+ * usando esa cuenta de Google activa en vez del token; si no se puede
+ * determinar quién es (o esa cuenta no tiene fila en USUARIOS), NO se
+ * bloquea — la persona ya tiene acceso de edición directo a la hoja de
+ * cálculo para abrir ese diálogo en primer lugar, un permiso mayor al
+ * que cualquiera de estas funciones podría dar, así que negarle el paso
+ * aquí no añade seguridad real y sí rompería el diálogo legado.
+ */
+function requerirAccesoAlmacenLegadoApp_(token){
+  if(token){
+    requerirAccesoAlmacenApp_(token);
+    return;
+  }
+  const correo = obtenerUsuario();
+  if(!correo) return;
+  const rol = String(obtenerRolUsuarioPorCorreo_(correo)||"").toUpperCase();
+  if(!rol) return;
+  if(rol === "SUPERVISOR" || rol === "ADMIN") return;
+  const areaNorm = String(obtenerAreaUsuarioPorCorreo_(correo)||"").trim().toUpperCase();
+  if(areaNorm === "ALMACÉN" || areaNorm === "ALMACEN") return;
+  throw new Error("No tienes permiso para realizar esta acción.");
+}
+
+function requerirNoConsultaLegadoApp_(token){
+  if(token){
+    requerirNoConsultaApp_(token);
+    return;
+  }
+  const correo = obtenerUsuario();
+  if(!correo) return;
+  const rol = String(obtenerRolUsuarioPorCorreo_(correo)||"").toUpperCase();
+  if(rol === "CONSULTA"){
     throw new Error("No tienes permiso para realizar esta acción.");
   }
 }
@@ -4206,8 +5087,14 @@ function buscarProductoParaRequisicionApp(texto){
 
 /**
  * FASE 1: Nueva requisición. items = [{codigo, producto, unidad, solicitado}]
+ * fechaRequerida (opcional, string "yyyy-MM-dd" desde un <input type="date">):
+ * cuándo necesita la sucursal/área que esto esté listo — se guarda tal
+ * cual para que Almacén sepa cuándo prepararla. Parámetro nuevo AL FINAL
+ * y opcional a propósito: las llamadas existentes (front-end viejo,
+ * pruebas) que solo mandan 3 argumentos siguen funcionando igual, sin
+ * fecha requerida.
  */
-function crearRequisicionApp(observaciones, items, token){
+function crearRequisicionApp(observaciones, items, token, fechaRequerida){
 
   const correo = obtenerCorreoDesdeToken_(token);
   const usuario = obtenerNombreDesdeToken(token);
@@ -4223,12 +5110,13 @@ function crearRequisicionApp(observaciones, items, token){
   }
 
   const fecha = new Date();
+  const fechaReq = parsearFechaRequerida_(fechaRequerida);
   let folio;
 
   conBloqueoApp_(function(){
     folio = generarFolioRequisicion_();
     obtenerHojaRequisiciones_().appendRow([
-      folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
+      folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", "", fechaReq
     ]);
   });
 
@@ -4256,7 +5144,7 @@ function obtenerRequisicionesApp(token){
   const hoja = obtenerHojaRequisiciones_();
   if(hoja.getLastRow() < 2) return [];
 
-  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,8).getValues();
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,9).getValues();
 
   return datos
     .filter(f => acceso.esAdmin || String(f[2]).trim() === String(acceso.area).trim())
@@ -4265,7 +5153,8 @@ function obtenerRequisicionesApp(token){
       fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : f[1],
       area: f[2], solicitante: f[3], estado: f[4], observaciones: f[5],
       fechaEntrega: f[6] instanceof Date ? Utilities.formatDate(f[6], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "",
-      entrego: f[7]
+      entrego: f[7],
+      fechaRequerida: f[8] instanceof Date ? Utilities.formatDate(f[8], Session.getScriptTimeZone(), "dd/MM/yyyy") : ""
     }))
     .sort((a,b) => a.folio < b.folio ? 1 : -1);
 
@@ -4291,14 +5180,23 @@ function obtenerEntregasRecientesApp(token){
  * FASE 3: Preparación — compara lo solicitado contra la existencia
  * actual de MATRIZ.
  */
-function obtenerDetalleRequisicionApp(folio){
+function obtenerDetalleRequisicionApp(folio, token){
 
   const req = obtenerHojaRequisiciones_();
-  const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
   let encabezado = null;
   datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
 
   if(!encabezado) throw new Error("No se encontró la requisición " + folio);
+
+  // Mismo criterio que obtenerRequisicionesApp: un área solo ve las
+  // suyas, salvo Admin/Almacén. Antes esta función no comprobaba nada,
+  // así que cualquier folio (consecutivos y predecibles) era legible
+  // desde cualquier área con solo cambiar el número.
+  const acceso = obtenerAccesoRequisicionesApp(token);
+  if(!acceso.esAdmin && String(encabezado[2]).trim() !== String(acceso.area).trim()){
+    throw new Error("No se encontró la requisición " + folio);
+  }
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   const datosDetalle = detalle.getLastRow() > 1 ? detalle.getRange(2,1,detalle.getLastRow()-1,6).getValues() : [];
@@ -4326,6 +5224,7 @@ function obtenerDetalleRequisicionApp(folio){
     folio: encabezado[0],
     fecha: encabezado[1] instanceof Date ? Utilities.formatDate(encabezado[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : encabezado[1],
     area: encabezado[2], solicitante: encabezado[3], estado: encabezado[4], observaciones: encabezado[5],
+    fechaRequerida: encabezado[8] instanceof Date ? Utilities.formatDate(encabezado[8], Session.getScriptTimeZone(), "dd/MM/yyyy") : "",
     items: items
   };
 
@@ -4408,7 +5307,7 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
   registrarAuditoria(usuario, "REQUISICIONES", "ENTREGA CONFIRMADA", folio, "", "", 0, 0,
     productosEntregados + " producto(s) entregados a " + areaReq);
 
-  const pdf = generarYGuardarPDFRequisicion_(folio);
+  const pdf = generarYGuardarPDFRequisicion_(folio, token);
 
   return { productosEntregados: productosEntregados, pdf: pdf };
 
@@ -4424,9 +5323,9 @@ function obtenerCarpetaRequisiciones_(){
   return DriveApp.createFolder(CARPETA_REQUISICIONES_);
 }
 
-function construirHtmlRequisicion_(folio){
+function construirHtmlRequisicion_(folio, token){
 
-  const datos = obtenerDetalleRequisicionApp(folio);
+  const datos = obtenerDetalleRequisicionApp(folio, token);
 
   const filasHtml = datos.items.map((it,i) => `
     <tr style="background:${i%2===0?'#ffffff':'#F9F5EF'}">
@@ -4460,9 +5359,9 @@ function construirHtmlRequisicion_(folio){
 
 }
 
-function generarYGuardarPDFRequisicion_(folio){
+function generarYGuardarPDFRequisicion_(folio, token){
 
-  const html = construirHtmlRequisicion_(folio);
+  const html = construirHtmlRequisicion_(folio, token);
   const pdfBlob = HtmlService.createHtmlOutput(html).getAs("application/pdf").setName(folio + ".pdf");
 
   const carpeta = obtenerCarpetaRequisiciones_();
@@ -4480,8 +5379,8 @@ function generarYGuardarPDFRequisicion_(folio){
 
 }
 
-function obtenerPDFRequisicionApp(folio){
-  return generarYGuardarPDFRequisicion_(folio);
+function obtenerPDFRequisicionApp(folio, token){
+  return generarYGuardarPDFRequisicion_(folio, token);
 }
 
 

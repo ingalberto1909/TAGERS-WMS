@@ -124,7 +124,9 @@ function abrirMapa() {
 
 }
 
-function guardarConteoFisico(fila,cantidad){
+function guardarConteoFisico(fila,cantidad,token){
+
+  requerirNoConsultaLegadoApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -442,7 +444,9 @@ function obtenerSiguientePendiente(folio) {
 
 }
 
-function cerrarConteoFolio(folio){
+function cerrarConteoFolio(folio, token){
+
+  requerirAccesoAlmacenLegadoApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
@@ -462,6 +466,19 @@ function cerrarConteoFolio(folio){
   if(ultimaFila < 2){
     SpreadsheetApp.getUi().alert("No hay conteos para cerrar");
     return;
+  }
+
+  // Mismo criterio que cerrarConteoFolioApp (📁 App.gs.gs): si una
+  // diferencia ya se resolvió individualmente en Aprobar/Rechazar
+  // Discrepancias, el cierre ya no decide por su cuenta.
+  const estadoDiscrepanciaPorProducto = {};
+  const hojaDiscrepancias = ss.getSheetByName("DISCREPANCIAS");
+  if(hojaDiscrepancias && hojaDiscrepancias.getLastRow() > 1){
+    const datosDiscrepancias = hojaDiscrepancias.getRange(2, 1, hojaDiscrepancias.getLastRow()-1, 10).getValues();
+    datosDiscrepancias.forEach(d => {
+      if(String(d[1]) !== String(folio)) return;
+      estadoDiscrepanciaPorProducto[String(d[2])] = String(d[9]||"").trim().toUpperCase();
+    });
   }
 
   const datos = conteo.getRange(2,1,ultimaFila-1,11).getValues();
@@ -501,7 +518,10 @@ function cerrarConteoFolio(folio){
       fila[6], fila[7], fila[8], resultado, new Date(), usuario
     ]);
 
-    if(resultado == "AJUSTADO"){
+    const estadoResuelto = estadoDiscrepanciaPorProducto[String(fila[3])];
+    const yaResueltaIndividualmente = estadoResuelto === "RECHAZADO" || estadoResuelto === "APROBADO";
+
+    if(resultado == "AJUSTADO" && !yaResueltaIndividualmente){
 
       auditoriaDatos.push([
         fechaHoy, fila[3], fila[4], existenciaAnterior, existenciaNueva, diferencia,
@@ -751,54 +771,45 @@ function onEdit(e) {
 
     if (codigo == "") return;
 
-    const ss = SpreadsheetApp.getActive();
-    const matriz = ss.getSheetByName("MATRIZ");
+    // ANTES: este trigger asumía que la columna Existencia de MATRIZ ya
+    // reflejaba el cambio (como si K tuviera una fórmula viva atada a
+    // ENTRADA/SALIDA) y solo escribía un Kardex "de adorno" con números
+    // calculados a mano leyendo el valor ACTUAL de K — pero nada en
+    // este trigger tocaba MATRIZ. Resultado real: alguien escribe una
+    // cantidad directo en la hoja, el Kardex queda registrado como si
+    // el movimiento hubiera ocurrido, y la existencia real de MATRIZ
+    // nunca se mueve (auditoría de arquitectura multi-sucursal).
+    // AHORA: usa la misma función central que usa el resto del sistema
+    // (Entradas/Salidas de la app, Dashboard legado) — con el mismo
+    // lock y la misma validación de existencia insuficiente — así que
+    // editar la hoja a mano también queda correcto y consistente.
+    try {
 
-    const datosMatriz = matriz
-      .getRange(2, 1, matriz.getLastRow() - 1, 11)
-      .getValues();
+      const resultadoExistencia = nombreHoja == "ENTRADA"
+        ? ajustarExistenciaMatrizPorDelta_(codigo, cantidad)
+        : ajustarExistenciaMatrizPorDeltaValidado_(codigo, -cantidad);
 
-    let existenciaNueva = 0;
-
-    for (let i = 0; i < datosMatriz.length; i++) {
-
-      if (datosMatriz[i][4] == codigo) {
-
-        existenciaNueva = Number(datosMatriz[i][10]) || 0;
-        break;
-
+      if (!resultadoExistencia) {
+        SpreadsheetApp.getActive().toast("Código " + codigo + " no encontrado en MATRIZ — no se movió existencia ni se registró Kardex.", "⚠️ Movimiento no aplicado", 8);
+        return;
       }
 
+      registrarKardex(
+        nombreHoja,
+        "",
+        codigo,
+        producto,
+        nombreHoja == "ENTRADA" ? cantidad : "",
+        nombreHoja == "SALIDA" ? cantidad : "",
+        resultadoExistencia.anterior,
+        resultadoExistencia.nueva,
+        obtenerNombreUsuario(),
+        "Editado directo en la hoja " + nombreHoja
+      );
+
+    } catch (error) {
+      SpreadsheetApp.getActive().toast(error.message, "⚠️ Movimiento no aplicado", 8);
     }
-
-    let existenciaAnterior;
-    let entradaVal = "";
-    let salidaVal  = "";
-
-    if (nombreHoja == "ENTRADA") {
-
-      existenciaAnterior = existenciaNueva - cantidad;
-      entradaVal = cantidad;
-
-    } else {
-
-      existenciaAnterior = existenciaNueva + cantidad;
-      salidaVal = cantidad;
-
-    }
-
-    registrarKardex(
-      nombreHoja,
-      "",
-      codigo,
-      producto,
-      entradaVal,
-      salidaVal,
-      existenciaAnterior,
-      existenciaNueva,
-      obtenerNombreUsuario(),
-      ""
-    );
 
     return;
 
@@ -971,68 +982,84 @@ function generarConteoRacks(racks){
     "yyyyMMdd"
   );
 
-  let consecutivo = 1;
+  // El folio consecutivo del día y la reserva de las filas quedan
+  // protegidos por el mismo lock que ya usa la generación manual
+  // (generarConteoRacksApp, en 📁 App.gs.gs) — antes esta ruta (la que
+  // usa la programación automática de conteos) calculaba el consecutivo
+  // sin ningún bloqueo, y podía coincidir con el folio que la generación
+  // manual acababa de tomar si las dos corrían casi al mismo tiempo.
+  let folioConteo;
 
-  if(conteo.getLastRow() > 1){
+  conBloqueoApp_(function(){
 
-    const folios = conteo
-      .getRange(2,1,conteo.getLastRow()-1,1)
-      .getValues()
-      .flat();
+    let consecutivo = 1;
 
-    const conteosHoy = folios.filter(f =>
-      f.toString().includes("CC-"+fechaCodigo)
-    );
+    if(conteo.getLastRow() > 1){
 
-    consecutivo = conteosHoy.length + 1;
+      const folios = conteo
+        .getRange(2,1,conteo.getLastRow()-1,1)
+        .getValues()
+        .flat();
 
-  }
+      // Contar folios DISTINTOS, no filas (un folio = varias filas, una
+      // por producto) — mismo fix que generarConteoRacksApp.
+      const foliosHoy = new Set(
+        folios
+          .filter(f => f.toString().includes("CC-"+fechaCodigo))
+          .map(f => f.toString())
+      );
 
-  const folioConteo =
-    "CC-"+fechaCodigo+"-"+Utilities.formatString(
-      "%03d",
-      consecutivo
-    );
-
-  datos.forEach((fila,index)=>{
-
-    let rackProducto = fila[6];
-
-    if(
-      racks.includes(rackProducto)
-      && fila[4]
-      && fila[9]
-    ){
-
-      salida.push([
-        folioConteo,
-        fecha,
-        usuario,
-        fila[4],
-        fila[0],
-        fila[9],
-        fila[10],
-        "",
-        "",
-        "PENDIENTE",
-        rackProducto
-      ]);
+      consecutivo = foliosHoy.size + 1;
 
     }
 
+    folioConteo =
+      "CC-"+fechaCodigo+"-"+Utilities.formatString(
+        "%03d",
+        consecutivo
+      );
+
+    datos.forEach((fila,index)=>{
+
+      let rackProducto = fila[6];
+
+      if(
+        racks.includes(rackProducto)
+        && fila[4]
+        && fila[9]
+      ){
+
+        salida.push([
+          folioConteo,
+          fecha,
+          usuario,
+          fila[4],
+          fila[0],
+          fila[9],
+          fila[10],
+          "",
+          "",
+          "PENDIENTE",
+          rackProducto
+        ]);
+
+      }
+
+    });
+
+    if(salida.length>0){
+
+      conteo
+        .getRange(
+          conteo.getLastRow()+1,
+          1,
+          salida.length,
+          11
+        )
+        .setValues(salida);
+    }
+
   });
-
-  if(salida.length>0){
-
-    conteo
-      .getRange(
-        conteo.getLastRow()+1,
-        1,
-        salida.length,
-        11
-      )
-      .setValues(salida);
-  }
 
   registrarControlConteo(
     folioConteo,
@@ -1054,13 +1081,23 @@ function generarConteoRacks(racks){
     "Conteo generado para racks: "+racks.join(", ")
   );
 
-  SpreadsheetApp.getUi()
-    .alert(
-      "Conteo generado correctamente\n\nRacks: "+
-      racks.join(", ")+
-      "\nProductos: "+
-      salida.length
-    );
+  // Esta función también se invoca sin interfaz de Sheets abierta (desde
+  // generarConteosDelDia, para la programación automática de conteos) —
+  // ahí SpreadsheetApp.getUi() no tiene a quién mostrarle el aviso y
+  // lanza su propio error. El conteo ya se generó correctamente arriba;
+  // que no haya alguien viendo la hoja en este momento no debe hacer
+  // fallar la función completa.
+  try{
+    SpreadsheetApp.getUi()
+      .alert(
+        "Conteo generado correctamente\n\nRacks: "+
+        racks.join(", ")+
+        "\nProductos: "+
+        salida.length
+      );
+  }catch(e){
+    // sin interfaz activa (ejecución automática) — no hay nada que hacer aquí
+  }
 
 }
 
@@ -1197,11 +1234,26 @@ function obtenerDiscrepanciasPendientes(){
 
 }
 
-function rechazarDiscrepancia(fila, comentario){
+function rechazarDiscrepancia(fila, comentario, token){
+
+  requerirAccesoAlmacenLegadoApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
     .getSheetByName("DISCREPANCIAS");
+
+  // Idempotencia/consistencia: si esta fila ya se resolvió antes (aprobada
+  // o rechazada — doble clic, reintento, o dos personas viendo la misma
+  // fila pendiente), no se vuelve a escribir nada. Antes, rechazar una
+  // fila YA APROBADA sobreescribía el estado a RECHAZADO/"SIN AJUSTE"
+  // aunque el ajuste ya se hubiera aplicado a MATRIZ y Kardex — la fila
+  // quedaba contando una historia distinta a lo que realmente pasó, sin
+  // revertir ni duplicar ningún movimiento real. Mismo criterio que ya
+  // usa aprobarDiscrepancia.
+  const estadoActual = String(hoja.getRange(fila, 10).getValue() || "").trim().toUpperCase();
+  if(estadoActual === "APROBADO" || estadoActual === "RECHAZADO"){
+    return { ok: true, yaProcesada: true };
+  }
 
   hoja.getRange(fila,10).setValue("RECHAZADO");
   hoja.getRange(fila,11).setValue(obtenerUsuario());
@@ -1209,11 +1261,13 @@ function rechazarDiscrepancia(fila, comentario){
   hoja.getRange(fila,13).setValue(comentario);
   hoja.getRange(fila,14).setValue("SIN AJUSTE");
 
-  return true;
+  return { ok: true, yaProcesada: false };
 
 }
 
-function aprobarDiscrepancia(fila, motivo, comentario) {
+function aprobarDiscrepancia(fila, motivo, comentario, token) {
+
+  requerirAccesoAlmacenLegadoApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("DISCREPANCIAS");
@@ -1231,6 +1285,15 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
   const fisico       = Number(datos[6]) || 0;
   const diferencia    = Number(datos[7]) || 0;
   const rack           = datos[8] || "";
+  const estadoActual   = String(datos[9]||"").trim().toUpperCase();
+
+  // Idempotencia: si esta fila ya se aprobó antes (doble clic, reintento
+  // de red, o la misma fila procesada dos veces en un lote), no se
+  // vuelve a aplicar el ajuste ni a duplicar ENTRADA/SALIDA/Kardex/
+  // Auditoría — se avisa que ya estaba procesada y no se hace nada más.
+  if(estadoActual === "APROBADO"){
+    return { ok: true, yaProcesada: true };
+  }
 
   const usuario = obtenerUsuario();
   const nombreUsuario = obtenerNombreUsuario();
@@ -1240,6 +1303,15 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
     "ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO",
     "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"
   ];
+
+  // Aplica el ajuste a la existencia REAL de MATRIZ antes de escribir
+  // nada más — si por alguna razón no se puede aplicar (p. ej. dejaría
+  // la existencia negativa), se detiene aquí y la fila se queda como
+  // estaba, en vez de marcar "APROBADO" sin que el número haya cambiado
+  // (que era exactamente el problema: la aprobación nunca tocaba MATRIZ).
+  if(diferencia !== 0){
+    ajustarExistenciaMatrizPorDeltaValidado_(codigo, diferencia);
+  }
 
   hoja.getRange(fila, 10).setValue("APROBADO");
   hoja.getRange(fila, 11).setValue(usuario);
@@ -1308,18 +1380,18 @@ function aprobarDiscrepancia(fila, motivo, comentario) {
     motivo + " - " + comentario
   );
 
-  return true;
+  return { ok: true, yaProcesada: false };
 
 }
 
-function aprobarDiscrepanciasLoteApp(lista){
+function aprobarDiscrepanciasLoteApp(lista, token){
 
   let exitosas = 0;
   let fallidas = [];
 
   (lista || []).forEach(item=>{
     try{
-      aprobarDiscrepancia(item.fila, item.motivo, item.comentario || "");
+      aprobarDiscrepancia(item.fila, item.motivo, item.comentario || "", token);
       exitosas++;
     }catch(e){
       fallidas.push({ fila: item.fila, error: e.message });
@@ -1566,6 +1638,8 @@ observacion
     observacion
   ]);
 
+  invalidarCacheHoja_("KARDEX");
+
 }
 
 function obtenerProductoPorCodigo(codigo) {
@@ -1600,6 +1674,21 @@ function obtenerProductoPorCodigo(codigo) {
   return null;
 }
 
+/**
+ * Movimiento (Entrada/Salida) desde el Dashboard legado de Sheets
+ * (Dashboard.html). ÚNICA definición del proyecto — antes existía una
+ * copia casi idéntica en MovimientosDashboard.gs, y cuál de las dos
+ * "ganaba" dependía del orden interno del proyecto de Apps Script, no
+ * de nada visible en el repo. Auditoría de arquitectura multi-sucursal
+ * encontró además que NINGUNA de las dos copias actualizaba la
+ * Existencia real de MATRIZ — ambas calculaban "existencia nueva" a
+ * mano y solo la escribían en Kardex, dejando Kardex y MATRIZ
+ * desincronizados en cuanto alguien usara esta pantalla. Ahora usa la
+ * misma función central que ya usan Entradas/Salidas de la app
+ * (ajustarExistenciaMatrizPorDelta_/...Validado_), así que queda
+ * protegida por el mismo lock, con la misma validación de existencia
+ * insuficiente, y de verdad deja MATRIZ actualizada.
+ */
 function registrarMovimientoDashboard(tipo, datosFormulario) {
   const tipoMovimiento = String(tipo || "").toUpperCase();
 
@@ -1619,11 +1708,16 @@ function registrarMovimientoDashboard(tipo, datosFormulario) {
     throw new Error("No se encontró el código en la hoja MATRIZ.");
   }
 
-  if (tipoMovimiento === "SALIDA" && cantidad > producto.existencia) {
-    throw new Error(
-      "Existencia insuficiente. Disponible: " + producto.existencia
-    );
-  }
+  // Única fuente de verdad para la existencia — misma función central
+  // que Entradas/Salidas de la app, con lock y validación de existencia
+  // insuficiente ya incluidos (para SALIDA, lanza "Existencia
+  // insuficiente. Disponible: X" si no alcanza, antes de escribir nada).
+  const resultadoExistencia = tipoMovimiento === "ENTRADA"
+    ? ajustarExistenciaMatrizPorDelta_(producto.codigo, cantidad)
+    : ajustarExistenciaMatrizPorDeltaValidado_(producto.codigo, -cantidad);
+
+  const existenciaAnterior = resultadoExistencia.anterior;
+  const existenciaNueva = resultadoExistencia.nueva;
 
   const ss = SpreadsheetApp.getActive();
   const hojaMovimiento = ss.getSheetByName(tipoMovimiento);
@@ -1651,11 +1745,6 @@ function registrarMovimientoDashboard(tipo, datosFormulario) {
     "",
     producto.ubicacion
   ]);
-
-  const existenciaAnterior = producto.existencia;
-  const existenciaNueva = tipoMovimiento === "ENTRADA"
-    ? existenciaAnterior + cantidad
-    : existenciaAnterior - cantidad;
 
   registrarKardex(
     tipoMovimiento,

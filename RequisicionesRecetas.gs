@@ -103,7 +103,7 @@ function obtenerTipoRequisicionApp(folio){
 
 }
 
-function obtenerDetalleRequisicionRecetaApp(folio){
+function obtenerDetalleRequisicionRecetaApp(folio, token){
 
   const req = obtenerHojaRequisiciones_();
   const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
@@ -111,6 +111,18 @@ function obtenerDetalleRequisicionRecetaApp(folio){
   datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
 
   if(!encabezado) throw new Error("No se encontró la requisición " + folio);
+
+  // Mismo criterio que obtenerDetalleRequisicionApp (Requisiciones de
+  // producto): un área solo ve las suyas, salvo Admin/Almacén. `token`
+  // es opcional para no romper llamadas internas ya protegidas por su
+  // propio guard (p. ej. Producción, que ya exige requerirAccesoAlmacenApp_
+  // antes de llegar aquí) — solo se aplica el filtro cuando se recibe token.
+  if(token){
+    const acceso = obtenerAccesoRequisicionesApp(token);
+    if(!acceso.esAdmin && String(encabezado[2]).trim() !== String(acceso.area).trim()){
+      throw new Error("No se encontró la requisición " + folio);
+    }
+  }
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   const anchoDetalle = Math.min(detalle.getLastColumn(), 7);
@@ -170,9 +182,9 @@ function buscarProductoEnMatrizPorNombre_(nombre){
 
 }
 
-function obtenerCalculoIngredientesRequisicionApp(folio){
+function obtenerCalculoIngredientesRequisicionApp(folio, token){
 
-  const detalleReceta = obtenerDetalleRequisicionRecetaApp(folio);
+  const detalleReceta = obtenerDetalleRequisicionRecetaApp(folio, token);
 
   const acumulado = {}; // ingrediente normalizado -> {nombre, necesario, udmReceta}
 
@@ -196,7 +208,26 @@ function obtenerCalculoIngredientesRequisicionApp(folio){
   const ingredientes = Object.values(acumulado).map(ing => {
 
     const producto = buscarProductoEnMatrizPorNombre_(ing.nombre);
-    const necesario = Math.round(ing.necesario * 1000) / 1000;
+    let necesario = Math.round(ing.necesario * 1000) / 1000; // todavía en la UDM de la receta
+    let sinConversionPosible = false;
+
+    // La receta puede capturar el ingrediente en una UDM distinta a la
+    // que usa MATRIZ para ese mismo producto (p. ej. receta en G,
+    // producto controlado en KG) — antes se comparaba/descontaba el
+    // número tal cual, sin convertir, lo que podía tratar 500 (gramos)
+    // como si fueran 500 kg. Ahora se convierte a la UDM real del
+    // producto antes de comparar contra existencia o sugerir cuánto
+    // entregar. Si las unidades no son de la misma magnitud (p. ej. PZ
+    // contra KG) no se inventa un factor — se deja tal cual y se marca
+    // para revisión manual.
+    if(producto){
+      const factor = factorConversionUDM_(ing.udmReceta, producto.udm);
+      if(factor !== null){
+        necesario = Math.round(necesario * factor * 1000) / 1000;
+      } else {
+        sinConversionPosible = true;
+      }
+    }
 
     return {
       nombre: ing.nombre,
@@ -205,7 +236,8 @@ function obtenerCalculoIngredientesRequisicionApp(folio){
       necesario: necesario,
       existencia: producto ? producto.existencia : null,
       entregarSugerido: producto ? Math.max(Math.min(necesario, producto.existencia), 0) : 0,
-      encontrado: !!producto
+      encontrado: !!producto,
+      sinConversionPosible: sinConversionPosible
     };
 
   });
