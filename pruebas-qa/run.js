@@ -37,6 +37,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'legado/movimientos-dashboard.test.js',
   'legado/onedit-entrada-salida.test.js',
   'notificaciones/notificaciones.test.js',
+  'reportes/reportes.test.js',
 ];
 
 function cargarTodasLasPruebas() {

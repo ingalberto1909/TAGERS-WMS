@@ -10229,21 +10229,80 @@ function abrirDashboard(){
 
   <div class="vista-animada">
 
-  <h2>📊 Dashboard</h2>
-
-  <div class="resumen" id="resumenDashboard">Cargando...</div>
-
-  <div class="graficas">
-
-  <div class="cardProducto graficaCaja">
-  <h3>Estado del inventario</h3>
-  <canvas id="chartEstado"></canvas>
+  <div class="dashboardHeader">
+    <div>
+      <h2>${tgIcon("tendenciaSube",20)} Reportes</h2>
+      <p>Valor, tendencia y salud del inventario — vista ejecutiva.</p>
+    </div>
   </div>
 
-  <div class="cardProducto graficaCaja">
-  <h3>Entradas vs salidas (7 días)</h3>
-  <canvas id="chartMovimientos"></canvas>
+  <div class="kpiGrid">
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("dinero",18)}</div>
+      <div class="kpiLabel">Valor de inventario</div>
+      <div class="kpiValor" id="repValorInventario"><span class="skeleton skeletonLinea" style="width:60px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">existencia × costo</div>
+    </div>
+    <div class="kpiCard tono-terracota">
+      <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
+      <div class="kpiLabel">Sin costo asignado</div>
+      <div class="kpiValor" id="repSinCosto"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">no entran al valor de arriba</div>
+    </div>
+    <div class="kpiCard tono-oliva">
+      <div class="kpiIcono">${tgIcon("documento",18)}</div>
+      <div class="kpiLabel">Discrepancias</div>
+      <div class="kpiValor" id="repDiscrepancias"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">pendientes de aprobar</div>
+    </div>
+    <div class="kpiCard tono-guinda">
+      <div class="kpiIcono">${tgIcon("refrescar",18)}</div>
+      <div class="kpiLabel">Conteos abiertos</div>
+      <div class="kpiValor" id="repConteos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
+      <div class="kpiNota">ciclos en curso</div>
+    </div>
   </div>
+
+  <div class="cardValorInventario">
+    <div>
+      <div class="etiqueta">${tgIcon("dinero",14)} Valor monetario del inventario</div>
+      <div class="valor" id="repValorGrande"><span class="skeleton skeletonLinea" style="width:140px;height:28px;display:inline-block;background:rgba(255,255,255,.25)"></span></div>
+    </div>
+    <div class="nota" id="repValorGrandeNota"></div>
+  </div>
+
+  <div class="panelesInicio">
+
+    <div class="cardProducto graficaCaja">
+      <h3>Tendencia mensual — Entradas vs. Salidas</h3>
+      <p style="color:var(--text-soft);font-size:12px;margin:-8px 0 8px">Cantidad total movida por mes (kg/pz/etc.), últimos 6 meses</p>
+      <canvas id="chartTendenciaMensual"></canvas>
+    </div>
+
+    <div class="cardProducto graficaCaja">
+      <h3>Valor de inventario por categoría</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:-6px">Top categorías por valor monetario</p>
+      <canvas id="chartValorCategoria"></canvas>
+    </div>
+
+  </div>
+
+  <div class="panelesInicio">
+
+    <div class="cardProducto graficaCaja">
+      <h3>Valor de inventario por proveedor</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:-6px">Top proveedores por valor monetario</p>
+      <canvas id="chartValorProveedor"></canvas>
+    </div>
+
+    <div class="cardProducto">
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("alertaTriangulo",16)} Bajo mínimo — más urgentes</h3>
+      <p style="font-size:11.5px;color:var(--text-muted);margin-top:-6px">Riesgo de quiebre de stock</p>
+      <table class="tablaTop">
+        <thead><tr><th>Producto</th><th style="text-align:right">Exist. / Mín.</th></tr></thead>
+        <tbody id="repTablaBajoMinimo">${filasSkeleton(2,4)}</tbody>
+      </table>
+    </div>
 
   </div>
 
@@ -10251,92 +10310,84 @@ function abrirDashboard(){
 
   `;
 
-  google.script.run
-  .withSuccessHandler(mostrarResumenDashboardReal)
-  .withFailureHandler(function(e){ alert(e.message); })
-  .obtenerDashboardMovil();
-
-  google.script.run
-  .withSuccessHandler(dibujarChartMovimientos)
-  .withFailureHandler(function(e){ console.error(e.message); })
-  .obtenerEntradasSalidas7dias();
+  cargarReporteEjecutivo();
 
 }
 
-function mostrarResumenDashboardReal(datos){
+function cargarReporteEjecutivo(){
 
-  const contenedor=document.getElementById("resumenDashboard");
-  if(!contenedor){ return; }
-
-  contenedor.innerHTML=`
-
-  📦 Productos: <b>${datos.productos}</b>
-  <br>
-  📍 Ubicaciones: <b>${datos.ubicaciones}</b>
-  <br>
-  ⚠️ Bajo inventario: <b>${datos.bajo}</b>
-  <br>
-  ❌ Sin stock: <b>${datos.sinStock}</b>
-  <br>
-  📥 Entradas hoy: <b>${datos.entradas}</b>
-  <br>
-  📤 Salidas hoy: <b>${datos.salidas}</b>
-
-  `;
-
-  dibujarChartEstado(datos);
+  google.script.run
+    .withSuccessHandler(dibujarReporteEjecutivo)
+    .withFailureHandler(function(e){ console.error(e.message); alert("⚠️ " + e.message); })
+    .obtenerReporteEjecutivoApp();
 
 }
 
-function dibujarChartEstado(datos){
+function dibujarReporteEjecutivo(datos){
 
-  const ctx = document.getElementById("chartEstado");
-  if(!ctx){ return; }
+  if(!datos) return;
 
-  if(window.chartEstadoInstancia){
-    window.chartEstadoInstancia.destroy();
+  const elValor = document.getElementById("repValorInventario");
+  const elSinCosto = document.getElementById("repSinCosto");
+  const elDiscrepancias = document.getElementById("repDiscrepancias");
+  const elConteos = document.getElementById("repConteos");
+  const elValorGrande = document.getElementById("repValorGrande");
+  const elValorGrandeNota = document.getElementById("repValorGrandeNota");
+
+  const formatoDinero = n => "$" + Number(n||0).toLocaleString("es-MX", {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  if(elValor) elValor.innerText = formatoDinero(datos.valorInventario.total);
+  if(elSinCosto) elSinCosto.innerText = datos.valorInventario.productosSinCosto;
+  if(elDiscrepancias) elDiscrepancias.innerText = datos.contadores.discrepancias;
+  if(elConteos) elConteos.innerText = datos.contadores.conteosAbiertos;
+  if(elValorGrande) elValorGrande.innerText = formatoDinero(datos.valorInventario.total);
+  if(elValorGrandeNota){
+    const sinCosto = datos.valorInventario.productosSinCosto;
+    elValorGrandeNota.innerText = sinCosto > 0
+      ? sinCosto + " producto(s) en stock sin costo unitario capturado (no se incluyen en el total)"
+      : "Existencia × costo unitario, todos los productos con stock";
   }
 
-  window.chartEstadoInstancia = new Chart(ctx, {
-
-    type: "doughnut",
-
-    data: {
-      labels: ["Normal","Bajo mínimo","Sin stock"],
-      datasets: [{
-        data: [datos.normal, datos.bajo, datos.sinStock],
-        backgroundColor: ["#5C6B2A","#C4522A","#6B2737"]
-      }]
-    },
-
-    options: {
-      plugins: { legend: { position: "bottom", labels: { color: getComputedStyle(document.body).getPropertyValue("--text") } } }
+  const tbodyBajo = document.getElementById("repTablaBajoMinimo");
+  if(tbodyBajo){
+    if(!datos.topBajoMinimo || !datos.topBajoMinimo.length){
+      tbodyBajo.innerHTML = `<tr><td colspan="2">${tgEmptyState("checkCirculo", "Sin productos bajo mínimo")}</td></tr>`;
+    } else {
+      tbodyBajo.innerHTML = datos.topBajoMinimo.map(p=>`
+        <tr style="cursor:pointer" onclick="abrirDetalleProducto('${p.codigo}')">
+          <td>${p.producto}</td>
+          <td class="num" style="color:${p.estado==='Agotado'?'var(--guinda)':'var(--terracota)'}">${p.existencia} / ${p.minimo}</td>
+        </tr>
+      `).join("");
     }
+  }
 
-  });
+  dibujarChartTendenciaMensual(datos.tendenciaMensual);
+  dibujarChartValorAgrupado("chartValorCategoria", "chartValorCategoriaInstancia", datos.valorPorCategoria);
+  dibujarChartValorAgrupado("chartValorProveedor", "chartValorProveedorInstancia", datos.valorPorProveedor);
 
 }
 
-function dibujarChartMovimientos(datos){
+function dibujarChartTendenciaMensual(datos){
 
-  const ctx = document.getElementById("chartMovimientos");
-  if(!ctx){ return; }
+  const ctx = document.getElementById("chartTendenciaMensual");
+  if(!ctx || !datos) return;
 
-  if(window.chartMovInstancia){
-    window.chartMovInstancia.destroy();
+  if(window.chartTendenciaInstancia){
+    window.chartTendenciaInstancia.destroy();
   }
 
   const colorTexto = getComputedStyle(document.body).getPropertyValue("--text");
 
-  window.chartMovInstancia = new Chart(ctx, {
+  window.chartTendenciaInstancia = new Chart(ctx, {
 
-    type: "bar",
+    type: "line",
 
     data: {
       labels: datos.labels,
       datasets: [
-        { label: "Entradas", data: datos.entradas, backgroundColor: "#5C6B2A" },
-        { label: "Salidas", data: datos.salidas, backgroundColor: "#C4522A" }
+        { label: "Entradas", data: datos.entradas, borderColor: "#5C6B2A", backgroundColor: "rgba(92,107,42,.15)", tension: .3, fill: true },
+        { label: "Salidas", data: datos.salidas, borderColor: "#C4522A", backgroundColor: "rgba(196,82,42,.15)", tension: .3, fill: true }
       ]
     },
 
@@ -10346,6 +10397,54 @@ function dibujarChartMovimientos(datos){
       scales: {
         x: { ticks: { color: colorTexto }, grid: { display:false } },
         y: { ticks: { color: colorTexto }, beginAtZero:true }
+      }
+    }
+
+  });
+
+}
+
+function dibujarChartValorAgrupado(idCanvas, idInstancia, lista){
+
+  const ctx = document.getElementById(idCanvas);
+  if(!ctx) return;
+
+  if(window[idInstancia]){
+    window[idInstancia].destroy();
+  }
+
+  const colorTexto = getComputedStyle(document.body).getPropertyValue("--text");
+  const paleta = ["#6B2737","#5C6B2A","#C4522A","#8a3244","#7a8a3a","#d9764a","#4a5820","#a54258"];
+
+  if(!lista || !lista.length){
+    window[idInstancia] = null;
+    ctx.getContext("2d").clearRect(0,0,ctx.width,ctx.height);
+    return;
+  }
+
+  window[idInstancia] = new Chart(ctx, {
+
+    type: "bar",
+
+    data: {
+      labels: lista.map(g => g.nombre),
+      datasets: [{
+        label: "Valor",
+        data: lista.map(g => g.valor),
+        backgroundColor: lista.map((g,i) => paleta[i % paleta.length])
+      }]
+    },
+
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => "$" + Number(c.raw).toLocaleString("es-MX",{minimumFractionDigits:2}) } }
+      },
+      scales: {
+        x: { ticks: { color: colorTexto, callback: v => "$" + Number(v).toLocaleString("es-MX") }, beginAtZero:true },
+        y: { ticks: { color: colorTexto }, grid: { display:false } }
       }
     }
 

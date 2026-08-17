@@ -1942,6 +1942,117 @@ function obtenerResumenExtraDashboardApp(){
 }
 
 /**
+ * REPORTES (dashboard ejecutivo) — a diferencia de Inicio (operativo,
+ * "qué hago ahora"), esto es valor/tendencia/salud del negocio: cuánto
+ * vale el inventario y en qué está concentrado, y cómo se mueve mes a
+ * mes, no día a día. Agrupa MATRIZ (una sola pasada, ya cacheada) por
+ * Categoría y por Proveedor, sumando valor con la MISMA
+ * calcularValorInventario_ que ya usa "Valor monetario del inventario"
+ * en Inicio — ningún cálculo nuevo, solo una agrupación nueva sobre el
+ * mismo número.
+ */
+function obtenerValorInventarioAgrupadoApp_(indiceColumna){
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  datos.shift();
+
+  const porGrupo = {};
+
+  datos.forEach(f=>{
+    const existencia = Number(f[10]) || 0;
+    const costo = Number(f[17]) || 0;
+    if(existencia <= 0 || costo <= 0) return;
+
+    const convertir = f[18];
+    const presentacion = f[19];
+    const valor = calcularValorInventario_(existencia, costo, convertir, presentacion);
+
+    const grupo = String(f[indiceColumna] || "Sin clasificar").trim() || "Sin clasificar";
+    if(!porGrupo[grupo]) porGrupo[grupo] = { nombre: grupo, valor: 0, productos: 0 };
+    porGrupo[grupo].valor += valor;
+    porGrupo[grupo].productos += 1;
+  });
+
+  const lista = Object.values(porGrupo)
+    .map(g => ({ nombre: g.nombre, valor: Math.round(g.valor * 100) / 100, productos: g.productos }))
+    .sort((a,b) => b.valor - a.valor);
+
+  // Top 7 + "Otros" agrupado, para que la gráfica no se llene de rebanadas
+  // ilegibles cuando el catálogo tiene muchas categorías/proveedores.
+  if(lista.length <= 8) return lista;
+
+  const top = lista.slice(0, 7);
+  const resto = lista.slice(7);
+  const otros = resto.reduce((acc, g) => ({
+    nombre: "Otros (" + resto.length + ")", valor: Math.round((acc.valor + g.valor) * 100) / 100, productos: acc.productos + g.productos
+  }), { nombre: "Otros", valor: 0, productos: 0 });
+
+  return top.concat([otros]);
+
+}
+
+/**
+ * Tendencia mensual (últimos 6 meses) — a diferencia de
+ * obtenerEntradasSalidas7dias (productos DISTINTOS por día, para "qué
+ * pasó hoy"), esto sirve para ver ritmo de negocio: CANTIDAD total
+ * movida (kg/pz/etc., sumando la columna Entrada o Salida de KARDEX)
+ * por mes, no un conteo de productos distintos.
+ */
+function obtenerTendenciaMensualApp(){
+
+  const kardex = SpreadsheetApp.getActive().getSheetByName("KARDEX");
+  if(!kardex || kardex.getLastRow() < 2){
+    return { labels: [], entradas: [], salidas: [] };
+  }
+
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
+
+  const hoy = new Date();
+  const meses = [];
+  for(let i = 5; i >= 0; i--){
+    meses.push(new Date(hoy.getFullYear(), hoy.getMonth() - i, 1));
+  }
+
+  const labels = meses.map(m => Utilities.formatDate(m, Session.getScriptTimeZone(), "MMMM").slice(0,3) + " " + m.getFullYear());
+  const entradas = meses.map(() => 0);
+  const salidas = meses.map(() => 0);
+
+  datos.forEach(fila=>{
+    const fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
+    if(isNaN(fecha.getTime())) return;
+
+    const idx = meses.findIndex(m => m.getFullYear() === fecha.getFullYear() && m.getMonth() === fecha.getMonth());
+    if(idx === -1) return;
+
+    const tipo = String(fila[2]||"").toUpperCase();
+    if(tipo === "ENTRADA") entradas[idx] += Number(fila[6]) || 0;
+    if(tipo === "SALIDA") salidas[idx] += Number(fila[7]) || 0;
+  });
+
+  return {
+    labels: labels,
+    entradas: entradas.map(v => Math.round(v * 100) / 100),
+    salidas: salidas.map(v => Math.round(v * 100) / 100)
+  };
+
+}
+
+/**
+ * Un solo viaje al servidor para toda la pantalla de Reportes.
+ */
+function obtenerReporteEjecutivoApp(){
+  return {
+    valorInventario: obtenerValorInventarioApp(),
+    valorPorCategoria: obtenerValorInventarioAgrupadoApp_(2),
+    valorPorProveedor: obtenerValorInventarioAgrupadoApp_(16),
+    tendenciaMensual: obtenerTendenciaMensualApp(),
+    contadores: obtenerContadoresControl(),
+    topBajoMinimo: obtenerTopBajoMinimoApp()
+  };
+}
+
+/**
  * NUEVO: un solo endpoint que junta todo lo que necesita el dashboard de
  * Inicio (KPIs, gráfica 7 días, mapa de calor, actividad reciente).
  */
