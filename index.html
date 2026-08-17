@@ -3083,8 +3083,16 @@ function abrirNuevaRequisicion(){
 
     <p style="font-size:12.5px;color:var(--text-muted)">El área se toma de tu usuario automáticamente.</p>
 
-    <label>Observaciones (opcional)</label>
-    <input id="observacionesRequisicion" placeholder="Notas para almacén">
+    <div class="gridFormulario">
+      <div class="campo">
+        <label>Observaciones (opcional)</label>
+        <input id="observacionesRequisicion" placeholder="Notas para almacén">
+      </div>
+      <div class="campo">
+        <label>Fecha requerida (opcional)</label>
+        <input id="fechaRequeridaRequisicion" type="date">
+      </div>
+    </div>
 
     <div id="sugeridosRequisicion" style="margin:14px 0"></div>
 
@@ -3258,6 +3266,7 @@ function dibujarTablaNuevaRequisicion(){
 function enviarNuevaRequisicion(){
 
   const observaciones = document.getElementById("observacionesRequisicion").value.trim();
+  const fechaRequerida = document.getElementById("fechaRequeridaRequisicion").value || "";
   const lista = window.itemsNuevaRequisicion || [];
 
   const items = lista.map((p,i) => {
@@ -3287,7 +3296,7 @@ function enviarNuevaRequisicion(){
       activarCargaBoton("btnEnviarRequisicion", false);
       mostrarMensajeTemporal("mensajeRequisicion", "⚠️ " + e.message, "error");
     })
-    .crearRequisicionApp(observaciones, items, obtenerTokenSesion());
+    .crearRequisicionApp(observaciones, items, obtenerTokenSesion(), fechaRequerida);
 
 }
 
@@ -3307,7 +3316,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
-        <tr><th>Folio</th><th>Área</th><th>Solicitante</th><th>Fecha</th><th>Estado</th><th></th></tr>
+        <tr><th>Folio</th><th>Área</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
       <tbody>
         ${lista.map(r => `
@@ -3316,6 +3325,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td>${r.area}</td>
             <td>${r.solicitante}</td>
             <td>${r.fecha}</td>
+            <td>${r.fechaRequerida || "—"}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
             <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
               <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
@@ -3388,8 +3398,16 @@ function abrirRequisicionesSucursal(){
 
   <div class="cardProducto">
 
-    <label>Observaciones (opcional)</label>
-    <input id="observacionesRequisicionSucursal" placeholder="Notas para quien surte">
+    <div class="gridFormulario">
+      <div class="campo">
+        <label>Observaciones (opcional)</label>
+        <input id="observacionesRequisicionSucursal" placeholder="Notas para quien surte">
+      </div>
+      <div class="campo">
+        <label>Fecha requerida (opcional)</label>
+        <input id="fechaRequeridaRequisicionSucursal" type="date">
+      </div>
+    </div>
 
     <div id="mensajeRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
@@ -3674,6 +3692,7 @@ function dibujarTablaNuevaRequisicionSucursal(){
 function enviarNuevaRequisicionSucursal(){
 
   const observaciones = document.getElementById("observacionesRequisicionSucursal").value.trim();
+  const fechaRequerida = document.getElementById("fechaRequeridaRequisicionSucursal").value || "";
   const lista = window.itemsRequisicionSucursal || [];
 
   const items = lista.map((p,i) => {
@@ -3698,13 +3717,14 @@ function enviarNuevaRequisicionSucursal(){
       window.itemsRequisicionSucursal = [];
       dibujarTablaNuevaRequisicionSucursal();
       document.getElementById("observacionesRequisicionSucursal").value = "";
+      document.getElementById("fechaRequeridaRequisicionSucursal").value = "";
       cargarListaRequisicionesSucursal();
     })
     .withFailureHandler(function(e){
       activarCargaBoton("btnEnviarRequisicionSucursal", false);
       mostrarMensajeTemporal("mensajeRequisicionSucursal", "⚠️ " + e.message, "error");
     })
-    .crearRequisicionSucursalApp(observaciones, items, obtenerTokenSesion());
+    .crearRequisicionSucursalApp(observaciones, items, obtenerTokenSesion(), fechaRequerida);
 
 }
 
@@ -3733,7 +3753,7 @@ function dibujarTablaRequisicionesSucursal(lista){
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
-        <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Estado</th><th></th></tr>
+        <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
       <tbody>
         ${lista.map(r => `
@@ -3742,6 +3762,7 @@ function dibujarTablaRequisicionesSucursal(lista){
             <td>${r.sucursal}</td>
             <td>${r.solicitante}</td>
             <td>${r.fecha}</td>
+            <td>${r.fechaRequerida || "—"}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
             <td><span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSucursal('${r.folio}')">${tgIcon("buscar",15)}</span></td>
           </tr>
@@ -3771,7 +3792,7 @@ function verDetalleRequisicionSucursal(folio){
             <div class="cardProducto">
               <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:9px">${tgIcon("documento",18)} ${detalle.folio} — Sucursal ${detalle.sucursal}</h3>
               <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
-                Solicitó: ${detalle.solicitante} — ${detalle.fecha} — ${dibujarBadgeEstadoRequisicion(detalle.estado)}
+                Solicitó: ${detalle.solicitante} — ${detalle.fecha}${detalle.fechaRequerida ? " — Requerida: " + detalle.fechaRequerida : ""} — ${dibujarBadgeEstadoRequisicion(detalle.estado)}
               </p>
               <table class="tablaTop" style="font-size:13px">
                 <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia en ${detalle.sucursal}</th>${puedeEntregar ? '<th style="text-align:right">Entregar</th>' : '<th style="text-align:right">Entregado</th>'}</tr></thead>
@@ -4220,7 +4241,7 @@ function verDetalleRequisicionProducto(folio){
       `).join("");
 
       document.getElementById("modalListaBody").innerHTML = `
-        <p style="font-size:12.5px;color:var(--text-muted)">${datos.area} — ${datos.solicitante} — ${datos.fecha} — ${dibujarBadgeEstadoRequisicion(datos.estado)}</p>
+        <p style="font-size:12.5px;color:var(--text-muted)">${datos.area} — ${datos.solicitante} — ${datos.fecha}${datos.fechaRequerida ? " — Requerida: " + datos.fechaRequerida : ""} — ${dibujarBadgeEstadoRequisicion(datos.estado)}</p>
         ${datos.observaciones ? `<p style="font-size:12.5px"><b>Observaciones:</b> ${datos.observaciones}</p>` : ""}
         <table class="tablaActividad">
           <thead><tr><th>Producto</th><th>Solicitado</th><th>Entregado</th></tr></thead>
@@ -7645,10 +7666,10 @@ function actualizarNotificaciones(){
 
     const vistos = new Set(obtenerVistosNotificaciones());
 
-    // Si ya la viste Y sigue en el mismo estado (Bajo/Agotado), no vuelve
-    // a contar ni a aparecer. Si cambió de estado (ej. Bajo -> Agotado),
-    // se considera nueva otra vez.
-    const nuevas = (lista || []).filter(p => !vistos.has(p.codigo + "|" + p.estado));
+    // Si ya la viste Y sigue igual (misma clave), no vuelve a contar ni a
+    // aparecer. Si cambió (ej. Bajo -> Agotado, o el conteo de conteos
+    // abiertos subió), se considera nueva otra vez.
+    const nuevas = (lista || []).filter(n => !vistos.has(n.clave));
 
     window.notiLista = nuevas;
 
@@ -7669,7 +7690,7 @@ function actualizarNotificaciones(){
     console.error(e.message);
   })
 
-  .obtenerProductosBajoMinimo();
+  .obtenerNotificacionesApp(obtenerTokenSesion());
 
 }
 
@@ -7694,20 +7715,61 @@ function dibujarNotificaciones(){
   const panel = document.getElementById("listaNotificaciones");
 
   if(!window.notiLista || !window.notiLista.length){
-    panel.innerHTML = "<div class='notiItem'>Sin alertas de inventario 🎉</div>";
+    panel.innerHTML = "<div class='notiItem'>Sin alertas pendientes 🎉</div>";
     return;
   }
 
-  panel.innerHTML = window.notiLista.map(p=>{
+  panel.innerHTML = window.notiLista.map(n=>{
 
-    const color = p.estado === "Agotado" ? "var(--guinda)" : "var(--terracota)";
+    const color = n.tipo === "inventario" ? (n.datos.estado === "Agotado" ? "var(--guinda)" : "var(--terracota)")
+                : n.urgente ? "var(--guinda)" : "var(--text-muted)";
 
-    return `<div class="notiItem" style="cursor:pointer" onclick="abrirDetalleProducto('${p.codigo}', '${p.estado}')">
-      <b>${p.producto}</b><br>
-      <span style="color:${color}">${p.estado} — existencia ${p.existencia} (mín. ${p.minimo})</span>
+    const claveJs = n.clave.replace(/'/g,"&apos;");
+    const datosJs = JSON.stringify(n.datos).replace(/'/g,"&apos;");
+
+    return `<div class="notiItem" style="cursor:pointer" onclick='manejarClicNotificacion("${n.tipo}", "${claveJs}", ${datosJs})'>
+      <b>${n.titulo}</b><br>
+      <span style="color:${color}">${n.detalle}</span>
     </div>`;
 
   }).join("");
+
+}
+
+/**
+ * Un solo despachador para los 4 tipos de alerta de la campana. El
+ * inventario conserva exactamente su flujo de antes (abre el modal de
+ * producto, se marca como vista al cerrarlo — ver cerrarModalDetalle).
+ * Conteos/requisiciones no tienen modal propio: navegan a la pantalla
+ * correspondiente y se marcan como vistas de inmediato, al hacer clic.
+ */
+function manejarClicNotificacion(tipo, clave, datos){
+
+  if(tipo === "inventario"){
+    abrirDetalleProducto(datos.codigo, datos.estado, clave);
+    return;
+  }
+
+  const vistos = new Set(obtenerVistosNotificaciones());
+  vistos.add(clave);
+  guardarVistosNotificaciones([...vistos]);
+
+  window.notiLista = (window.notiLista || []).filter(n => n.clave !== clave);
+  const badge = document.getElementById("badgeNotificaciones");
+  if(badge){
+    if(window.notiLista.length > 0){
+      badge.style.display = "flex";
+      badge.innerText = window.notiLista.length > 99 ? "99+" : window.notiLista.length;
+    }else{
+      badge.style.display = "none";
+    }
+  }
+  dibujarNotificaciones();
+  document.getElementById("panelNotificaciones").classList.remove("mostrar");
+
+  if(tipo === "conteo" && typeof abrirCerrarConteo === "function") abrirCerrarConteo();
+  else if(tipo === "requisicion-area" && typeof abrirRequisicionesPendientes === "function") abrirRequisicionesPendientes();
+  else if(tipo === "requisicion-sucursal" && typeof abrirRequisicionesSucursal === "function") abrirRequisicionesSucursal();
 
 }
 
@@ -7715,9 +7777,9 @@ function dibujarNotificaciones(){
 // MODAL: DETALLE DE PRODUCTO (clic en una alerta de inventario)
 // ===============================
 
-function abrirDetalleProducto(codigo, estado){
+function abrirDetalleProducto(codigo, estado, claveNotif){
 
-  window.notifOrigen = estado ? { codigo: codigo, estado: estado } : null;
+  window.notifOrigen = claveNotif ? { clave: claveNotif } : null;
 
   document.getElementById("panelNotificaciones").classList.remove("mostrar");
 
@@ -7803,12 +7865,10 @@ function cerrarModalDetalle(){
   if(window.notifOrigen){
 
     const vistos = new Set(obtenerVistosNotificaciones());
-    vistos.add(window.notifOrigen.codigo + "|" + window.notifOrigen.estado);
+    vistos.add(window.notifOrigen.clave);
     guardarVistosNotificaciones([...vistos]);
 
-    window.notiLista = (window.notiLista || []).filter(p =>
-      !(p.codigo === window.notifOrigen.codigo && p.estado === window.notifOrigen.estado)
-    );
+    window.notiLista = (window.notiLista || []).filter(n => n.clave !== window.notifOrigen.clave);
 
     const badge = document.getElementById("badgeNotificaciones");
     if(badge){

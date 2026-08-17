@@ -72,8 +72,8 @@ function obtenerHojaRequisicionesSucursal_(){
   let hoja = ss.getSheetByName("REQUISICIONES_SUCURSAL");
   if(!hoja){
     hoja = ss.insertSheet("REQUISICIONES_SUCURSAL");
-    hoja.appendRow(["Folio","Fecha","Sucursal","Solicitante","Estado","Observaciones","Fecha Entrega","Entregó"]);
-    hoja.getRange(1,1,1,8).setFontWeight("bold");
+    hoja.appendRow(["Folio","Fecha","Sucursal","Solicitante","Estado","Observaciones","Fecha Entrega","Entregó","Fecha Requerida"]);
+    hoja.getRange(1,1,1,9).setFontWeight("bold");
   }
   return hoja;
 }
@@ -101,8 +101,11 @@ function generarFolioRequisicionSucursal_(){
  * criterio anti-IDOR que ya usa crearRequisicionApp con el Área: nunca
  * se confía en un valor de sucursal mandado por el cliente).
  * items = [{codigo, producto, unidad, solicitado}]
+ * fechaRequerida (opcional, string "yyyy-MM-dd"): cuándo la sucursal
+ * necesita tener esto — mismo parámetro opcional al final, mismo helper
+ * parsearFechaRequerida_ que usa crearRequisicionApp (📁 App.gs.gs).
  */
-function crearRequisicionSucursalApp(observaciones, items, token){
+function crearRequisicionSucursalApp(observaciones, items, token, fechaRequerida){
 
   requerirSesionActivaApp_(token);
 
@@ -119,12 +122,13 @@ function crearRequisicionSucursalApp(observaciones, items, token){
   }
 
   const fecha = new Date();
+  const fechaReq = parsearFechaRequerida_(fechaRequerida);
   let folio;
 
   conBloqueoApp_(function(){
     folio = generarFolioRequisicionSucursal_();
     obtenerHojaRequisicionesSucursal_().appendRow([
-      folio, fecha, acceso.sucursal, usuario, "PENDIENTE", observaciones || "", "", ""
+      folio, fecha, acceso.sucursal, usuario, "PENDIENTE", observaciones || "", "", "", fechaReq
     ]);
   });
 
@@ -153,7 +157,7 @@ function obtenerRequisicionesSucursalApp(token){
   const hoja = obtenerHojaRequisicionesSucursal_();
   if(hoja.getLastRow() < 2) return [];
 
-  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,8).getValues();
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,9).getValues();
 
   return datos
     .filter(f => acceso.esTodasLasSucursales || String(f[2]).trim() === String(acceso.sucursal).trim())
@@ -162,7 +166,8 @@ function obtenerRequisicionesSucursalApp(token){
       fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : f[1],
       sucursal: f[2], solicitante: f[3], estado: f[4], observaciones: f[5],
       fechaEntrega: f[6] instanceof Date ? Utilities.formatDate(f[6], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "",
-      entrego: f[7]
+      entrego: f[7],
+      fechaRequerida: f[8] instanceof Date ? Utilities.formatDate(f[8], Session.getScriptTimeZone(), "dd/MM/yyyy") : ""
     }))
     .sort((a,b) => a.folio < b.folio ? 1 : -1);
 
@@ -178,7 +183,7 @@ function obtenerRequisicionesSucursalApp(token){
 function obtenerDetalleRequisicionSucursalApp(folio, token){
 
   const req = obtenerHojaRequisicionesSucursal_();
-  const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
   let encabezado = null;
   datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
 
@@ -211,6 +216,7 @@ function obtenerDetalleRequisicionSucursalApp(folio, token){
     folio: encabezado[0],
     fecha: encabezado[1] instanceof Date ? Utilities.formatDate(encabezado[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : encabezado[1],
     sucursal: sucursalReq, solicitante: encabezado[3], estado: encabezado[4], observaciones: encabezado[5],
+    fechaRequerida: encabezado[8] instanceof Date ? Utilities.formatDate(encabezado[8], Session.getScriptTimeZone(), "dd/MM/yyyy") : "",
     items: items
   };
 

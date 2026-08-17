@@ -1657,6 +1657,95 @@ function obtenerContadoresControl(){
 }
 
 /**
+ * Campana de notificaciones del header — antes solo mandaba inventario
+ * bajo mínimo/agotado (obtenerProductosBajoMinimo, sin token, visible
+ * para cualquiera, sin cambios aquí). Ahora también junta, en un solo
+ * viaje al servidor, conteos cíclicos sin cerrar y requisiciones
+ * PENDIENTE (Área + Sucursal) — pero esto sí es información operativa
+ * de Almacén/CEDIS, así que usa el MISMO criterio de acceso que ya
+ * protege "Requisiciones Pendientes"/"Entregas Recientes"
+ * (obtenerAccesoRequisicionesApp().esAdmin: rol ADMIN o Área "Almacén").
+ * Un usuario normal de área/sucursal sigue viendo solo sus alertas de
+ * inventario, igual que siempre.
+ *
+ * Cada elemento trae "clave" (para el dedup de "ya vista" en
+ * localStorage, reemplaza el viejo codigo+estado ad-hoc) y "urgente"
+ * (true si la fecha requerida de una requisición ya venció o es
+ * hoy/mañana — así el front puede resaltarla sin tener que rehacer la
+ * cuenta de días).
+ */
+function obtenerNotificacionesApp(token){
+
+  requerirSesionActivaApp_(token);
+
+  const resultado = [];
+
+  (obtenerProductosBajoMinimo() || []).forEach(p => {
+    resultado.push({
+      tipo: "inventario",
+      clave: "inventario|" + p.codigo + "|" + p.estado,
+      titulo: p.producto,
+      detalle: p.estado + " — existencia " + p.existencia + " (mín. " + p.minimo + ")",
+      urgente: p.estado === "Agotado",
+      datos: { codigo: p.codigo, estado: p.estado }
+    });
+  });
+
+  const accesoArea = obtenerAccesoRequisicionesApp(token);
+  if(!accesoArea.esAdmin) return resultado;
+
+  const contadores = obtenerContadoresControl();
+  if(contadores.conteosAbiertos > 0){
+    resultado.push({
+      tipo: "conteo",
+      clave: "conteo|" + contadores.conteosAbiertos,
+      titulo: "Conteos cíclicos pendientes",
+      detalle: contadores.conteosAbiertos + " conteo(s) sin cerrar",
+      urgente: false,
+      datos: {}
+    });
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0,0,0,0);
+
+  function esUrgente_(fechaTexto){
+    if(!fechaTexto) return false;
+    const partes = String(fechaTexto).split("/"); // dd/MM/yyyy, como la devuelve obtenerRequisicionesApp/obtenerRequisicionesSucursalApp
+    if(partes.length !== 3) return false;
+    const fecha = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+    if(isNaN(fecha.getTime())) return false;
+    const dias = Math.round((fecha - hoy) / 86400000);
+    return dias <= 1; // vencida, hoy o mañana
+  }
+
+  obtenerRequisicionesApp(token).filter(r => r.estado === "PENDIENTE").forEach(r => {
+    resultado.push({
+      tipo: "requisicion-area",
+      clave: "requisicion-area|" + r.folio,
+      titulo: "Requisición pendiente — " + r.area,
+      detalle: "Folio " + r.folio + (r.fechaRequerida ? " · Requerida " + r.fechaRequerida : ""),
+      urgente: esUrgente_(r.fechaRequerida),
+      datos: { folio: r.folio }
+    });
+  });
+
+  obtenerRequisicionesSucursalApp(token).filter(r => r.estado === "PENDIENTE").forEach(r => {
+    resultado.push({
+      tipo: "requisicion-sucursal",
+      clave: "requisicion-sucursal|" + r.folio,
+      titulo: "Requisición pendiente — Sucursal " + r.sucursal,
+      detalle: "Folio " + r.folio + (r.fechaRequerida ? " · Requerida " + r.fechaRequerida : ""),
+      urgente: esUrgente_(r.fechaRequerida),
+      datos: { folio: r.folio }
+    });
+  });
+
+  return resultado;
+
+}
+
+/**
  * NUEVO: agrupa MATRIZ por RACK x NIVEL para el "mapa de calor" de Inicio.
  */
 function obtenerMapaCalorRacks(){
@@ -4547,13 +4636,28 @@ function obtenerPDFInventarioMensualCompletoApp(folio){
 // de eso.
 // ================================================================
 
+/**
+ * Convierte la fecha requerida capturada en el front-end (string
+ * "yyyy-MM-dd" de un <input type="date">) a un Date real para guardar en
+ * la hoja. Vacía/inválida → "" (no se guarda), nunca truena la
+ * requisición completa por un dato opcional mal formado. Compartida por
+ * Requisiciones (Área) y Requisiciones por Sucursal.
+ */
+function parsearFechaRequerida_(texto){
+  if(!texto) return "";
+  const partes = String(texto).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!partes) return "";
+  const fecha = new Date(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]));
+  return isNaN(fecha.getTime()) ? "" : fecha;
+}
+
 function obtenerHojaRequisiciones_(){
   const ss = SpreadsheetApp.getActive();
   let hoja = ss.getSheetByName("REQUISICIONES");
   if(!hoja){
     hoja = ss.insertSheet("REQUISICIONES");
-    hoja.appendRow(["Folio","Fecha","Área","Solicitante","Estado","Observaciones","Fecha Entrega","Entregó"]);
-    hoja.getRange(1,1,1,8).setFontWeight("bold");
+    hoja.appendRow(["Folio","Fecha","Área","Solicitante","Estado","Observaciones","Fecha Entrega","Entregó","Fecha Requerida"]);
+    hoja.getRange(1,1,1,9).setFontWeight("bold");
   }
   return hoja;
 }
@@ -4872,8 +4976,14 @@ function buscarProductoParaRequisicionApp(texto){
 
 /**
  * FASE 1: Nueva requisición. items = [{codigo, producto, unidad, solicitado}]
+ * fechaRequerida (opcional, string "yyyy-MM-dd" desde un <input type="date">):
+ * cuándo necesita la sucursal/área que esto esté listo — se guarda tal
+ * cual para que Almacén sepa cuándo prepararla. Parámetro nuevo AL FINAL
+ * y opcional a propósito: las llamadas existentes (front-end viejo,
+ * pruebas) que solo mandan 3 argumentos siguen funcionando igual, sin
+ * fecha requerida.
  */
-function crearRequisicionApp(observaciones, items, token){
+function crearRequisicionApp(observaciones, items, token, fechaRequerida){
 
   const correo = obtenerCorreoDesdeToken_(token);
   const usuario = obtenerNombreDesdeToken(token);
@@ -4889,12 +4999,13 @@ function crearRequisicionApp(observaciones, items, token){
   }
 
   const fecha = new Date();
+  const fechaReq = parsearFechaRequerida_(fechaRequerida);
   let folio;
 
   conBloqueoApp_(function(){
     folio = generarFolioRequisicion_();
     obtenerHojaRequisiciones_().appendRow([
-      folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", ""
+      folio, fecha, area, usuario, "PENDIENTE", observaciones || "", "", "", fechaReq
     ]);
   });
 
@@ -4922,7 +5033,7 @@ function obtenerRequisicionesApp(token){
   const hoja = obtenerHojaRequisiciones_();
   if(hoja.getLastRow() < 2) return [];
 
-  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,8).getValues();
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,9).getValues();
 
   return datos
     .filter(f => acceso.esAdmin || String(f[2]).trim() === String(acceso.area).trim())
@@ -4931,7 +5042,8 @@ function obtenerRequisicionesApp(token){
       fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : f[1],
       area: f[2], solicitante: f[3], estado: f[4], observaciones: f[5],
       fechaEntrega: f[6] instanceof Date ? Utilities.formatDate(f[6], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "",
-      entrego: f[7]
+      entrego: f[7],
+      fechaRequerida: f[8] instanceof Date ? Utilities.formatDate(f[8], Session.getScriptTimeZone(), "dd/MM/yyyy") : ""
     }))
     .sort((a,b) => a.folio < b.folio ? 1 : -1);
 
@@ -4960,7 +5072,7 @@ function obtenerEntregasRecientesApp(token){
 function obtenerDetalleRequisicionApp(folio, token){
 
   const req = obtenerHojaRequisiciones_();
-  const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
   let encabezado = null;
   datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
 
@@ -5001,6 +5113,7 @@ function obtenerDetalleRequisicionApp(folio, token){
     folio: encabezado[0],
     fecha: encabezado[1] instanceof Date ? Utilities.formatDate(encabezado[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : encabezado[1],
     area: encabezado[2], solicitante: encabezado[3], estado: encabezado[4], observaciones: encabezado[5],
+    fechaRequerida: encabezado[8] instanceof Date ? Utilities.formatDate(encabezado[8], Session.getScriptTimeZone(), "dd/MM/yyyy") : "",
     items: items
   };
 

@@ -36,6 +36,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'requisiciones-sucursal/requisiciones-sucursal.test.js',
   'legado/movimientos-dashboard.test.js',
   'legado/onedit-entrada-salida.test.js',
+  'notificaciones/notificaciones.test.js',
 ];
 
 function cargarTodasLasPruebas() {

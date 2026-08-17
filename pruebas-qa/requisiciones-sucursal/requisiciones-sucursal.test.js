@@ -190,3 +190,36 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'RS-011', grupo: 'requisiciones-sucursal', nombre: 'Fecha requerida se guarda y se devuelve (lista y detalle)', metodo: 'EMPÍRICO',
+  objetivo: 'crearRequisicionSucursalApp(observaciones, items, token, fechaRequerida) debe guardar la fecha requerida en la 9na columna nueva de REQUISICIONES_SUCURSAL, igual que el flujo de Área',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 5 }], token, '2026-08-19');
+    const lista = entorno.invocar('obtenerRequisicionesSucursalApp', token);
+    const detalle = entorno.invocar('obtenerDetalleRequisicionSucursalApp', req.folio, token);
+    return {
+      datos: 'fechaRequerida="2026-08-19"',
+      esperado: 'lista y detalle devuelven fechaRequerida="19/08/2026"',
+      obtenido: `lista=${lista[0].fechaRequerida}, detalle=${detalle.fechaRequerida}`,
+      pasa: lista[0].fechaRequerida === '19/08/2026' && detalle.fechaRequerida === '19/08/2026',
+    };
+  },
+});
+
+prueba({
+  id: 'RS-012', grupo: 'requisiciones-sucursal', nombre: 'Fecha requerida omitida no truena la requisición de sucursal', metodo: 'EMPÍRICO',
+  objetivo: 'crearRequisicionSucursalApp sin 4to argumento (compatibilidad con llamadas viejas de 3 args) debe seguir creando el folio, solo sin fechaRequerida',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 1 }], token);
+    const detalle = entorno.invocar('obtenerDetalleRequisicionSucursalApp', req.folio, token);
+    return {
+      datos: '3 args (sin fechaRequerida)',
+      esperado: 'folio se crea, fechaRequerida=""',
+      obtenido: `folio=${req.folio}, fechaRequerida="${detalle.fechaRequerida}"`,
+      pasa: !!req.folio && detalle.fechaRequerida === '',
+    };
+  },
+});

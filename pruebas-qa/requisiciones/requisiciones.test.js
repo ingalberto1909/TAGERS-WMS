@@ -158,6 +158,41 @@ prueba({
 });
 
 prueba({
+  id: 'REQ-010', grupo: 'requisiciones', nombre: 'Fecha requerida se guarda y se devuelve (lista y detalle)', metodo: 'EMPÍRICO',
+  objetivo: 'crearRequisicionApp(observaciones, items, token, fechaRequerida) debe guardar la fecha requerida en la 9na columna nueva; obtenerRequisicionesApp/obtenerDetalleRequisicionApp deben devolverla formateada dd/MM/yyyy',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 5 }], token, '2026-08-19');
+    const lista = entorno.invocar('obtenerRequisicionesApp', token);
+    const detalle = entorno.invocar('obtenerDetalleRequisicionApp', req.folio, token);
+    return {
+      datos: 'fechaRequerida="2026-08-19"',
+      esperado: 'lista y detalle devuelven fechaRequerida="19/08/2026"',
+      obtenido: `lista=${lista[0].fechaRequerida}, detalle=${detalle.fechaRequerida}`,
+      pasa: lista[0].fechaRequerida === '19/08/2026' && detalle.fechaRequerida === '19/08/2026',
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-011', grupo: 'requisiciones', nombre: 'Fecha requerida omitida o inválida no truena la requisición', metodo: 'EMPÍRICO',
+  objetivo: 'crearRequisicionApp sin 4to argumento (compatibilidad con llamadas viejas de 3 args) y con texto inválido deben seguir creando el folio, solo sin fechaRequerida',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const reqSinFecha = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 1 }], token);
+    const reqInvalida = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 1 }], token, 'no-es-fecha');
+    const detalleSinFecha = entorno.invocar('obtenerDetalleRequisicionApp', reqSinFecha.folio, token);
+    const detalleInvalida = entorno.invocar('obtenerDetalleRequisicionApp', reqInvalida.folio, token);
+    return {
+      datos: '3 args (sin fechaRequerida) y 4to arg="no-es-fecha"',
+      esperado: 'ambos folios se crean, fechaRequerida="" en los dos',
+      obtenido: `sinFecha.folio=${reqSinFecha.folio} fechaRequerida="${detalleSinFecha.fechaRequerida}", invalida.folio=${reqInvalida.folio} fechaRequerida="${detalleInvalida.fechaRequerida}"`,
+      pasa: !!reqSinFecha.folio && !!reqInvalida.folio && detalleSinFecha.fechaRequerida === '' && detalleInvalida.fechaRequerida === '',
+    };
+  },
+});
+
+prueba({
   id: 'REQ-009', grupo: 'requisiciones', nombre: 'Requisición de receta con varias recetas suma ingredientes repetidos', metodo: 'EMPÍRICO',
   objetivo: 'obtenerCalculoIngredientesRequisicionApp debe acumular el mismo ingrediente cuando aparece en más de una receta solicitada',
   ejecutar() {
