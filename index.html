@@ -9705,6 +9705,10 @@ function buscarCodigoParaConteo(){
       mostrarMensajeTemporal("mensajeConteo", "Ese código no pertenece al conteo " + window.folioConteoActual, "error");
       return;
     }
+    if(productoYaContadoEnConteo(item)){
+      mostrarProductoYaContado(item);
+      return;
+    }
     mostrarDetalleConteo(item);
   })
 
@@ -9743,6 +9747,13 @@ function cargarSiguientePendiente(){
 
 }
 
+// CONTEO_CICLICO deja "Físico" (columna H) vacío hasta que se guarda un
+// conteo real (ver guardarConteoFisico en Código.gs); 0 es una captura
+// válida (contado y resultó en cero), así que no basta con "falsy".
+function productoYaContadoEnConteo(item){
+  return item.fisico !== "" && item.fisico !== null && item.fisico !== undefined;
+}
+
 function mostrarDetalleConteo(item){
 
   const cont=document.getElementById("detalleConteo");
@@ -9754,6 +9765,7 @@ function mostrarDetalleConteo(item){
   }
 
   window.conteoActual = item;
+  const yaContado = productoYaContadoEnConteo(item);
 
   cont.innerHTML=`
 
@@ -9767,13 +9779,50 @@ function mostrarDetalleConteo(item){
   <input value="${item.existencia}" readonly>
 
   <label>Cantidad física contada</label>
-  <input id="fisicoConteo" type="number">
+  <input id="fisicoConteo" type="number" value="${yaContado ? item.fisico : ""}">
 
   <div class="boton" id="btnGuardarConteo" onclick="guardarFisicoConteo()">${tgIcon("guardar",17)} Guardar Conteo</div>
 
   `;
 
   document.getElementById("fisicoConteo").focus();
+
+}
+
+/**
+ * Se muestra en vez del formulario normal de captura cuando el código
+ * escaneado/tecleado YA tiene un físico guardado en este folio — evita
+ * que volver a pasar el lector sobre el mismo producto lo recuente sin
+ * darse cuenta. Deja un botón explícito para corregirlo a propósito, y
+ * limpia+enfoca el campo de código para seguir escaneando el siguiente.
+ */
+function mostrarProductoYaContado(item){
+
+  const cont=document.getElementById("detalleConteo");
+  if(!cont){ return; }
+
+  window.conteoActual = null;
+
+  const diferencia = Number(item.diferencia) || 0;
+
+  cont.innerHTML=`
+
+  <div class="cardProducto" style="border-left:4px solid var(--terracota);background:rgba(196,82,42,.08);margin-top:14px">
+    <p style="margin:0 0 8px;font-weight:700;color:var(--terracota);display:flex;align-items:center;gap:7px">${tgIcon("alertaTriangulo",17)} Este producto ya fue contado</p>
+    <p style="margin:0 0 4px"><b>${item.producto}</b><br><span style="font-size:12px;color:var(--text-muted)">${item.ubicacion} — ${item.codigo}</span></p>
+    <p style="margin:8px 0 0;font-size:13px;color:var(--text-muted)">Sistema: <b>${item.existencia}</b> · Físico capturado: <b>${item.fisico}</b>${diferencia !== 0 ? ` · Diferencia: <b>${diferencia}</b>` : " · Sin diferencia"}</p>
+    <div class="boton secundario" style="margin-top:14px;width:auto;padding:8px 14px" onclick='mostrarDetalleConteo(${JSON.stringify(item).replace(/'/g,"&apos;")})'>${tgIcon("editar",15)} Corregir de todas formas</div>
+  </div>
+
+  `;
+
+  mostrarMensajeTemporal("mensajeConteo", "Ese producto ya se contó — no se volvió a registrar", "error");
+
+  const campoCodigo = document.getElementById("codigoConteo");
+  if(campoCodigo){
+    campoCodigo.value = "";
+    campoCodigo.focus();
+  }
 
 }
 
