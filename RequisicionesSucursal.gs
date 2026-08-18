@@ -314,6 +314,13 @@ const ESTADO_REQ_SUCURSAL_ = Object.freeze({
   PENDIENTE: "PENDIENTE",           // heredado — folio recién creado, esperando aprobación
   APROBADA: "APROBADA",
   APROBADA_PARCIAL: "APROBADA_PARCIAL",
+  SURTIDO_PARCIAL: "SURTIDO_PARCIAL",
+  LISTA_DESPACHO: "LISTA_DESPACHO",
+  EN_TRANSITO: "EN_TRANSITO",
+  RECIBIDA_PARCIAL: "RECIBIDA_PARCIAL",
+  RECIBIDA: "RECIBIDA",
+  CON_INCIDENCIA: "CON_INCIDENCIA",
+  CERRADA: "CERRADA",
   ENTREGADA: "ENTREGADA",           // heredado — flujo directo de un paso
   CANCELADA: "CANCELADA"            // heredado
 });
@@ -538,5 +545,363 @@ function rechazarLineaRequisicionSucursalApp(folio, codigo, motivo, token){
   registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "LÍNEA RECHAZADA", folio, codigo, "", 0, 0, motivo);
 
   return { ok: true, folio: folio, codigo: codigo };
+
+}
+
+/**
+ * Registra cuánto se surtió físicamente de cada línea aprobada — NO
+ * mueve existencia ni reserva todavía (tu punto 25/26: "surtido" es
+ * juntar el producto, no despacharlo). Solo valida que no se surta más
+ * de lo aprobado ni más de lo que hay físicamente en el almacén origen.
+ * surtido = [{codigo, cantidadSurtida}]
+ */
+function surtirRequisicionSucursalApp(folio, surtido, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede surtir requisiciones.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const almacenOrigen = SUCURSAL_DEFAULT_;
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoActual = "";
+  datosReq.forEach((f,i) => { if(String(f[0]) === String(folio)){ filaReq = i+2; estadoActual = String(f[4]||"").trim().toUpperCase(); } });
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  const estadosSurtibles = [ESTADO_REQ_SUCURSAL_.APROBADA, ESTADO_REQ_SUCURSAL_.APROBADA_PARCIAL, ESTADO_REQ_SUCURSAL_.SURTIDO_PARCIAL];
+  if(estadosSurtibles.indexOf(estadoActual) === -1){
+    throw new Error("Esta requisición está en estado " + estadoActual + " y no se puede surtir.");
+  }
+
+  const detalle = obtenerHojaDetalleRequisicionesSucursal_();
+  asegurarEncabezadosPipelineDetalleSucursal_(detalle);
+  const anchoDetalle = Math.max(detalle.getLastColumn(), 15);
+  const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,anchoDetalle).getValues();
+
+  const mapaSurtido = {};
+  (surtido||[]).forEach(s => { mapaSurtido[String(s.codigo).trim()] = Number(s.cantidadSurtida) || 0; });
+
+  let lineasSurtidas = 0, hayAprobadas = false, todasListas = true;
+
+  datosDetalle.forEach((f, i) => {
+
+    if(String(f[0]) !== String(folio)) return;
+
+    const codigo = String(f[1]).trim();
+    const aprobado = Number(f[9]) || 0;
+    if(aprobado <= 0) return; // línea rechazada o sin decisión — no se surte
+
+    hayAprobadas = true;
+    let surtidoActual = Number(f[10]) || 0;
+
+    if(codigo in mapaSurtido){
+
+      const cantidadSurtida = mapaSurtido[codigo];
+      if(cantidadSurtida < 0){
+        throw new Error("La cantidad surtida de " + codigo + " no puede ser negativa.");
+      }
+      if(cantidadSurtida > aprobado){
+        throw new Error("No puedes surtir más de lo aprobado para " + codigo + " (aprobado: " + aprobado + ").");
+      }
+
+      const existenciaFisica = obtenerExistenciaSucursal_(codigo, almacenOrigen);
+      if(cantidadSurtida > existenciaFisica){
+        throw new Error("No hay existencia física suficiente de " + codigo + " en " + almacenOrigen + " para surtir " + cantidadSurtida + " — disponible: " + existenciaFisica);
+      }
+
+      detalle.getRange(i+2, 11).setValue(cantidadSurtida); // K = Surtido
+      surtidoActual = cantidadSurtida;
+      lineasSurtidas++;
+
+    }
+
+    if(surtidoActual < aprobado) todasListas = false;
+
+  });
+
+  if(!hayAprobadas){
+    throw new Error("Esta requisición no tiene líneas aprobadas para surtir.");
+  }
+  if(lineasSurtidas === 0){
+    throw new Error("Captura al menos una cantidad surtida mayor a cero.");
+  }
+
+  const estadoNuevo = todasListas ? ESTADO_REQ_SUCURSAL_.LISTA_DESPACHO : ESTADO_REQ_SUCURSAL_.SURTIDO_PARCIAL;
+  req.getRange(filaReq, 5).setValue(estadoNuevo);
+
+  registrarHistorialRequisicion_(folio, usuario, "SURTIDO REGISTRADO", estadoActual, estadoNuevo, lineasSurtidas + " línea(s) surtidas");
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "SURTIDO", folio, "", "", 0, 0, lineasSurtidas + " línea(s) surtidas");
+
+  return { folio: folio, estado: estadoNuevo, lineasSurtidas: lineasSurtidas };
+
+}
+
+function obtenerHojaTransferenciasRequisiciones_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("TRANSFERENCIAS");
+  if(!hoja){
+    hoja = ss.insertSheet("TRANSFERENCIAS");
+    hoja.appendRow(["FolioTransferencia","FolioRequisicion","SucursalOrigen","SucursalDestino","FechaDespacho","Usuario","Estado"]);
+    hoja.getRange(1,1,1,7).setFontWeight("bold");
+  }
+  return hoja;
+}
+
+function obtenerHojaTransferenciasDetalle_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("TRANSFERENCIAS_DETALLE");
+  if(!hoja){
+    hoja = ss.insertSheet("TRANSFERENCIAS_DETALLE");
+    hoja.appendRow(["FolioTransferencia","Código","Producto","UDM","CantidadEnviada","CantidadRecibida"]);
+    hoja.getRange(1,1,1,6).setFontWeight("bold");
+  }
+  return hoja;
+}
+
+function generarFolioTransferenciaRequisicion_(){
+  return "TRF-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
+}
+
+/**
+ * Despacha una requisición LISTA_DESPACHO: crea la TRANSFERENCIA (una
+ * sola, por más que se pulse el botón varias veces — idempotente),
+ * CONSUME la reserva (deltaExistencia y deltaReserva, ambos negativos,
+ * en el MISMO lock: la reserva se vuelve movimiento real) y registra
+ * Kardex de salida. El destino todavía NO sube — queda "en tránsito"
+ * hasta que la sucursal confirme recepción (tu punto 32).
+ */
+function despacharRequisicionSucursalApp(folio, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede despachar requisiciones.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const almacenOrigen = SUCURSAL_DEFAULT_;
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoActual = "", sucursalDestino = "";
+  datosReq.forEach((f,i) => {
+    if(String(f[0]) === String(folio)){ filaReq = i+2; estadoActual = String(f[4]||"").trim().toUpperCase(); sucursalDestino = String(f[2]||"").trim(); }
+  });
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  // Idempotencia: doble clic en "Despachar" no crea una segunda
+  // transferencia — se regresa la que ya existe para este folio.
+  const transferencias = obtenerHojaTransferenciasRequisiciones_();
+  if(transferencias.getLastRow() > 1){
+    const existentes = transferencias.getRange(2,1,transferencias.getLastRow()-1,7).getValues();
+    const yaDespachada = existentes.find(f => String(f[1]) === String(folio));
+    if(yaDespachada){
+      return { folioTransferencia: yaDespachada[0], estado: estadoActual, yaExistia: true };
+    }
+  }
+
+  if(estadoActual !== ESTADO_REQ_SUCURSAL_.LISTA_DESPACHO){
+    throw new Error("Esta requisición está en estado " + estadoActual + " y no se puede despachar — primero debe quedar LISTA_DESPACHO (surtido completo).");
+  }
+
+  const detalle = obtenerHojaDetalleRequisicionesSucursal_();
+  const anchoDetalle = Math.max(detalle.getLastColumn(), 15);
+  const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,anchoDetalle).getValues();
+
+  const filasEnviar = [];
+  datosDetalle.forEach((f, i) => {
+    if(String(f[0]) !== String(folio)) return;
+    const surtido = Number(f[10]) || 0;
+    if(surtido <= 0) return;
+    filasEnviar.push({ fila: i+2, codigo: String(f[1]).trim(), producto: f[2], unidad: f[3], cantidad: surtido });
+  });
+
+  if(!filasEnviar.length){
+    throw new Error("No hay cantidades surtidas para despachar.");
+  }
+
+  const folioTransferencia = generarFolioTransferenciaRequisicion_();
+  const fecha = new Date();
+
+  filasEnviar.forEach(item => {
+    // Última validación de inventario justo antes de mover algo — la
+    // existencia pudo cambiar desde que se surtió (tu punto 27).
+    const ajuste = ajustarExistenciaYReservaSucursal_(item.codigo, almacenOrigen, -item.cantidad, -item.cantidad, { validar: true, validarReserva: true });
+    item.existenciaAnterior = ajuste.anterior;
+    item.existenciaNueva = ajuste.nueva;
+  });
+
+  transferencias.appendRow([folioTransferencia, folio, almacenOrigen, sucursalDestino, fecha, usuario, "EN_TRANSITO"]);
+
+  const detalleTransferencias = obtenerHojaTransferenciasDetalle_();
+  const filasDetalle = filasEnviar.map(item => [folioTransferencia, item.codigo, item.producto, item.unidad, item.cantidad, ""]);
+  detalleTransferencias.getRange(detalleTransferencias.getLastRow()+1, 1, filasDetalle.length, 6).setValues(filasDetalle);
+
+  filasEnviar.forEach(item => {
+    detalle.getRange(item.fila, 12).setValue(item.cantidad); // L = Enviado
+    registrarKardex(
+      "TRANSFERENCIA-SALIDA", folioTransferencia, item.codigo, item.producto, "", item.cantidad,
+      item.existenciaAnterior, item.existenciaNueva, usuario,
+      "Requisición " + folio + " — despacho a " + sucursalDestino
+    );
+  });
+
+  req.getRange(filaReq, 5).setValue(ESTADO_REQ_SUCURSAL_.EN_TRANSITO);
+
+  registrarHistorialRequisicion_(folio, usuario, "DESPACHO REALIZADO", estadoActual, ESTADO_REQ_SUCURSAL_.EN_TRANSITO,
+    "Transferencia " + folioTransferencia + " — " + filasEnviar.length + " producto(s)");
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "DESPACHO", folio, "", "", 0, 0,
+    "Transferencia " + folioTransferencia + " hacia " + sucursalDestino);
+
+  return { folioTransferencia: folioTransferencia, estado: ESTADO_REQ_SUCURSAL_.EN_TRANSITO, productos: filasEnviar.length, yaExistia: false };
+
+}
+
+function obtenerHojaIncidenciasRequisiciones_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("INCIDENCIAS_REQUISICIONES");
+  if(!hoja){
+    hoja = ss.insertSheet("INCIDENCIAS_REQUISICIONES");
+    hoja.appendRow(["FolioIncidencia","FolioRequisicion","FolioTransferencia","Código","Producto","Tipo","CantidadEnviada","CantidadRecibida","Diferencia","Motivo","Comentario","Usuario","Fecha","Estado","Resolucion"]);
+    hoja.getRange(1,1,1,15).setFontWeight("bold");
+  }
+  return hoja;
+}
+
+function generarFolioIncidencia_(){
+  const hoja = obtenerHojaIncidenciasRequisiciones_();
+  const total = hoja.getLastRow() > 1 ? hoja.getLastRow() - 1 : 0;
+  return "INC-" + Utilities.formatString("%04d", total + 1);
+}
+
+/**
+ * Confirma cuánto llegó realmente a la sucursal destino — solo esa
+ * sucursal (o alguien con acceso a todas) puede recibir su propia
+ * transferencia. Incrementa la existencia del destino con la cantidad
+ * REAL recibida (nunca la enviada), genera Kardex de entrada, y crea
+ * una incidencia automática por cada línea con diferencia. Idempotente:
+ * una línea ya recibida no se vuelve a procesar; una transferencia ya
+ * RECIBIDA por completo regresa sin hacer nada más.
+ * recepciones = [{codigo, cantidadRecibida}]
+ */
+function recibirTransferenciaSucursalApp(folioTransferencia, recepciones, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  const usuario = obtenerNombreDesdeToken(token);
+
+  const transferencias = obtenerHojaTransferenciasRequisiciones_();
+  const datosTransf = transferencias.getRange(2,1,transferencias.getLastRow()-1,7).getValues();
+  let filaTransf = -1, folioReq = "", sucursalDestino = "", estadoTransf = "";
+  datosTransf.forEach((f,i) => {
+    if(String(f[0]) === String(folioTransferencia)){
+      filaTransf = i+2; folioReq = f[1]; sucursalDestino = f[3]; estadoTransf = String(f[6]||"").trim().toUpperCase();
+    }
+  });
+  if(filaTransf === -1) throw new Error("No se encontró la transferencia " + folioTransferencia);
+
+  if(!acceso.esTodasLasSucursales && normalizarSucursal_(acceso.sucursal) !== normalizarSucursal_(sucursalDestino)){
+    throw new Error("Solo la sucursal destino puede confirmar la recepción de esta transferencia.");
+  }
+
+  if(estadoTransf === "RECIBIDA"){
+    return { folioTransferencia: folioTransferencia, estado: "RECIBIDA", productosRecibidos: 0, incidencias: [], yaExistia: true };
+  }
+  if(estadoTransf !== "EN_TRANSITO" && estadoTransf !== "RECIBIDA_PARCIAL"){
+    throw new Error("Esta transferencia está en estado " + estadoTransf + " y no se puede recibir.");
+  }
+
+  const detalleTransf = obtenerHojaTransferenciasDetalle_();
+  const datosDetalleTransf = detalleTransf.getRange(2,1,detalleTransf.getLastRow()-1,6).getValues();
+
+  const mapaRecepciones = {};
+  (recepciones||[]).forEach(r => { mapaRecepciones[String(r.codigo).trim()] = Number(r.cantidadRecibida) || 0; });
+
+  let productosRecibidos = 0, todosCompletos = true, hayLineas = false;
+  const incidenciasCreadas = [];
+
+  datosDetalleTransf.forEach((f, i) => {
+
+    if(String(f[0]) !== String(folioTransferencia)) return;
+    hayLineas = true;
+
+    const codigo = String(f[1]).trim();
+    const producto = f[2];
+    const enviado = Number(f[4]) || 0;
+    const recibidoPrevio = Number(f[5]) || 0;
+
+    if(recibidoPrevio > 0){
+      if(recibidoPrevio < enviado) todosCompletos = false;
+      return; // ya procesada en una vuelta anterior
+    }
+
+    if(!(codigo in mapaRecepciones)){ todosCompletos = false; return; }
+
+    const cantidadRecibida = mapaRecepciones[codigo];
+    if(cantidadRecibida < 0){
+      throw new Error("La cantidad recibida de " + codigo + " no puede ser negativa.");
+    }
+    if(cantidadRecibida > enviado){
+      throw new Error("La cantidad recibida de " + codigo + " (" + cantidadRecibida + ") no puede ser mayor a la enviada (" + enviado + ").");
+    }
+    if(cantidadRecibida === 0){ todosCompletos = false; return; }
+
+    const ajuste = ajustarExistenciaYReservaSucursal_(codigo, sucursalDestino, cantidadRecibida, 0, {});
+
+    detalleTransf.getRange(i+2, 6).setValue(cantidadRecibida); // F = CantidadRecibida
+
+    registrarKardex(
+      "TRANSFERENCIA-ENTRADA", folioTransferencia, codigo, producto, cantidadRecibida, "",
+      ajuste.anterior, ajuste.nueva, usuario, "Requisición " + folioReq + " — recepción en " + sucursalDestino
+    );
+
+    productosRecibidos++;
+
+    if(cantidadRecibida < enviado){
+      todosCompletos = false;
+      const folioInc = generarFolioIncidencia_();
+      obtenerHojaIncidenciasRequisiciones_().appendRow([
+        folioInc, folioReq, folioTransferencia, codigo, producto, "FALTANTE",
+        enviado, cantidadRecibida, Math.round((enviado - cantidadRecibida) * 1000) / 1000,
+        "Diferencia detectada al recibir", "", usuario, new Date(), "PENDIENTE", ""
+      ]);
+      incidenciasCreadas.push(folioInc);
+    }
+
+  });
+
+  if(!hayLineas){
+    throw new Error("Esta transferencia no tiene productos.");
+  }
+  if(productosRecibidos === 0){
+    throw new Error("Captura al menos una cantidad recibida mayor a cero.");
+  }
+
+  const estadoTransfNuevo = todosCompletos ? "RECIBIDA" : "RECIBIDA_PARCIAL";
+  transferencias.getRange(filaTransf, 7).setValue(estadoTransfNuevo);
+
+  const estadoReqNuevo = incidenciasCreadas.length > 0
+    ? ESTADO_REQ_SUCURSAL_.CON_INCIDENCIA
+    : (todosCompletos ? ESTADO_REQ_SUCURSAL_.RECIBIDA : ESTADO_REQ_SUCURSAL_.RECIBIDA_PARCIAL);
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoReqAnterior = "";
+  datosReq.forEach((f,i) => { if(String(f[0]) === String(folioReq)){ filaReq = i+2; estadoReqAnterior = String(f[4]||"").trim().toUpperCase(); } });
+  if(filaReq !== -1){
+    req.getRange(filaReq, 5).setValue(estadoReqNuevo);
+  }
+
+  registrarHistorialRequisicion_(folioReq, usuario, "RECEPCIÓN REGISTRADA", estadoReqAnterior, estadoReqNuevo,
+    productosRecibidos + " producto(s) recibidos" + (incidenciasCreadas.length ? " — " + incidenciasCreadas.length + " incidencia(s)" : ""));
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "RECEPCIÓN", folioReq, "", "", 0, 0,
+    "Transferencia " + folioTransferencia + " — " + estadoTransfNuevo);
+
+  return {
+    folioTransferencia: folioTransferencia, estadoTransferencia: estadoTransfNuevo,
+    estadoRequisicion: estadoReqNuevo, productosRecibidos: productosRecibidos,
+    incidencias: incidenciasCreadas, yaExistia: false
+  };
 
 }

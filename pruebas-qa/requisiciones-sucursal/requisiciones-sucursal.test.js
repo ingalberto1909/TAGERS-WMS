@@ -377,3 +377,186 @@ prueba({
     };
   },
 });
+
+// ============================================
+// PLANO DE ABASTECIMIENTO — surtido, despacho (transferencia en
+// tránsito) y recepción (con incidencias automáticas).
+// ============================================
+
+function crearYAprobarRequisicionSucursal_(entorno, tokenSucursal, tokenAdmin, codigo, producto, unidad, solicitado, aprobado) {
+  const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo, producto, unidad, solicitado }], tokenSucursal);
+  entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo, cantidadAprobada: aprobado }], tokenAdmin);
+  return req;
+}
+
+prueba({
+  id: 'RS-020', grupo: 'requisiciones-sucursal', nombre: 'Surtido completo deja el folio LISTA_DESPACHO', metodo: 'EMPÍRICO',
+  objetivo: 'surtirRequisicionSucursalApp debe registrar Surtido sin mover existencia ni reserva, y dejar el folio en LISTA_DESPACHO cuando surtido === aprobado en todas las líneas',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    const res = entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const existenciaMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    return {
+      datos: 'aprobado=15, se surte 15 (completo)',
+      esperado: 'estado=LISTA_DESPACHO, existencia y reservado sin cambio todavía (surtir no mueve inventario)',
+      obtenido: `estado=${res.estado}, existenciaMatriz=${existenciaMatriz}, reservado=${disponible.reservado}`,
+      pasa: res.estado === 'LISTA_DESPACHO' && existenciaMatriz === 100 && disponible.reservado === 15,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-021', grupo: 'requisiciones-sucursal', nombre: 'Surtir menos de lo aprobado deja SURTIDO_PARCIAL', metodo: 'EMPÍRICO',
+  objetivo: 'surtirRequisicionSucursalApp debe dejar el folio en SURTIDO_PARCIAL cuando la cantidad surtida es menor a la aprobada',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    const res = entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 10 }], tokenAdmin);
+    return {
+      datos: 'aprobado=15, se surten solo 10',
+      esperado: 'estado=SURTIDO_PARCIAL',
+      obtenido: `estado=${res.estado}`,
+      pasa: res.estado === 'SURTIDO_PARCIAL',
+    };
+  },
+});
+
+prueba({
+  id: 'RS-022', grupo: 'requisiciones-sucursal', nombre: 'No se puede surtir más de lo aprobado ni más de la existencia física', metodo: 'EMPÍRICO',
+  objetivo: 'surtirRequisicionSucursalApp debe rechazar cantidadSurtida > aprobado, y por separado, > existencia física real del almacén origen',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    // COD-002 AZUCAR ESTANDAR: existencia física en CEDIS = 5.
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-002', 'AZUCAR ESTANDAR', 'KG', 5, 5);
+    let bloqueadoPorAprobado = false, bloqueadoPorExistencia = false;
+    try { entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-002', cantidadSurtida: 6 }], tokenAdmin); }
+    catch (e) { bloqueadoPorAprobado = true; }
+
+    // Simula que la existencia física de CEDIS bajó DESPUÉS de aprobar
+    // (p. ej. una salida manual aparte) — la reserva ya dice 5, pero
+    // ahora solo hay 2 unidades físicas reales para surtir.
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 2;
+    try { entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-002', cantidadSurtida: 5 }], tokenAdmin); }
+    catch (e) { bloqueadoPorExistencia = /existencia física suficiente/i.test(e.message); }
+
+    return {
+      datos: 'aprobado=5; luego la existencia física real de CEDIS baja a 2 (por otro movimiento aparte)',
+      esperado: 'surtir 6 (>aprobado) bloqueado; surtir 5 (=aprobado, pero >existencia física real=2) bloqueado con mensaje de existencia física',
+      obtenido: `porAprobado=${bloqueadoPorAprobado}, porExistencia=${bloqueadoPorExistencia}`,
+      pasa: bloqueadoPorAprobado && bloqueadoPorExistencia,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-023', grupo: 'requisiciones-sucursal', nombre: 'Despachar CONSUME existencia y reserva juntas, y no se puede repetir', metodo: 'EMPÍRICO',
+  objetivo: 'despacharRequisicionSucursalApp debe descontar Existencia Y Reservado del origen en el mismo movimiento, generar Kardex de salida, dejar el folio EN_TRANSITO, y ser idempotente ante un segundo clic',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const res1 = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    const res2 = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin); // doble clic
+    const existenciaMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    const filasKardexSalida = entorno.leerHoja('KARDEX').filter(f => f[2] === 'TRANSFERENCIA-SALIDA' && f[3] === res1.folioTransferencia);
+    return {
+      datos: 'MATRIZ(S01)=100 antes de despachar 15 surtidos, luego se pulsa despachar dos veces',
+      esperado: 'MATRIZ=85, Reservado=0, EN_TRANSITO, 1 sola fila de Kardex-salida, 2do despacho regresa la misma transferencia (yaExistia=true)',
+      obtenido: `existenciaMatriz=${existenciaMatriz}, reservado=${disponible.reservado}, estado=${res1.estado}, folioIgual=${res1.folioTransferencia === res2.folioTransferencia}, yaExistia2=${res2.yaExistia}, kardexSalida=${filasKardexSalida.length}`,
+      pasa: existenciaMatriz === 85 && disponible.reservado === 0 && res1.estado === 'EN_TRANSITO'
+        && res1.folioTransferencia === res2.folioTransferencia && res2.yaExistia === true && filasKardexSalida.length === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-024', grupo: 'requisiciones-sucursal', nombre: 'Recibir completo incrementa SOLO el destino y cierra la requisición', metodo: 'EMPÍRICO',
+  objetivo: 'recibirTransferenciaSucursalApp debe incrementar la existencia de la sucursal destino con lo recibido, generar Kardex de entrada, y dejar folio+transferencia en RECIBIDA cuando coincide con lo enviado',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    const res = entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 15 }], tokenS02);
+    const existenciaS02 = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S02', tokenAdmin).existencia;
+    const filaReq = entorno.leerHoja('REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio);
+    return {
+      datos: 'S02 recibe exactamente los 15 enviados',
+      esperado: 'S02.existencia=15, transferencia y folio en RECIBIDA, sin incidencias',
+      obtenido: `existenciaS02=${existenciaS02}, estadoTransferencia=${res.estadoTransferencia}, estadoRequisicion=${filaReq[4]}, incidencias=${res.incidencias.length}`,
+      pasa: existenciaS02 === 15 && res.estadoTransferencia === 'RECIBIDA' && filaReq[4] === 'RECIBIDA' && res.incidencias.length === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-025', grupo: 'requisiciones-sucursal', nombre: 'Recepción con faltante genera incidencia automática', metodo: 'EMPÍRICO',
+  objetivo: 'recibirTransferenciaSucursalApp debe crear una fila en INCIDENCIAS_REQUISICIONES cuando lo recibido es menor a lo enviado, y dejar la requisición CON_INCIDENCIA',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    const res = entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 13 }], tokenS02);
+    const incidencia = entorno.leerHoja('INCIDENCIAS_REQUISICIONES').find(f => f[0] === res.incidencias[0]);
+    const filaReq = entorno.leerHoja('REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio);
+    return {
+      datos: 'se enviaron 15, llegaron 13 (faltante de 2)',
+      esperado: '1 incidencia con Diferencia=2, Tipo=FALTANTE; requisición CON_INCIDENCIA',
+      obtenido: `incidencias=${res.incidencias.length}, diferencia=${incidencia && incidencia[8]}, tipo=${incidencia && incidencia[5]}, estadoRequisicion=${filaReq[4]}`,
+      pasa: res.incidencias.length === 1 && incidencia && incidencia[8] === 2 && incidencia[5] === 'FALTANTE' && filaReq[4] === 'CON_INCIDENCIA',
+    };
+  },
+});
+
+prueba({
+  id: 'RS-026', grupo: 'requisiciones-sucursal', nombre: 'Recibir dos veces la misma transferencia no duplica el inventario', metodo: 'EMPÍRICO',
+  objetivo: 'recibirTransferenciaSucursalApp debe ser idempotente: una transferencia ya RECIBIDA no vuelve a incrementar el destino en un segundo clic',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 15 }], tokenS02);
+    const res2 = entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 15 }], tokenS02);
+    const existenciaS02 = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S02', tokenAdmin).existencia;
+    return {
+      datos: 'recibir la misma transferencia dos veces',
+      esperado: 'S02.existencia sigue en 15 (no 30), segunda llamada regresa yaExistia=true',
+      obtenido: `existenciaS02=${existenciaS02}, yaExistia2=${res2.yaExistia}`,
+      pasa: existenciaS02 === 15 && res2.yaExistia === true,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-027', grupo: 'requisiciones-sucursal', nombre: 'Solo la sucursal destino (o acceso a todas) puede recibir su transferencia', metodo: 'EMPÍRICO',
+  objetivo: 'recibirTransferenciaSucursalApp debe bloquear a una sucursal distinta al destino real de la transferencia',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const tokenS04 = entorno.invocar('crearSesion_', 'sucursal4@tagers.com', 'Operador S04', 'OPERADOR');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    let bloqueado = false;
+    try { entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 15 }], tokenS04); }
+    catch (e) { bloqueado = true; }
+    return {
+      datos: 'la transferencia es para S02, S04 intenta recibirla',
+      esperado: 'bloqueado',
+      obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO',
+      pasa: bloqueado,
+    };
+  },
+});
