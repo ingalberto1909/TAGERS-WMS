@@ -3191,7 +3191,11 @@ function obtenerHojaExistenciasSucursal_(){
   let hoja = ss.getSheetByName("EXISTENCIAS_SUCURSAL");
   if(!hoja){
     hoja = ss.insertSheet("EXISTENCIAS_SUCURSAL");
-    hoja.appendRow(["Código", "Sucursal", "Existencia"]);
+    // Columna D "Reservado" — libro de reservas de TODAS las sucursales,
+    // incluida S01 (cuya Existencia física sigue viviendo en MATRIZ; para
+    // S01 esta hoja solo guarda la reserva, nunca la existencia). Ver
+    // resolverAjusteExistencia_ más abajo.
+    hoja.appendRow(["Código", "Sucursal", "Existencia", "Reservado"]);
   }
   return hoja;
 }
@@ -3226,16 +3230,21 @@ function obtenerExistenciaSucursal_(codigo, sucursal){
     throw new Error('"TODAS" no es una sucursal física — usa obtenerExistenciaConsolidadaApp para una vista agregada.');
   }
 
-  const hoja = obtenerHojaExistenciasSucursal_();
-  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
-
-  if(fila !== -1){
-    return Number(hoja.getRange(fila, 3).getValue()) || 0;
-  }
+  // S01 SIEMPRE se lee de MATRIZ, incluso si ya tiene una fila en
+  // EXISTENCIAS_SUCURSAL — desde el mecanismo de reservas (Plano de
+  // Abastecimiento), esa fila puede existir solo para guardar Reservado,
+  // con Existencia en blanco a propósito (ver ajustarReservaEnHojaSucursal_).
+  // Leer esa columna ahí para S01 daría 0 en vez del valor real.
   if(sucursal === SUCURSAL_DEFAULT_){
     const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
     if(filaMatriz === -1) return 0;
     return Number(SpreadsheetApp.getActive().getSheetByName("MATRIZ").getRange(filaMatriz, 11).getValue()) || 0;
+  }
+
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  if(fila !== -1){
+    return Number(hoja.getRange(fila, 3).getValue()) || 0;
   }
   return 0;
 }
@@ -3269,6 +3278,66 @@ function obtenerExistenciaConsolidadaApp(codigo, token){
 }
 
 /**
+ * LECTURA de la reserva (columna D de EXISTENCIAS_SUCURSAL) — vive ahí
+ * para TODAS las sucursales, incluida S01 (cuya Existencia física sigue
+ * en MATRIZ; para S01 esta hoja solo guarda la reserva). 0 si no hay
+ * fila todavía. "TODAS" no tiene reserva propia.
+ */
+function obtenerReservaSucursal_(codigo, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  if(sucursal === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — no tiene reserva propia.');
+  }
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  if(fila === -1) return 0;
+  return Number(hoja.getRange(fila, 4).getValue()) || 0;
+}
+
+/**
+ * Existencia, reserva y disponible (calculado, nunca guardado) de un
+ * producto en una sucursal — para las pantallas de aprobación/surtido
+ * del nuevo flujo de Requisiciones por Sucursal.
+ */
+function obtenerDisponibleSucursalApp(codigo, sucursal, token){
+  requerirSesionActivaApp_(token);
+  sucursal = normalizarSucursal_(sucursal);
+  const existencia = obtenerExistenciaSucursal_(codigo, sucursal);
+  const reservado = obtenerReservaSucursal_(codigo, sucursal);
+  return {
+    codigo: String(codigo||"").trim(), sucursal: sucursal,
+    existencia: existencia, reservado: reservado,
+    disponible: Math.round((existencia - reservado) * 1000) / 1000
+  };
+}
+
+/**
+ * Ajusta SOLO la columna Reservado de EXISTENCIAS_SUCURSAL — usada por
+ * resolverAjusteExistencia_ para las dos ramas (S01 y no-S01), ya que la
+ * reserva vive ahí sin importar de qué sucursal se trate. No toca
+ * Existencia; si la fila no existe todavía la crea (Existencia="" para
+ * S01 — ese número no se usa ahí, vive en MATRIZ — o 0 para las demás).
+ */
+function ajustarReservaEnHojaSucursal_(codigo, sucursal, deltaReserva, validarReserva){
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  const anterior = fila !== -1 ? (Number(hoja.getRange(fila, 4).getValue()) || 0) : 0;
+  const nueva = Math.round((anterior + deltaReserva) * 1000) / 1000;
+
+  if(validarReserva && nueva < 0){
+    throw new Error("No hay esa cantidad reservada para liberar en " + sucursal + ". Reservado actual: " + anterior);
+  }
+
+  if(fila === -1){
+    hoja.appendRow([codigo, sucursal, sucursal === SUCURSAL_DEFAULT_ ? "" : 0, nueva]);
+  } else {
+    hoja.getRange(fila, 4).setValue(nueva);
+  }
+
+  return { anterior: anterior, nueva: nueva };
+}
+
+/**
  * NÚCLEO ÚNICO DE ESCRITURA — la única función de todo el proyecto que
  * decide "MATRIZ o EXISTENCIAS_SUCURSAL" y hace el
  * leer-validar-calcular-escribir real. Todos los escritores públicos de
@@ -3292,11 +3361,19 @@ function obtenerExistenciaConsolidadaApp(codigo, token){
  * @param {boolean} [opciones.lanzarSiNoExiste]  Default true. Si false, regresa null en vez de lanzar
  *        cuando el código no existe en MATRIZ (solo aplica a S01 — en EXISTENCIAS_SUCURSAL
  *        la fila se crea sola, "no existe" no es un caso de error ahí).
- * @return {{anterior:number, nueva:number}|null}
+ * @param {number}  [opciones.deltaReserva]      NUEVO (Fase 4, pipeline de Requisiciones por
+ *        Sucursal) — cuánto sumar/restar a Reservado (EXISTENCIAS_SUCURSAL), en la MISMA
+ *        lectura-escritura atómica. 0/omitido = comportamiento idéntico a antes de esto existir.
+ * @param {boolean} [opciones.validarReserva]    Si true, lanza error si Reservado quedaría negativo.
+ * @param {boolean} [opciones.validarDisponible] Si true, lanza error si Reservado quedaría por
+ *        encima de la Existencia (nunca se puede reservar más de lo que físicamente hay).
+ * @return {{anterior:number, nueva:number, reservaAnterior:number, reservaNueva:number}|null}
+ *        reservaAnterior/reservaNueva solo vienen cuando se pidió deltaReserva !== 0.
  */
 function resolverAjusteExistencia_(codigo, sucursal, opciones){
 
   opciones = opciones || {};
+  const deltaReserva = Math.round((Number(opciones.deltaReserva) || 0) * 1000) / 1000;
 
   if(sucursal === SUCURSAL_TODAS_){
     throw new Error('"TODAS" no es una sucursal física — no se puede ajustar existencia ahí. Úsala solo para consultar/agrupar.');
@@ -3307,6 +3384,8 @@ function resolverAjusteExistencia_(codigo, sucursal, opciones){
       ? Math.round((Number(opciones.nuevaExistencia) || 0) * 1000) / 1000
       : Math.round((anterior + (Number(opciones.delta) || 0)) * 1000) / 1000;
   };
+
+  let resultado;
 
   if(sucursal === SUCURSAL_DEFAULT_){
 
@@ -3327,8 +3406,9 @@ function resolverAjusteExistencia_(codigo, sucursal, opciones){
 
     celda.setValue(nueva);
     invalidarCacheHoja_("MATRIZ");
-    return { anterior: anterior, nueva: nueva };
-  }
+    resultado = { anterior: anterior, nueva: nueva };
+
+  } else {
 
   // Cualquier sucursal que no sea S01 -> EXISTENCIAS_SUCURSAL. Una fila
   // que todavía no existe arranca en 0 (nunca hereda de MATRIZ: MATRIZ
@@ -3343,13 +3423,37 @@ function resolverAjusteExistencia_(codigo, sucursal, opciones){
   }
 
   if(fila === -1){
-    hoja.appendRow([codigo, sucursal, nueva]);
+    hoja.appendRow([codigo, sucursal, nueva, 0]);
   } else {
     hoja.getRange(fila, 3).setValue(nueva);
   }
 
   invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
-  return { anterior: anterior, nueva: nueva };
+  resultado = { anterior: anterior, nueva: nueva };
+
+  }
+
+  if(deltaReserva !== 0){
+
+    // validarDisponible: la reserva NUNCA puede superar la existencia real
+    // — se comprueba ANTES de escribir (lectura+validación+escritura es un
+    // solo paso, dentro del mismo lock que ya sostiene a quien llama), así
+    // dos aprobaciones simultáneas del mismo producto no pueden sobre-reservar.
+    if(opciones.validarDisponible){
+      const reservaActual = obtenerReservaSucursal_(codigo, sucursal);
+      const reservaProspectiva = Math.round((reservaActual + deltaReserva) * 1000) / 1000;
+      if((resultado.nueva - reservaProspectiva) < 0){
+        throw new Error("Existencia insuficiente para reservar en " + sucursal + ". Disponible: " + Math.round((resultado.nueva - reservaActual) * 1000) / 1000);
+      }
+    }
+
+    const resReserva = ajustarReservaEnHojaSucursal_(codigo, sucursal, deltaReserva, opciones.validarReserva);
+    resultado.reservaAnterior = resReserva.anterior;
+    resultado.reservaNueva = resReserva.nueva;
+    invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
+  }
+
+  return resultado;
 
 }
 

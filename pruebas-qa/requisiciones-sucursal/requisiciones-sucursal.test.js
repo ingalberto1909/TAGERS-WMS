@@ -223,3 +223,157 @@ prueba({
     };
   },
 });
+
+// ============================================
+// PLANO DE ABASTECIMIENTO — pipeline de aprobación/reserva (Fase 4,
+// primera entrega: aprobar/rechazar líneas). Reserva vs. existencia
+// física, sobre-reserva simultánea bloqueada, y permisos.
+// ============================================
+
+prueba({
+  id: 'RS-013', grupo: 'requisiciones-sucursal', nombre: 'Aprobar reserva SIN tocar la existencia física', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarLineaRequisicionSucursalApp debe reservar contra CEDIS (S01) sin cambiar MATRIZ.Existencia — la existencia física solo se mueve al despachar (fase futura)',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadAprobada: 15 }], tokenAdmin);
+    const existenciaMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    return {
+      datos: 'COD-001 existencia inicial en MATRIZ (S01) = 100, se aprueban 15 de 20 solicitados',
+      esperado: 'MATRIZ.Existencia sigue en 100, Reservado=15, Disponible=85',
+      obtenido: `existenciaMatriz=${existenciaMatriz}, reservado=${disponible.reservado}, disponible=${disponible.disponible}`,
+      pasa: existenciaMatriz === 100 && disponible.reservado === 15 && disponible.disponible === 85,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-014', grupo: 'requisiciones-sucursal', nombre: 'Aprobación total vs. parcial cambian el estado del folio', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarLineaRequisicionSucursalApp debe dejar el folio en APROBADA cuando se aprueba exactamente lo solicitado, y APROBADA_PARCIAL cuando se aprueba menos',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const reqTotal = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    const reqParcial = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-003', producto: 'SAL DE MESA', unidad: 'KG', solicitado: 10 }], tokenS02);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const resTotal = entorno.invocar('aprobarLineaRequisicionSucursalApp', reqTotal.folio, [{ codigo: 'COD-001', cantidadAprobada: 20 }], tokenAdmin);
+    const resParcial = entorno.invocar('aprobarLineaRequisicionSucursalApp', reqParcial.folio, [{ codigo: 'COD-003', cantidadAprobada: 6 }], tokenAdmin);
+    return {
+      datos: 'folio1: aprobado=20/solicitado=20; folio2: aprobado=6/solicitado=10',
+      esperado: 'folio1.estado=APROBADA, folio2.estado=APROBADA_PARCIAL',
+      obtenido: `folio1=${resTotal.estado}, folio2=${resParcial.estado}`,
+      pasa: resTotal.estado === 'APROBADA' && resParcial.estado === 'APROBADA_PARCIAL',
+    };
+  },
+});
+
+prueba({
+  id: 'RS-015', grupo: 'requisiciones-sucursal', nombre: 'No se puede aprobar más de lo solicitado', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarLineaRequisicionSucursalApp debe rechazar una cantidadAprobada mayor al solicitado, sin reservar nada',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadAprobada: 25 }], tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    return {
+      datos: 'solicitado=20, se intenta aprobar 25',
+      esperado: 'bloqueado, sin reserva (Reservado=0)',
+      obtenido: bloqueado ? `bloqueado: ${mensaje}, reservado=${disponible.reservado}` : 'PERMITIDO',
+      pasa: bloqueado && disponible.reservado === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-016', grupo: 'requisiciones-sucursal', nombre: 'Doble aprobación simultánea del mismo producto NO sobre-reserva', metodo: 'EMPÍRICO',
+  objetivo: 'Dos requisiciones distintas pidiendo el mismo código a CEDIS: la segunda aprobación debe usar el DISPONIBLE REAL (existencia - reservado ya comprometido por la primera), nunca la existencia bruta — caso de prueba 3 del spec',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    // COD-002 AZUCAR ESTANDAR: existencia=5 en MATRIZ (S01/CEDIS).
+    const tokenS04 = entorno.invocar('crearSesion_', 'sucursal4@tagers.com', 'Operador S04', 'OPERADOR');
+    const req1 = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', unidad: 'KG', solicitado: 3 }], tokenS02);
+    const req2 = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', unidad: 'KG', solicitado: 3 }], tokenS04);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('aprobarLineaRequisicionSucursalApp', req1.folio, [{ codigo: 'COD-002', cantidadAprobada: 3 }], tokenAdmin);
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('aprobarLineaRequisicionSucursalApp', req2.folio, [{ codigo: 'COD-002', cantidadAprobada: 3 }], tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-002', 'S01', tokenAdmin);
+    return {
+      datos: 'CEDIS tiene 5 de AZUCAR; req1 ya reservó 3 (disponible real=2); req2 intenta reservar 3 más',
+      esperado: 'req2 bloqueada ("Existencia insuficiente para reservar"), Reservado se queda en 3 (no en 6)',
+      obtenido: bloqueado ? `bloqueado: ${mensaje}, reservado=${disponible.reservado}` : 'PERMITIDO — SOBRE-RESERVÓ',
+      pasa: bloqueado && /insuficiente para reservar/i.test(mensaje) && disponible.reservado === 3,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-017', grupo: 'requisiciones-sucursal', nombre: 'Rechazar una línea no reserva nada y exige motivo', metodo: 'EMPÍRICO',
+  objetivo: 'rechazarLineaRequisicionSucursalApp debe marcar la línea RECHAZADA con el motivo, sin tocar Reservado, y exigir motivo obligatorio',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    let bloqueadoSinMotivo = false;
+    try { entorno.invocar('rechazarLineaRequisicionSucursalApp', req.folio, 'COD-001', '', tokenAdmin); }
+    catch (e) { bloqueadoSinMotivo = true; }
+
+    entorno.invocar('rechazarLineaRequisicionSucursalApp', req.folio, 'COD-001', 'Sin existencia suficiente en CEDIS', tokenAdmin);
+    const filaDetalle = entorno.leerHoja('DETALLE_REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio && f[1] === 'COD-001');
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+
+    return {
+      datos: 'rechazo sin motivo, luego rechazo con motivo',
+      esperado: 'sin motivo bloqueado; con motivo: EstadoLinea=RECHAZADA, motivo guardado, Reservado sigue en 0',
+      obtenido: `bloqueadoSinMotivo=${bloqueadoSinMotivo}, estadoLinea=${filaDetalle[13]}, motivo="${filaDetalle[14]}", reservado=${disponible.reservado}`,
+      pasa: bloqueadoSinMotivo && filaDetalle[13] === 'RECHAZADA' && filaDetalle[14] === 'Sin existencia suficiente en CEDIS' && disponible.reservado === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-018', grupo: 'requisiciones-sucursal', nombre: 'Solo Almacén (acceso a todas las sucursales) puede aprobar o rechazar', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarLineaRequisicionSucursalApp y rechazarLineaRequisicionSucursalApp deben bloquear a un usuario de una sola sucursal, incluso sobre su propia requisición',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    let bloqueadoAprobar = false, bloqueadoRechazar = false;
+    try { entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadAprobada: 10 }], tokenS02); }
+    catch (e) { bloqueadoAprobar = true; }
+    try { entorno.invocar('rechazarLineaRequisicionSucursalApp', req.folio, 'COD-001', 'motivo', tokenS02); }
+    catch (e) { bloqueadoRechazar = true; }
+    return {
+      datos: 'S02 intenta aprobar y rechazar su propia requisición',
+      esperado: 'ambas bloqueadas',
+      obtenido: `aprobar=${bloqueadoAprobar ? 'bloqueado' : 'PERMITIDO'}, rechazar=${bloqueadoRechazar ? 'bloqueado' : 'PERMITIDO'}`,
+      pasa: bloqueadoAprobar && bloqueadoRechazar,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-019', grupo: 'requisiciones-sucursal', nombre: 'No se puede aprobar una requisición ya cancelada', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarLineaRequisicionSucursalApp debe rechazar una requisición fuera de los estados aprobables (PENDIENTE/APROBADA_PARCIAL) — aquí, una ya CANCELADA',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    const filaReq = entorno.leerHoja('REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio);
+    filaReq[4] = 'CANCELADA'; // set directo, para probar el guard sin depender de otra función
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadAprobada: 10 }], tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    return {
+      datos: `${req.folio} en estado CANCELADA`,
+      esperado: 'bloqueado ("no se puede aprobar")',
+      obtenido: bloqueado ? mensaje : 'PERMITIDO',
+      pasa: bloqueado && /no se puede aprobar/i.test(mensaje),
+    };
+  },
+});

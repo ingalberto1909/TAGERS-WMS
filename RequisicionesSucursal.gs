@@ -295,3 +295,248 @@ function confirmarEntregaRequisicionSucursalApp(folio, entregas, token){
   return { productosEntregados: productosEntregados };
 
 }
+
+// ============================================
+// PLANO DE ABASTECIMIENTO — pipeline de aprobación/reserva. Aditivo
+// sobre todo lo de arriba: crearRequisicionSucursalApp /
+// obtenerRequisicionesSucursalApp / confirmarEntregaRequisicionSucursalApp
+// NO se tocan — un folio puede seguir usando el flujo directo de
+// siempre. Esto agrega el paso que faltaba entre "se solicitó" y "se
+// entregó": aprobar cuánto se puede atender, con una RESERVA real (no
+// un descuento físico todavía) para que dos aprobaciones simultáneas
+// del mismo producto nunca puedan comprometer más de lo que existe.
+//
+// Todavía sin: surtido, despacho/transferencia en tránsito, recepción
+// e incidencias — esa es la siguiente entrega de esta misma fase.
+// ============================================
+
+const ESTADO_REQ_SUCURSAL_ = Object.freeze({
+  PENDIENTE: "PENDIENTE",           // heredado — folio recién creado, esperando aprobación
+  APROBADA: "APROBADA",
+  APROBADA_PARCIAL: "APROBADA_PARCIAL",
+  ENTREGADA: "ENTREGADA",           // heredado — flujo directo de un paso
+  CANCELADA: "CANCELADA"            // heredado
+});
+
+const ESTADO_LINEA_REQ_SUCURSAL_ = Object.freeze({
+  PENDIENTE: "PENDIENTE",
+  APROBADA: "APROBADA",
+  APROBADA_PARCIAL: "APROBADA_PARCIAL",
+  RECHAZADA: "RECHAZADA"
+});
+
+function obtenerHojaHistorialRequisiciones_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("HISTORIAL_REQUISICIONES");
+  if(!hoja){
+    hoja = ss.insertSheet("HISTORIAL_REQUISICIONES");
+    hoja.appendRow(["Folio","Fecha","Usuario","Accion","EstadoAnterior","EstadoNuevo","Descripcion"]);
+    hoja.getRange(1,1,1,7).setFontWeight("bold");
+  }
+  return hoja;
+}
+
+/** Una sola forma de escribir HISTORIAL_REQUISICIONES — folio-céntrica,
+ * distinta de AUDITORIA (que es un log plano de todo el sistema). */
+function registrarHistorialRequisicion_(folio, usuario, accion, estadoAnterior, estadoNuevo, descripcion){
+  obtenerHojaHistorialRequisiciones_().appendRow([
+    folio, new Date(), usuario, accion, estadoAnterior || "", estadoNuevo || "", descripcion || ""
+  ]);
+}
+
+/** Agrega en caliente los encabezados del pipeline a
+ * DETALLE_REQUISICIONES_SUCURSAL la primera vez que se necesitan —
+ * mismo patrón que ya usa RequisicionesRecetas.gs con su columna
+ * "Tipo". Filas viejas quedan con estas columnas en blanco (se leen
+ * como 0/"" sin romper nada). */
+function asegurarEncabezadosPipelineDetalleSucursal_(detalle){
+  if(detalle.getRange(1, 7).getValue() === ""){
+    detalle.getRange(1, 7, 1, 9).setValues([[
+      "Minimo","Maximo","Sugerido","Aprobado","Surtido","Enviado","Recibido","EstadoLinea","MotivoRechazo"
+    ]]);
+    detalle.getRange(1, 7, 1, 9).setFontWeight("bold");
+  }
+}
+
+/**
+ * Envoltorio del pipeline sobre resolverAjusteExistencia_ — un solo
+ * lock para ajustar existencia y/o reserva de una sucursal a la vez.
+ */
+function ajustarExistenciaYReservaSucursal_(codigo, sucursal, deltaExistencia, deltaReserva, opciones){
+  sucursal = normalizarSucursal_(sucursal);
+  opciones = opciones || {};
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, sucursal, {
+      delta: deltaExistencia || 0, deltaReserva: deltaReserva || 0,
+      validar: !!opciones.validar, validarReserva: !!opciones.validarReserva,
+      validarDisponible: !!opciones.validarDisponible
+    });
+  });
+}
+
+/**
+ * Aprueba (total o parcialmente) las líneas de una requisición de
+ * sucursal ya creada. NO descuenta existencia física: solo RESERVA la
+ * cantidad aprobada contra el almacén de origen — hoy siempre
+ * S01/CEDIS, mismo supuesto que ya usa confirmarEntregaRequisicionSucursalApp
+ * (no hay todavía un campo "Almacén origen" distinto por folio). La
+ * reserva se libera al rechazar/cancelar la línea, o se consumirá al
+ * despachar (siguiente entrega).
+ *
+ * aprobaciones = [{codigo, cantidadAprobada}] — puede traer solo
+ * algunas líneas; las demás quedan pendientes para una vuelta futura.
+ */
+function aprobarLineaRequisicionSucursalApp(folio, aprobaciones, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede aprobar requisiciones.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const almacenOrigen = SUCURSAL_DEFAULT_;
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoActual = "";
+  datosReq.forEach((f,i) => { if(String(f[0]) === String(folio)){ filaReq = i+2; estadoActual = String(f[4]||"").trim().toUpperCase(); } });
+
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  const estadosAprobables = [ESTADO_REQ_SUCURSAL_.PENDIENTE, ESTADO_REQ_SUCURSAL_.APROBADA_PARCIAL];
+  if(estadosAprobables.indexOf(estadoActual) === -1){
+    throw new Error("Esta requisición está en estado " + estadoActual + " y no se puede aprobar.");
+  }
+
+  const detalle = obtenerHojaDetalleRequisicionesSucursal_();
+  asegurarEncabezadosPipelineDetalleSucursal_(detalle);
+  const anchoDetalle = Math.max(detalle.getLastColumn(), 15);
+  const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,anchoDetalle).getValues();
+
+  const mapaAprobaciones = {};
+  (aprobaciones||[]).forEach(a => { mapaAprobaciones[String(a.codigo).trim()] = Number(a.cantidadAprobada) || 0; });
+
+  let lineasAprobadas = 0, lineasTotales = 0;
+  // El folio queda APROBADA solo si TODAS sus líneas terminan exactamente
+  // APROBADA (aprobado === solicitado) — cualquier línea PENDIENTE,
+  // APROBADA_PARCIAL o RECHAZADA dentro del folio lo deja en
+  // APROBADA_PARCIAL (una aprobación total de todo, con cero excepciones).
+  let todasLineasCompletas = true;
+
+  datosDetalle.forEach((f, i) => {
+
+    if(String(f[0]) !== String(folio)) return;
+    lineasTotales++;
+
+    const codigo = String(f[1]).trim();
+    const solicitado = Number(f[4]) || 0;
+    let estadoLineaFinal = String(f[13]||"").trim().toUpperCase() || ESTADO_LINEA_REQ_SUCURSAL_.PENDIENTE;
+
+    const yaResuelta = estadoLineaFinal === ESTADO_LINEA_REQ_SUCURSAL_.RECHAZADA
+      || estadoLineaFinal === ESTADO_LINEA_REQ_SUCURSAL_.APROBADA
+      || estadoLineaFinal === ESTADO_LINEA_REQ_SUCURSAL_.APROBADA_PARCIAL;
+
+    if(!yaResuelta && codigo in mapaAprobaciones){
+
+      const cantidadAprobada = mapaAprobaciones[codigo];
+
+      if(cantidadAprobada < 0){
+        throw new Error("La cantidad aprobada de " + codigo + " no puede ser negativa.");
+      }
+      if(cantidadAprobada > solicitado){
+        throw new Error("No puedes aprobar más de lo solicitado para " + codigo + " (solicitado: " + solicitado + ").");
+      }
+
+      if(cantidadAprobada > 0){
+        // Disponible real se valida DENTRO del mismo lock que reserva — así
+        // dos aprobaciones simultáneas del mismo producto nunca pueden
+        // sobre-reservar más de lo que existe.
+        ajustarExistenciaYReservaSucursal_(codigo, almacenOrigen, 0, cantidadAprobada, { validarDisponible: true });
+
+        estadoLineaFinal = cantidadAprobada === solicitado ? ESTADO_LINEA_REQ_SUCURSAL_.APROBADA : ESTADO_LINEA_REQ_SUCURSAL_.APROBADA_PARCIAL;
+        detalle.getRange(i+2, 10).setValue(cantidadAprobada); // J = Aprobado
+        detalle.getRange(i+2, 14).setValue(estadoLineaFinal); // N = EstadoLinea
+
+        lineasAprobadas++;
+      }
+      // cantidadAprobada === 0: sin decisión real, la línea sigue PENDIENTE
+      // (usa rechazarLineaRequisicionSucursalApp para rechazar explícitamente).
+    }
+
+    if(estadoLineaFinal !== ESTADO_LINEA_REQ_SUCURSAL_.APROBADA){
+      todasLineasCompletas = false;
+    }
+
+  });
+
+  if(lineasAprobadas === 0){
+    throw new Error("Captura al menos una cantidad aprobada mayor a cero.");
+  }
+
+  const estadoNuevo = todasLineasCompletas ? ESTADO_REQ_SUCURSAL_.APROBADA : ESTADO_REQ_SUCURSAL_.APROBADA_PARCIAL;
+
+  req.getRange(filaReq, 5).setValue(estadoNuevo);
+
+  registrarHistorialRequisicion_(folio, usuario, "REQUISICIÓN APROBADA", estadoActual, estadoNuevo,
+    lineasAprobadas + " de " + lineasTotales + " línea(s) aprobadas");
+
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "APROBACIÓN", folio, "", "", 0, 0,
+    lineasAprobadas + " línea(s) aprobadas y reservadas contra " + almacenOrigen);
+
+  return { folio: folio, estado: estadoNuevo, lineasAprobadas: lineasAprobadas, lineasTotales: lineasTotales };
+
+}
+
+/**
+ * Rechaza UNA línea de una requisición de sucursal, con motivo
+ * obligatorio — no la borra, solo la marca RECHAZADA (misma filosofía
+ * de trazabilidad que cancelarRequisicionApp/cancelarOrdenCompraApp).
+ * No libera ninguna reserva porque una línea rechazada nunca llegó a
+ * aprobarse/reservarse (si ya estaba APROBADA, hay que usar el futuro
+ * flujo de cancelación, que sí libera reservas).
+ */
+function rechazarLineaRequisicionSucursalApp(folio, codigo, motivo, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede rechazar líneas de una requisición.");
+  }
+  if(!motivo || !String(motivo).trim()){
+    throw new Error("Captura el motivo del rechazo.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  codigo = String(codigo||"").trim();
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoActual = "";
+  datosReq.forEach((f,i) => { if(String(f[0]) === String(folio)){ filaReq = i+2; estadoActual = String(f[4]||"").trim().toUpperCase(); } });
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  const estadosTerminal = [ESTADO_REQ_SUCURSAL_.ENTREGADA, ESTADO_REQ_SUCURSAL_.CANCELADA];
+  if(estadosTerminal.indexOf(estadoActual) !== -1){
+    throw new Error("Esta requisición ya está " + estadoActual + " y no se puede modificar.");
+  }
+
+  const detalle = obtenerHojaDetalleRequisicionesSucursal_();
+  asegurarEncabezadosPipelineDetalleSucursal_(detalle);
+  const anchoDetalle = Math.max(detalle.getLastColumn(), 15);
+  const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,anchoDetalle).getValues();
+
+  let filaLinea = -1;
+  datosDetalle.forEach((f, i) => {
+    if(String(f[0]) === String(folio) && String(f[1]).trim() === codigo) filaLinea = i+2;
+  });
+
+  if(filaLinea === -1) throw new Error("Ese código no pertenece a la requisición " + folio);
+
+  detalle.getRange(filaLinea, 14).setValue(ESTADO_LINEA_REQ_SUCURSAL_.RECHAZADA); // N
+  detalle.getRange(filaLinea, 15).setValue(motivo); // O
+
+  registrarHistorialRequisicion_(folio, usuario, "LÍNEA RECHAZADA", estadoActual, estadoActual, codigo + " — " + motivo);
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "LÍNEA RECHAZADA", folio, codigo, "", 0, 0, motivo);
+
+  return { ok: true, folio: folio, codigo: codigo };
+
+}
