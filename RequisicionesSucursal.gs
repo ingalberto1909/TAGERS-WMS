@@ -905,3 +905,157 @@ function recibirTransferenciaSucursalApp(folioTransferencia, recepciones, token)
   };
 
 }
+
+/**
+ * Cancela una requisición de sucursal que YA está en el pipeline nuevo
+ * (aprobación/reserva) — complementa a cancelarRequisicionApp (Área) y
+ * al hecho de que confirmarEntregaRequisicionSucursalApp nunca pasa por
+ * aquí (flujo directo, sin reserva que liberar). Reglas por estado (tu
+ * punto 40): libre en PENDIENTE; libera reserva en
+ * APROBADA/APROBADA_PARCIAL/SURTIDO_PARCIAL/LISTA_DESPACHO; bloqueada
+ * desde EN_TRANSITO en adelante (ya hay un movimiento físico real en
+ * curso — para eso existe la incidencia, no la cancelación).
+ */
+function cancelarRequisicionSucursalApp(folio, motivo, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede cancelar esta requisición.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const almacenOrigen = SUCURSAL_DEFAULT_;
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoActual = "", observacionesActuales = "";
+  datosReq.forEach((f,i) => {
+    if(String(f[0]) === String(folio)){ filaReq = i+2; estadoActual = String(f[4]||"").trim().toUpperCase(); observacionesActuales = String(f[5]||""); }
+  });
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  const estadosCancelables = [
+    ESTADO_REQ_SUCURSAL_.PENDIENTE, ESTADO_REQ_SUCURSAL_.APROBADA, ESTADO_REQ_SUCURSAL_.APROBADA_PARCIAL,
+    ESTADO_REQ_SUCURSAL_.SURTIDO_PARCIAL, ESTADO_REQ_SUCURSAL_.LISTA_DESPACHO
+  ];
+  if(estadosCancelables.indexOf(estadoActual) === -1){
+    throw new Error("Esta requisición está en estado " + estadoActual + " y ya no se puede cancelar — hay un movimiento físico en curso o ya se cerró.");
+  }
+
+  const detalle = obtenerHojaDetalleRequisicionesSucursal_();
+  const anchoDetalle = Math.max(detalle.getLastColumn(), 15);
+  const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,anchoDetalle).getValues();
+
+  let reservasLiberadas = 0;
+  datosDetalle.forEach(f => {
+    if(String(f[0]) !== String(folio)) return;
+    const aprobado = Number(f[9]) || 0;
+    if(aprobado <= 0) return; // nunca se llegó a reservar nada para esta línea
+    ajustarExistenciaYReservaSucursal_(String(f[1]).trim(), almacenOrigen, 0, -aprobado, { validarReserva: true });
+    reservasLiberadas++;
+  });
+
+  const nota = "[CANCELADA por " + usuario + (motivo ? " — " + motivo : "") + "]";
+  req.getRange(filaReq, 5).setValue(ESTADO_REQ_SUCURSAL_.CANCELADA);
+  req.getRange(filaReq, 6).setValue((observacionesActuales ? observacionesActuales + " " : "") + nota);
+
+  registrarHistorialRequisicion_(folio, usuario, "REQUISICIÓN CANCELADA", estadoActual, ESTADO_REQ_SUCURSAL_.CANCELADA,
+    (motivo || "") + (reservasLiberadas ? " — " + reservasLiberadas + " reserva(s) liberada(s)" : ""));
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "REQUISICIÓN CANCELADA", folio, "", "", 0, 0,
+    "Estaba " + estadoActual + (motivo ? " — Motivo: " + motivo : ""));
+
+  return { ok: true, folio: folio, reservasLiberadas: reservasLiberadas };
+
+}
+
+/**
+ * Cierra una requisición ya RECIBIDA por completo — el punto final del
+ * pipeline (tu punto 39). Deliberadamente NO cierra desde
+ * RECIBIDA_PARCIAL ni CON_INCIDENCIA: primero hay que resolver esas
+ * líneas (recepción complementaria o resolverIncidenciaRequisicionApp)
+ * para no cerrar un folio con diferencias sin explicar.
+ */
+function cerrarRequisicionSucursalApp(folio, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede cerrar esta requisición.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let filaReq = -1, estadoActual = "";
+  datosReq.forEach((f,i) => { if(String(f[0]) === String(folio)){ filaReq = i+2; estadoActual = String(f[4]||"").trim().toUpperCase(); } });
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  if(estadoActual !== ESTADO_REQ_SUCURSAL_.RECIBIDA){
+    throw new Error("Esta requisición está en estado " + estadoActual + " y no se puede cerrar todavía — debe quedar RECIBIDA por completo (sin diferencias pendientes) primero.");
+  }
+
+  req.getRange(filaReq, 5).setValue(ESTADO_REQ_SUCURSAL_.CERRADA);
+
+  registrarHistorialRequisicion_(folio, usuario, "REQUISICIÓN CERRADA", estadoActual, ESTADO_REQ_SUCURSAL_.CERRADA, "");
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "REQUISICIÓN CERRADA", folio, "", "", 0, 0, "");
+
+  return { ok: true, folio: folio };
+
+}
+
+/**
+ * Resuelve una incidencia (faltante/daño/etc.) capturada al recibir.
+ * Si era la última incidencia PENDIENTE de su requisición, la
+ * requisición sale de CON_INCIDENCIA hacia RECIBIDA — ya quedó
+ * explicada la diferencia y el ciclo puede cerrarse normalmente.
+ */
+function resolverIncidenciaRequisicionApp(folioIncidencia, resolucion, token){
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales){
+    throw new Error("Solo un usuario con acceso a todas las sucursales puede resolver incidencias.");
+  }
+  if(!resolucion || !String(resolucion).trim()){
+    throw new Error("Captura cómo se resolvió la incidencia.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const hoja = obtenerHojaIncidenciasRequisiciones_();
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,15).getValues();
+
+  let filaInc = -1, folioReq = "", estadoIncActual = "";
+  datos.forEach((f,i) => {
+    if(String(f[0]) === String(folioIncidencia)){ filaInc = i+2; folioReq = f[1]; estadoIncActual = String(f[13]||"").trim().toUpperCase(); }
+  });
+  if(filaInc === -1) throw new Error("No se encontró la incidencia " + folioIncidencia);
+  if(estadoIncActual === "RESUELTA"){
+    throw new Error("Esta incidencia ya está resuelta.");
+  }
+
+  hoja.getRange(filaInc, 14).setValue("RESUELTA");
+  hoja.getRange(filaInc, 15).setValue(resolucion);
+
+  const quedanPendientes = datos.some((f,i) =>
+    i+2 !== filaInc && String(f[1]) === String(folioReq) && String(f[13]||"").trim().toUpperCase() !== "RESUELTA"
+  );
+
+  let estadoReqNuevo = null;
+  if(!quedanPendientes){
+    const req = obtenerHojaRequisicionesSucursal_();
+    const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+    let filaReq = -1, estadoReqActual = "";
+    datosReq.forEach((f,i) => { if(String(f[0]) === String(folioReq)){ filaReq = i+2; estadoReqActual = String(f[4]||"").trim().toUpperCase(); } });
+    if(filaReq !== -1 && estadoReqActual === ESTADO_REQ_SUCURSAL_.CON_INCIDENCIA){
+      estadoReqNuevo = ESTADO_REQ_SUCURSAL_.RECIBIDA;
+      req.getRange(filaReq, 5).setValue(estadoReqNuevo);
+    }
+  }
+
+  registrarHistorialRequisicion_(folioReq, usuario, "INCIDENCIA RESUELTA", "CON_INCIDENCIA", estadoReqNuevo || "CON_INCIDENCIA",
+    folioIncidencia + " — " + resolucion);
+  registrarAuditoria(usuario, "REQUISICIONES_SUCURSAL", "INCIDENCIA RESUELTA", folioReq, "", "", 0, 0,
+    folioIncidencia + " — " + resolucion);
+
+  return { ok: true, folioIncidencia: folioIncidencia, folioRequisicion: folioReq, estadoRequisicion: estadoReqNuevo, quedanPendientes: quedanPendientes };
+
+}

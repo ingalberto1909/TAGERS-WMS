@@ -560,3 +560,100 @@ prueba({
     };
   },
 });
+
+// ============================================
+// PLANO DE ABASTECIMIENTO — cancelación con liberación de reserva,
+// cierre del folio, y resolución de incidencias.
+// ============================================
+
+prueba({
+  id: 'RS-028', grupo: 'requisiciones-sucursal', nombre: 'Cancelar una requisición APROBADA libera la reserva', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionSucursalApp debe liberar Reservado del almacén origen cuando cancela una requisición que ya tenía inventario reservado, sin haber movido nada físico todavía',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    const res = entorno.invocar('cancelarRequisicionSucursalApp', req.folio, 'La sucursal ya no lo necesita', tokenAdmin);
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    const filaReq = entorno.leerHoja('REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio);
+    return {
+      datos: 'requisición APROBADA con 15 reservados contra CEDIS',
+      esperado: 'Reservado vuelve a 0, Estado=CANCELADA con el motivo en Observaciones',
+      obtenido: `reservasLiberadas=${res.reservasLiberadas}, reservado=${disponible.reservado}, estado=${filaReq[4]}, observaciones="${filaReq[5]}"`,
+      pasa: res.reservasLiberadas === 1 && disponible.reservado === 0 && filaReq[4] === 'CANCELADA' && /La sucursal ya no lo necesita/.test(filaReq[5]),
+    };
+  },
+});
+
+prueba({
+  id: 'RS-029', grupo: 'requisiciones-sucursal', nombre: 'No se puede cancelar una requisición ya EN_TRANSITO', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionSucursalApp debe rechazar una requisición despachada — ya hay un movimiento físico real en curso',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('cancelarRequisicionSucursalApp', req.folio, 'motivo', tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    return {
+      datos: `${req.folio} ya está EN_TRANSITO`,
+      esperado: 'bloqueado',
+      obtenido: bloqueado ? mensaje : 'PERMITIDO',
+      pasa: bloqueado,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-030', grupo: 'requisiciones-sucursal', nombre: 'Cerrar solo funciona desde RECIBIDA completa', metodo: 'EMPÍRICO',
+  objetivo: 'cerrarRequisicionSucursalApp debe permitir cerrar una requisición RECIBIDA por completo, y rechazar cerrar una que sigue CON_INCIDENCIA',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    const reqOk = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', reqOk.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const despachoOk = entorno.invocar('despacharRequisicionSucursalApp', reqOk.folio, tokenAdmin);
+    entorno.invocar('recibirTransferenciaSucursalApp', despachoOk.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 15 }], tokenS02);
+    const resCierre = entorno.invocar('cerrarRequisicionSucursalApp', reqOk.folio, tokenAdmin);
+
+    const reqConIncidencia = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-003', 'SAL DE MESA', 'KG', 10, 10);
+    entorno.invocar('surtirRequisicionSucursalApp', reqConIncidencia.folio, [{ codigo: 'COD-003', cantidadSurtida: 10 }], tokenAdmin);
+    const despachoInc = entorno.invocar('despacharRequisicionSucursalApp', reqConIncidencia.folio, tokenAdmin);
+    entorno.invocar('recibirTransferenciaSucursalApp', despachoInc.folioTransferencia, [{ codigo: 'COD-003', cantidadRecibida: 8 }], tokenS02);
+    let bloqueado = false;
+    try { entorno.invocar('cerrarRequisicionSucursalApp', reqConIncidencia.folio, tokenAdmin); }
+    catch (e) { bloqueado = true; }
+
+    return {
+      datos: 'req1 recibida completa; req2 recibida con faltante (CON_INCIDENCIA)',
+      esperado: 'req1 se cierra (CERRADA); req2 bloqueada mientras siga CON_INCIDENCIA',
+      obtenido: `cierreOk=${resCierre.ok}, bloqueadoConIncidencia=${bloqueado}`,
+      pasa: resCierre.ok === true && bloqueado === true,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-031', grupo: 'requisiciones-sucursal', nombre: 'Resolver la incidencia saca la requisición de CON_INCIDENCIA', metodo: 'EMPÍRICO',
+  objetivo: 'resolverIncidenciaRequisicionApp debe marcar la incidencia RESUELTA y, si era la última pendiente de su folio, devolver la requisición a RECIBIDA para que ya se pueda cerrar',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-003', 'SAL DE MESA', 'KG', 10, 10);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-003', cantidadSurtida: 10 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    const recepcion = entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-003', cantidadRecibida: 8 }], tokenS02);
+    const resResolucion = entorno.invocar('resolverIncidenciaRequisicionApp', recepcion.incidencias[0], 'Se ajustó por conteo — faltante real, se descontó del proveedor', tokenAdmin);
+    const filaReq = entorno.leerHoja('REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio);
+    const cierre = entorno.invocar('cerrarRequisicionSucursalApp', req.folio, tokenAdmin);
+    return {
+      datos: 'requisición CON_INCIDENCIA por 1 faltante, se resuelve la única incidencia',
+      esperado: 'requisición vuelve a RECIBIDA y ya se puede cerrar',
+      obtenido: `estadoTrasResolucion=${resResolucion.estadoRequisicion}, estadoEnHoja=${filaReq[4]}, cierreOk=${cierre.ok}`,
+      pasa: resResolucion.estadoRequisicion === 'RECIBIDA' && filaReq[4] === 'RECIBIDA' && cierre.ok === true,
+    };
+  },
+});
