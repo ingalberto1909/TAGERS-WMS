@@ -196,7 +196,8 @@ function obtenerDetalleRequisicionSucursalApp(folio, token){
 
   const sucursalReq = encabezado[2];
   const detalle = obtenerHojaDetalleRequisicionesSucursal_();
-  const datosDetalle = detalle.getLastRow() > 1 ? detalle.getRange(2,1,detalle.getLastRow()-1,6).getValues() : [];
+  const anchoDetalle = Math.max(detalle.getLastColumn(), 15);
+  const datosDetalle = detalle.getLastRow() > 1 ? detalle.getRange(2,1,detalle.getLastRow()-1,anchoDetalle).getValues() : [];
 
   const items = datosDetalle
     .filter(f => String(f[0]) === String(folio))
@@ -208,7 +209,15 @@ function obtenerDetalleRequisicionSucursalApp(folio, token){
         codigo: f[1], producto: f[2], unidad: f[3], solicitado: solicitado,
         existencia: existencia,
         entregarSugerido: Math.min(solicitado, existencia),
-        entregado: f[5]
+        entregado: f[5],
+        // Campos del pipeline nuevo (Plano de Abastecimiento) — "" o 0 en
+        // filas creadas antes de que existiera, no rompe nada.
+        aprobado: Number(f[9]) || 0,
+        surtido: Number(f[10]) || 0,
+        enviado: Number(f[11]) || 0,
+        recibido: Number(f[12]) || 0,
+        estadoLinea: String(f[13]||"").trim(),
+        motivoRechazo: f[14] || ""
       };
     });
 
@@ -220,6 +229,43 @@ function obtenerDetalleRequisicionSucursalApp(folio, token){
     items: items
   };
 
+}
+
+/**
+ * Datos de la transferencia asociada a una requisición (si ya se
+ * despachó) — para la pestaña de tránsito/recepción del detalle.
+ */
+function obtenerTransferenciaPorRequisicionSucursalApp(folioRequisicion, token){
+  requerirSesionActivaApp_(token);
+
+  const transferencias = obtenerHojaTransferenciasRequisiciones_();
+  if(transferencias.getLastRow() < 2) return null;
+  const datos = transferencias.getRange(2,1,transferencias.getLastRow()-1,7).getValues();
+  const fila = datos.find(f => String(f[1]) === String(folioRequisicion));
+  if(!fila) return null;
+
+  const folioTransferencia = fila[0];
+  const detalleTransf = obtenerHojaTransferenciasDetalle_();
+  const datosDetalle = detalleTransf.getLastRow() > 1 ? detalleTransf.getRange(2,1,detalleTransf.getLastRow()-1,6).getValues() : [];
+
+  const items = datosDetalle
+    .filter(f => String(f[0]) === String(folioTransferencia))
+    .map(f => ({ codigo: f[1], producto: f[2], unidad: f[3], enviado: Number(f[4])||0, recibido: f[5] === "" ? "" : Number(f[5])||0 }));
+
+  const incidenciasHoja = obtenerHojaIncidenciasRequisiciones_();
+  const datosInc = incidenciasHoja.getLastRow() > 1 ? incidenciasHoja.getRange(2,1,incidenciasHoja.getLastRow()-1,15).getValues() : [];
+  const incidencias = datosInc
+    .filter(f => String(f[1]) === String(folioRequisicion))
+    .map(f => ({
+      folioIncidencia: f[0], codigo: f[3], producto: f[4], tipo: f[5],
+      cantidadEnviada: f[6], cantidadRecibida: f[7], diferencia: f[8],
+      estado: f[13], resolucion: f[14]
+    }));
+
+  return {
+    folioTransferencia: folioTransferencia, sucursalOrigen: fila[2], sucursalDestino: fila[3],
+    estado: fila[6], items: items, incidencias: incidencias
+  };
 }
 
 /**

@@ -3811,7 +3811,10 @@ function verDetalleRequisicionSucursal(folio){
       google.script.run
         .withSuccessHandler(function(detalle){
 
-          const puedeEntregar = acceso.esTodasLasSucursales && detalle.estado === "PENDIENTE";
+          // "Entrega directa" (flujo de un paso, de siempre) sigue disponible
+          // en PENDIENTE tal cual funcionaba — abajo se agrega, aparte, el
+          // flujo nuevo de aprobación/reserva/tránsito para quien lo prefiera.
+          const puedeEntregarDirecto = acceso.esTodasLasSucursales && detalle.estado === "PENDIENTE";
 
           cont.innerHTML = `
             <div class="cardProducto">
@@ -3819,29 +3822,43 @@ function verDetalleRequisicionSucursal(folio){
               <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
                 Solicitó: ${detalle.solicitante} — ${detalle.fecha}${detalle.fechaRequerida ? " — Requerida: " + detalle.fechaRequerida : ""} — ${dibujarBadgeEstadoRequisicion(detalle.estado)}
               </p>
-              <table class="tablaTop" style="font-size:13px">
-                <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia en ${detalle.sucursal}</th>${puedeEntregar ? '<th style="text-align:right">Entregar</th>' : '<th style="text-align:right">Entregado</th>'}</tr></thead>
+              <table class="tablaTop" style="font-size:12px">
+                <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia ${detalle.sucursal}</th><th style="text-align:right">Aprobado</th><th style="text-align:right">Surtido</th><th style="text-align:right">Enviado</th><th style="text-align:right">Recibido</th></tr></thead>
                 <tbody>
-                  ${detalle.items.map((it,i) => `
-                    <tr>
-                      <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}</span></td>
+                  ${detalle.items.map(it => `
+                    <tr style="${it.estadoLinea === 'RECHAZADA' ? 'opacity:.55' : ''}">
+                      <td>${it.producto}<br><span style="font-size:10px;color:var(--text-muted)">${it.codigo}${it.estadoLinea === 'RECHAZADA' ? ' · rechazada: ' + it.motivoRechazo : ''}</span></td>
                       <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
                       <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
-                      <td style="text-align:right">${
-                        puedeEntregar
-                          ? `<input type="number" id="entregarReqSuc${i}" value="${it.entregarSugerido}" min="0" max="${it.existencia}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">`
-                          : (it.entregado || 0) + " " + (it.unidad||"")
-                      }</td>
+                      <td style="text-align:right">${it.aprobado || "—"}</td>
+                      <td style="text-align:right">${it.surtido || "—"}</td>
+                      <td style="text-align:right">${it.enviado || "—"}</td>
+                      <td style="text-align:right">${it.recibido || "—"}</td>
                     </tr>
                   `).join("")}
                 </tbody>
               </table>
+              ${puedeEntregarDirecto ? `
+                <details style="margin-top:14px">
+                  <summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted)">Entrega directa (sin pasar por aprobación)</summary>
+                  <table class="tablaTop" style="font-size:13px;margin-top:8px">
+                    <thead><tr><th>Producto</th><th style="text-align:right">Entregar</th></tr></thead>
+                    <tbody>
+                      ${detalle.items.map((it,i) => `
+                        <tr><td>${it.producto}</td><td style="text-align:right"><input type="number" id="entregarReqSuc${i}" value="${it.entregarSugerido}" min="0" max="${it.existencia}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px"></td></tr>
+                      `).join("")}
+                    </tbody>
+                  </table>
+                  <div class="boton" id="btnConfirmarEntregaSucursal" style="margin-top:10px" onclick="confirmarEntregaRequisicionSucursalUI('${detalle.folio}')">${tgIcon("check",17)} Confirmar entrega directa</div>
+                </details>
+              ` : ""}
               <div id="mensajeDetalleRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
-              ${puedeEntregar ? `<div class="boton" id="btnConfirmarEntregaSucursal" style="margin-top:16px" onclick="confirmarEntregaRequisicionSucursalUI('${detalle.folio}')">${tgIcon("check",17)} Confirmar entrega</div>` : ""}
+              <div id="accionesPipelineReqSuc" style="margin-top:14px"></div>
             </div>
           `;
 
           window.detalleRequisicionSucursalActual = detalle;
+          dibujarAccionesPipelineReqSuc(detalle, acceso);
 
         })
         .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
@@ -3851,6 +3868,300 @@ function verDetalleRequisicionSucursal(folio){
     .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
     .obtenerAccesoSucursalApp(obtenerTokenSesion());
 
+}
+
+/**
+ * Pipeline nuevo (Plano de Abastecimiento) — aprobar/rechazar → surtir
+ * → despachar → recibir → resolver incidencias → cerrar. Aparte del
+ * flujo de "entrega directa" de arriba, que sigue igual. Cada bloque
+ * de acciones solo se muestra si el estado actual y el acceso del
+ * usuario lo permiten — el backend vuelve a validar todo, esto es
+ * solo para no ofrecer botones que de todos modos se rechazarían.
+ */
+function dibujarAccionesPipelineReqSuc(detalle, acceso){
+
+  const cont = document.getElementById("accionesPipelineReqSuc");
+  if(!cont) return;
+
+  if(!acceso.esTodasLasSucursales){
+    if(detalle.estado === "EN_TRANSITO" || detalle.estado === "RECIBIDA_PARCIAL"){
+      cargarTransferenciaReqSuc(detalle.folio);
+    } else {
+      cont.innerHTML = "";
+    }
+    return;
+  }
+
+  const lineasPendientes = detalle.items.filter(it => it.estadoLinea !== "RECHAZADA" && it.estadoLinea !== "APROBADA" && it.estadoLinea !== "APROBADA_PARCIAL");
+  const lineasAprobadas = detalle.items.filter(it => it.aprobado > 0);
+
+  const estadosCancelables = ["PENDIENTE","APROBADA","APROBADA_PARCIAL","SURTIDO_PARCIAL","LISTA_DESPACHO"];
+  const botonCancelar = estadosCancelables.indexOf(detalle.estado) !== -1
+    ? `<div class="boton secundario" style="margin-top:10px" onclick="cancelarRequisicionSucursalUI('${detalle.folio}')">${tgIcon("x",15)} Cancelar requisición</div>`
+    : "";
+
+  if((detalle.estado === "PENDIENTE" || detalle.estado === "APROBADA_PARCIAL") && lineasPendientes.length){
+    cont.innerHTML = dibujarFormularioAprobacionReqSuc(lineasPendientes) + botonCancelar;
+    return;
+  }
+
+  if(["APROBADA","APROBADA_PARCIAL","SURTIDO_PARCIAL"].indexOf(detalle.estado) !== -1 && lineasAprobadas.length){
+    cont.innerHTML = dibujarFormularioSurtidoReqSuc(lineasAprobadas) + botonCancelar;
+    return;
+  }
+
+  if(detalle.estado === "LISTA_DESPACHO"){
+    cont.innerHTML = `<div class="boton success" onclick="despacharRequisicionSucursalUI('${detalle.folio}')">${tgIcon("camion",17)} Despachar (crear transferencia)</div>` + botonCancelar;
+    return;
+  }
+
+  if(detalle.estado === "EN_TRANSITO" || detalle.estado === "RECIBIDA_PARCIAL"){
+    cargarTransferenciaReqSuc(detalle.folio);
+    return;
+  }
+
+  if(detalle.estado === "CON_INCIDENCIA"){
+    cargarIncidenciasReqSuc(detalle.folio);
+    return;
+  }
+
+  if(detalle.estado === "RECIBIDA"){
+    cont.innerHTML = `<div class="boton success" onclick="cerrarRequisicionSucursalUI('${detalle.folio}')">${tgIcon("checkCirculo",17)} Cerrar requisición</div>`;
+    return;
+  }
+
+  cont.innerHTML = "";
+
+}
+
+function dibujarFormularioAprobacionReqSuc(lineas){
+  return `
+    <h4 style="margin:14px 0 8px">Aprobar / rechazar</h4>
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia CEDIS</th><th style="text-align:right">Aprobar</th><th></th></tr></thead>
+      <tbody>
+        ${lineas.map((it,i) => `
+          <tr>
+            <td>${it.producto}</td>
+            <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
+            <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+            <td style="text-align:right"><input type="number" id="aprobarLinea${i}" data-codigo="${it.codigo}" value="${it.solicitado}" min="0" max="${it.solicitado}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px"></td>
+            <td><span style="cursor:pointer;color:var(--terracota);font-size:12px;white-space:nowrap" onclick="rechazarLineaReqSucUI('${it.codigo}')">Rechazar</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div class="boton success" style="margin-top:10px" onclick="aprobarLineasReqSucUI()">${tgIcon("check",17)} Aprobar</div>
+  `;
+}
+
+function aprobarLineasReqSucUI(){
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+  const aprobaciones = [];
+  document.querySelectorAll('[id^="aprobarLinea"]').forEach(input => {
+    const cantidad = Number(input.value) || 0;
+    if(cantidad > 0) aprobaciones.push({ codigo: input.dataset.codigo, cantidadAprobada: cantidad });
+  });
+  if(!aprobaciones.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad a aprobar", "error");
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ " + res.lineasAprobadas + " línea(s) aprobadas — estado: " + res.estado, "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .aprobarLineaRequisicionSucursalApp(detalle.folio, aprobaciones, obtenerTokenSesion());
+}
+
+function rechazarLineaReqSucUI(codigo){
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+  const motivo = prompt("¿Por qué se rechaza este producto?");
+  if(!motivo) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Producto rechazado", "ok");
+      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 600);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .rechazarLineaRequisicionSucursalApp(detalle.folio, codigo, motivo, obtenerTokenSesion());
+}
+
+function dibujarFormularioSurtidoReqSuc(lineas){
+  return `
+    <h4 style="margin:14px 0 8px">Registrar surtido</h4>
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Aprobado</th><th style="text-align:right">Existencia CEDIS</th><th style="text-align:right">Surtir</th></tr></thead>
+      <tbody>
+        ${lineas.map((it,i) => `
+          <tr>
+            <td>${it.producto}</td>
+            <td style="text-align:right">${it.aprobado} ${it.unidad||""}</td>
+            <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+            <td style="text-align:right"><input type="number" id="surtirLinea${i}" data-codigo="${it.codigo}" value="${Math.min(it.aprobado, it.existencia)}" min="0" max="${it.aprobado}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px"></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div class="boton success" style="margin-top:10px" onclick="surtirReqSucUI()">${tgIcon("cajas",17)} Registrar surtido</div>
+  `;
+}
+
+function surtirReqSucUI(){
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+  const surtido = [];
+  document.querySelectorAll('[id^="surtirLinea"]').forEach(input => {
+    const cantidad = Number(input.value) || 0;
+    if(cantidad > 0) surtido.push({ codigo: input.dataset.codigo, cantidadSurtida: cantidad });
+  });
+  if(!surtido.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad surtida", "error");
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Surtido registrado — estado: " + res.estado, "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .surtirRequisicionSucursalApp(detalle.folio, surtido, obtenerTokenSesion());
+}
+
+function despacharRequisicionSucursalUI(folio){
+  if(!confirm("¿Despachar " + folio + "? Esto crea la transferencia y descuenta la existencia real de CEDIS.")) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Transferencia " + res.folioTransferencia + " creada — en tránsito", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .despacharRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+function cargarTransferenciaReqSuc(folio){
+  const cont = document.getElementById("accionesPipelineReqSuc");
+  if(!cont) return;
+  cont.innerHTML = "Cargando transferencia…";
+  google.script.run
+    .withSuccessHandler(function(transf){
+      if(!transf){ cont.innerHTML = ""; return; }
+      window.transferenciaReqSucActual = transf;
+      cont.innerHTML = `
+        <h4 style="margin:14px 0 8px">Transferencia ${transf.folioTransferencia} — ${transf.sucursalOrigen} → ${transf.sucursalDestino}</h4>
+        <table class="tablaTop" style="font-size:13px">
+          <thead><tr><th>Producto</th><th style="text-align:right">Enviado</th><th style="text-align:right">Recibir</th></tr></thead>
+          <tbody>
+            ${transf.items.map((it,i) => `
+              <tr>
+                <td>${it.producto}</td>
+                <td style="text-align:right">${it.enviado} ${it.unidad||""}</td>
+                <td style="text-align:right">${
+                  it.recibido !== "" ? it.recibido + " " + (it.unidad||"") + " ✓"
+                  : `<input type="number" id="recibirLinea${i}" data-codigo="${it.codigo}" value="${it.enviado}" min="0" max="${it.enviado}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">`
+                }</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <div class="boton success" style="margin-top:10px" onclick="recibirTransferenciaReqSucUI('${folio}')">${tgIcon("check",17)} Confirmar recepción</div>
+      `;
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerTransferenciaPorRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+function recibirTransferenciaReqSucUI(folio){
+  const transf = window.transferenciaReqSucActual;
+  if(!transf) return;
+  const recepciones = [];
+  document.querySelectorAll('[id^="recibirLinea"]').forEach(input => {
+    const cantidad = Number(input.value) || 0;
+    if(cantidad > 0) recepciones.push({ codigo: input.dataset.codigo, cantidadRecibida: cantidad });
+  });
+  if(!recepciones.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad recibida", "error");
+    return;
+  }
+  if(!confirm("¿Confirmar la recepción? Esto aumenta tu existencia con lo capturado.")) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal",
+        res.incidencias.length ? "⚠️ Recibido con " + res.incidencias.length + " incidencia(s) por diferencia" : "✅ Recepción confirmada", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 1200);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .recibirTransferenciaSucursalApp(transf.folioTransferencia, recepciones, obtenerTokenSesion());
+}
+
+function cargarIncidenciasReqSuc(folio){
+  const cont = document.getElementById("accionesPipelineReqSuc");
+  if(!cont) return;
+  cont.innerHTML = "Cargando incidencias…";
+  google.script.run
+    .withSuccessHandler(function(transf){
+      if(!transf || !transf.incidencias.length){ cont.innerHTML = ""; return; }
+      cont.innerHTML = `
+        <h4 style="margin:14px 0 8px">Incidencias</h4>
+        ${transf.incidencias.map(inc => `
+          <div class="cardProducto" style="margin:0 0 10px;border-left:3px solid var(--terracota)">
+            <b>${inc.producto}</b> (${inc.codigo}) — ${inc.tipo}<br>
+            <span style="font-size:12.5px;color:var(--text-muted)">Enviado ${inc.cantidadEnviada}, recibido ${inc.cantidadRecibida}, diferencia ${inc.diferencia}</span><br>
+            ${inc.estado === "RESUELTA"
+              ? `<span style="font-size:12.5px;color:var(--oliva)">✓ Resuelta: ${inc.resolucion}</span>`
+              : `<div class="boton secundario" style="margin-top:8px;width:auto;padding:8px 14px" onclick="resolverIncidenciaReqSucUI('${inc.folioIncidencia}', '${folio}')">Resolver</div>`}
+          </div>
+        `).join("")}
+      `;
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerTransferenciaPorRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+function resolverIncidenciaReqSucUI(folioIncidencia, folio){
+  const resolucion = prompt("¿Cómo se resolvió esta incidencia?");
+  if(!resolucion) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Incidencia resuelta", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .resolverIncidenciaRequisicionApp(folioIncidencia, resolucion, obtenerTokenSesion());
+}
+
+function cerrarRequisicionSucursalUI(folio){
+  if(!confirm("¿Cerrar la requisición " + folio + "?")) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Requisición cerrada", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .cerrarRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+function cancelarRequisicionSucursalUI(folio){
+  const motivo = prompt("¿Por qué se cancela la requisición " + folio + "? (opcional)");
+  if(motivo === null) return;
+  if(!confirm("¿Cancelar definitivamente " + folio + "? Esto libera cualquier reserva y no se puede deshacer.")) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Requisición cancelada", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .cancelarRequisicionSucursalApp(folio, motivo || "", obtenerTokenSesion());
 }
 
 function confirmarEntregaRequisicionSucursalUI(folio){
