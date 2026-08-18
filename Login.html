@@ -609,6 +609,13 @@ button:disabled{ opacity:.6; cursor:default; }
   height:100%;
   position:absolute;
   inset:0;
+}
+
+/* Solo el anillo de progreso empieza arriba (12 en punto) en vez de a la
+   derecha (3 en punto) — el check NO debe rotarse, o el trazo del
+   "visto" queda ladeado / parece una flecha en vez de una palomita
+   (bug real, confirmado en captura: se veía como "›"). */
+.svgAroEntrada{
   transform:rotate(-90deg);
 }
 
@@ -625,7 +632,7 @@ button:disabled{ opacity:.6; cursor:default; }
   stroke-linecap:round;
   stroke-dasharray:264;
   stroke-dashoffset:264;
-  transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1);
+  transition:stroke-dashoffset .5s cubic-bezier(.4,0,.2,1);
 }
 
 .transicionEntrada.cargando .aroProgreso{
@@ -670,8 +677,8 @@ button:disabled{ opacity:.6; cursor:default; }
 .transicionEntrada.exito .arosIcono{ display:none; }
 .transicionEntrada.exito .svgAroEntrada{ display:none; }
 .transicionEntrada.exito .svgCheckEntrada{ display:block; }
-.transicionEntrada.exito .checkCirculoEntrada{ animation:trazarCheckEntrada .35s ease forwards; }
-.transicionEntrada.exito .checkMarcaEntrada{ animation:trazarCheckEntrada .3s ease .3s forwards; }
+.transicionEntrada.exito .checkCirculoEntrada{ animation:trazarCheckEntrada .3s ease forwards; }
+.transicionEntrada.exito .checkMarcaEntrada{ animation:trazarCheckEntrada .25s ease .15s forwards; }
 
 @keyframes trazarCheckEntrada{ to{ stroke-dashoffset:0; } }
 
@@ -932,9 +939,10 @@ function restaurarBoton(){
  * Transición de pantalla completa entre validar credenciales y entrar a
  * la app — antes era un redirect seco. Se revela en círculo desde el
  * botón "Iniciar sesión", muestra un anillo de progreso "llenándose"
- * y termina con un check, saludando por nombre. Puramente cosmética:
- * no cambia qué se guarda en localStorage ni la URL de destino, solo
- * retrasa la navegación ~1.3s (o ~0.3s con "reducir movimiento").
+ * y termina con un check, saludando con el nombre completo. Puramente
+ * cosmética: no cambia qué se guarda en localStorage ni la URL de
+ * destino, solo retrasa la navegación ~1.05s (o ~0.3s con "reducir
+ * movimiento").
  */
 function reproducirTransicionEntrada(nombre, urlDestino){
 
@@ -953,10 +961,10 @@ function reproducirTransicionEntrada(nombre, urlDestino){
   }
 
   const reducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const primerNombre = nombre ? String(nombre).trim().split(" ")[0] : "";
+  const nombreCompleto = nombre ? String(nombre).trim() : "";
 
-  const tiempoCarga = reducido ? 150 : 850;
-  const tiempoExito = reducido ? 150 : 750; // >= .3s delay + .3s trazo del check (600ms) + margen, para no cortar la animación
+  const tiempoCarga = reducido ? 150 : 550; // debe coincidir con la transición CSS de .aroProgreso (.5s) para que el anillo termine de llenarse justo al pasar al check
+  const tiempoExito = reducido ? 150 : 500; // >= .15s delay + .25s trazo del check (400ms) + margen, para no cortar la animación
 
   overlay.style.display = "flex";
   void overlay.offsetWidth; // fuerza reflow para que las transiciones de abajo sí animen, no salten directo al estado final
@@ -964,7 +972,7 @@ function reproducirTransicionEntrada(nombre, urlDestino){
 
   setTimeout(function(){
     overlay.classList.add("exito");
-    document.getElementById("transicionSaludo").innerText = primerNombre ? "¡Bienvenido, " + primerNombre + "!" : "¡Bienvenido!";
+    document.getElementById("transicionSaludo").innerText = nombreCompleto ? "¡Bienvenido, " + nombreCompleto + "!" : "¡Bienvenido!";
     document.getElementById("transicionSub").innerText = "Todo listo";
   }, tiempoCarga);
 
