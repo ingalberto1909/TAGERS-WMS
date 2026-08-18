@@ -3330,6 +3330,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
               <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
               ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--color-primary)" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">${tgIcon("cajas",15)}</span>` : ""}
+              ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--terracota)" title="Cancelar requisición" onclick="cancelarRequisicionUI('${r.folio}', '${contenedorId}')">${tgIcon("x",15)}</span>` : ""}
               ${r.estado === "ENTREGADA" ? `<span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">${tgIcon("descargar",15)}</span>` : ""}
             </td>
           </tr>
@@ -3337,6 +3338,30 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
       </tbody>
     </table>
   `;
+
+}
+
+/**
+ * Cancela una requisición PENDIENTE que se creó por error (p. ej. dos
+ * veces la misma, o con datos equivocados) — solo visible para
+ * Almacén, solo mientras siga PENDIENTE. contenedorId decide qué
+ * pantalla recargar después (Requisiciones Pendientes o Preparación),
+ * según de dónde se haya hecho clic.
+ */
+function cancelarRequisicionUI(folio, contenedorId){
+
+  const motivo = prompt("¿Por qué se cancela la requisición " + folio + "? (opcional)");
+  if(motivo === null) return; // el usuario le dio "Cancelar" al prompt, no seguir
+
+  if(!confirm("¿Cancelar definitivamente la requisición " + folio + "? No se puede deshacer.")) return;
+
+  google.script.run
+    .withSuccessHandler(function(){
+      if(contenedorId === "listaParaPreparar") abrirPreparacionRequisicion();
+      else if(contenedorId === "listaRequisicionesPendientes") abrirRequisicionesPendientes();
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .cancelarRequisicionApp(folio, motivo || "", obtenerTokenSesion());
 
 }
 
@@ -4442,6 +4467,7 @@ function cargarPreparacionRequisicionProducto_(folio){
     .withSuccessHandler(function(datos){
 
       window.preparacionActual = datos;
+      window.preparacionExtras = [];
 
       cont.innerHTML = `
         <div class="cardProducto">
@@ -4466,6 +4492,15 @@ function cargarPreparacionRequisicionProducto_(folio){
             </tbody>
           </table>
 
+          <div style="margin-top:18px">
+            <label>Agregar producto extra <span style="font-weight:400;color:var(--text-muted)">(se les entregó pero no lo pidieron)</span></label>
+            <div style="position:relative;max-width:440px">
+              <input id="buscarExtraPreparacion" placeholder="🔎 Buscar producto, código..." oninput="buscarProductoExtraPreparacion()" autocomplete="off">
+              <div id="resultadosExtraPreparacion" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:240px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+            </div>
+            <div id="tablaExtrasPreparacion" style="margin-top:10px"></div>
+          </div>
+
           <div id="mensajePreparacion" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
           <div class="boton success" id="btnConfirmarEntrega" style="margin-top:14px" onclick="confirmarEntregaRequisicion()">${tgIcon("checkCirculo",17)} Confirmar Entrega</div>
@@ -4480,6 +4515,109 @@ function cargarPreparacionRequisicionProducto_(folio){
 
 }
 
+let temporizadorBuscarExtraPreparacion = null;
+
+function buscarProductoExtraPreparacion(){
+
+  clearTimeout(temporizadorBuscarExtraPreparacion);
+
+  const texto = document.getElementById("buscarExtraPreparacion").value.trim();
+  const cont = document.getElementById("resultadosExtraPreparacion");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarExtraPreparacion = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onclick='agregarProductoExtraPreparacion(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            <b>${p.producto}</b> <span style="font-size:11px;color:var(--text-muted)">${p.codigo}</span><br>
+            <span style="font-size:11px;color:var(--text-muted)">Existencia: ${p.existencia} ${p.udm||""}</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(){ cont.innerHTML = ""; cont.style.display = "none"; })
+      .buscarProductoParaRequisicionApp(texto);
+
+  }, 250);
+
+}
+
+function agregarProductoExtraPreparacion(producto){
+
+  document.getElementById("resultadosExtraPreparacion").style.display = "none";
+  document.getElementById("buscarExtraPreparacion").value = "";
+
+  window.preparacionExtras = window.preparacionExtras || [];
+
+  const yaSolicitado = (window.preparacionActual.items||[]).some(it => it.codigo === producto.codigo);
+  const yaAgregado = window.preparacionExtras.some(it => it.codigo === producto.codigo);
+
+  if(yaSolicitado){
+    mostrarMensajeTemporal("mensajePreparacion", "Ese producto ya está en lo solicitado, ajusta la cantidad ahí arriba", "error");
+    return;
+  }
+  if(yaAgregado){
+    mostrarMensajeTemporal("mensajePreparacion", "Ya agregaste ese producto como extra", "error");
+    return;
+  }
+
+  window.preparacionExtras.push({
+    codigo: producto.codigo, producto: producto.producto, unidad: producto.udm, existencia: producto.existencia, cantidad: 0
+  });
+
+  dibujarTablaExtrasPreparacion();
+
+}
+
+function dibujarTablaExtrasPreparacion(){
+
+  const cont = document.getElementById("tablaExtrasPreparacion");
+  if(!cont) return;
+
+  const lista = window.preparacionExtras || [];
+
+  if(!lista.length){ cont.innerHTML = ""; return; }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto extra</th><th style="text-align:right">Existencia</th><th style="text-align:right">Entregar</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((it,i) => `
+          <tr style="background:rgba(92,107,42,.07)">
+            <td>${it.producto}<br><span style="font-size:10.5px;color:var(--oliva)">${it.codigo} · extra</span></td>
+            <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+            <td style="text-align:right">
+              <input type="number" id="entregarExtra${i}" value="${it.cantidad}" min="0" max="${it.existencia}"
+                style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+            </td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoExtraPreparacion(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function quitarProductoExtraPreparacion(i){
+  window.preparacionExtras.splice(i, 1);
+  dibujarTablaExtrasPreparacion();
+}
+
 function confirmarEntregaRequisicion(){
 
   const datos = window.preparacionActual;
@@ -4490,12 +4628,19 @@ function confirmarEntregaRequisicion(){
     return { codigo: it.codigo, cantidadEntregada: input ? Number(input.value) || 0 : 0 };
   }).filter(e => e.cantidadEntregada > 0);
 
-  if(!entregas.length){
+  const extras = (window.preparacionExtras || []).map((it,i) => {
+    const input = document.getElementById("entregarExtra"+i);
+    return { codigo: it.codigo, cantidadEntregada: input ? Number(input.value) || 0 : 0 };
+  }).filter(e => e.cantidadEntregada > 0);
+
+  const todasLasEntregas = entregas.concat(extras);
+
+  if(!todasLasEntregas.length){
     mostrarMensajeTemporal("mensajePreparacion", "Captura al menos una cantidad a entregar", "error");
     return;
   }
 
-  if(!confirm("¿Confirmar la entrega de " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.")) return;
+  if(!confirm("¿Confirmar la entrega de " + datos.folio + (extras.length ? " (incluye " + extras.length + " producto(s) extra)" : "") + "? Esto descuenta la existencia y no se puede deshacer.")) return;
 
   activarCargaBoton("btnConfirmarEntrega", true);
 
@@ -4509,7 +4654,7 @@ function confirmarEntregaRequisicion(){
       activarCargaBoton("btnConfirmarEntrega", false);
       mostrarMensajeTemporal("mensajePreparacion", "⚠️ " + e.message, "error");
     })
-    .confirmarEntregaRequisicionApp(datos.folio, entregas, obtenerTokenSesion());
+    .confirmarEntregaRequisicionApp(datos.folio, todasLasEntregas, obtenerTokenSesion());
 
 }
 

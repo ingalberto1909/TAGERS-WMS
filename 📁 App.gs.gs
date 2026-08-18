@@ -5231,9 +5231,73 @@ function obtenerDetalleRequisicionApp(folio, token){
 }
 
 /**
+ * Cancela una requisición interna (Área o Receta — comparten la misma
+ * hoja REQUISICIONES) que se creó por error. Nunca se borra la fila,
+ * solo cambia de estado, igual que ya hace cancelarOrdenCompraApp con
+ * las órdenes de compra. Solo se puede cancelar mientras sigue
+ * PENDIENTE: una vez ENTREGADA ya movió existencia real (salida +
+ * Kardex), cancelarla después dejaría el inventario desincronizado sin
+ * revertir esa salida — fuera de alcance de este cambio.
+ */
+function cancelarRequisicionApp(folio, motivo, token){
+
+  const acceso = obtenerAccesoRequisicionesApp(token);
+  if(!acceso.esAdmin){
+    throw new Error("Solo Almacén puede cancelar requisiciones.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const req = obtenerHojaRequisiciones_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+
+  let filaReq = -1, estadoActual = "", observacionesActuales = "";
+
+  datosReq.forEach((f,i) => {
+    if(String(f[0]) === String(folio)){
+      filaReq = i+2;
+      estadoActual = String(f[4]||"").toUpperCase();
+      observacionesActuales = String(f[5]||"");
+    }
+  });
+
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  if(estadoActual === "ENTREGADA"){
+    throw new Error("Esta requisición ya fue entregada, no se puede cancelar.");
+  }
+  if(estadoActual === "CANCELADA"){
+    throw new Error("Esta requisición ya está cancelada.");
+  }
+
+  const nota = "[CANCELADA por " + usuario + (motivo ? " — " + motivo : "") + "]";
+  const observacionesNuevas = (observacionesActuales ? observacionesActuales + " " : "") + nota;
+
+  req.getRange(filaReq, 5).setValue("CANCELADA");
+  req.getRange(filaReq, 6).setValue(observacionesNuevas);
+
+  registrarAuditoria(usuario, "REQUISICIONES", "REQUISICIÓN CANCELADA", folio, "", "", 0, 0,
+    "Estaba " + estadoActual + (motivo ? " — Motivo: " + motivo : ""));
+
+  return { ok: true };
+
+}
+
+/**
  * FASE 4: Confirmar entrega — descuenta existencia con la misma
  * función central que usan Entradas/Salidas/Conteos/Inventario Mensual,
  * registra Kardex, guarda quién surtió y cuándo, cierra la requisición.
+ *
+ * entregas = [{codigo, cantidadEntregada}]. Normalmente cada código ya
+ * es uno de los solicitados originales (fila existente en
+ * DETALLE_REQUISICIONES) — pero también se acepta un código que NO
+ * estaba en la solicitud original: pasa que a veces Almacén ya le dio
+ * a la sucursal/área un insumo adicional durante el día (algo que no
+ * pidieron pero sí se les entregó) y quiere que quede registrado en
+ * esta misma requisición en vez de perderse. Ese código se resuelve
+ * SIEMPRE contra MATRIZ en el servidor (nunca se confía en un nombre o
+ * unidad mandado por el cliente) y se agrega como una fila nueva de
+ * detalle con Solicitado=0, para que quede visible que fue un extra,
+ * no algo que la sucursal/área pidió.
  */
 function confirmarEntregaRequisicionApp(folio, entregas, token){
 
@@ -5254,22 +5318,35 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
   const detalle = obtenerHojaDetalleRequisiciones_();
   const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,6).getValues();
 
-  // Para poder pasarle la ubicación a registrarSalidaInterna_ (columna K de SALIDA).
+  // Para poder pasarle la ubicación a registrarSalidaInterna_ (columna K de
+  // SALIDA), y para resolver producto/UDM de un código extra (ver abajo)
+  // siempre contra MATRIZ, nunca contra lo que mande el cliente.
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow()-1, 11).getValues();
   const ubicacionPorCodigo = {};
-  datosMatriz.forEach(f => { if(f[4]) ubicacionPorCodigo[String(f[4]).trim()] = f[9] || ""; });
+  const productoPorCodigo = {};
+  const udmPorCodigo = {};
+  datosMatriz.forEach(f => {
+    const codigo = String(f[4]||"").trim();
+    if(!codigo) return;
+    ubicacionPorCodigo[codigo] = f[9] || "";
+    productoPorCodigo[codigo] = f[0];
+    udmPorCodigo[codigo] = f[1];
+  });
 
   const mapaEntregas = {};
-  (entregas||[]).forEach(e => { mapaEntregas[String(e.codigo)] = Number(e.cantidadEntregada) || 0; });
+  (entregas||[]).forEach(e => { mapaEntregas[String(e.codigo).trim()] = Number(e.cantidadEntregada) || 0; });
 
   let productosEntregados = 0;
+  const codigosOriginales = {};
 
   datosDetalle.forEach((f, i) => {
 
     if(String(f[0]) !== String(folio)) return;
 
     const codigo = String(f[1]).trim();
+    codigosOriginales[codigo] = true;
+
     const producto = f[2];
     const unidad = f[3];
     const cantidadEntregar = mapaEntregas[codigo] || 0;
@@ -5294,6 +5371,45 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
     productosEntregados++;
 
   });
+
+  // Códigos que Almacén agregó al momento de entregar — no estaban en la
+  // solicitud original (ver doc de la función). Se resuelven contra
+  // MATRIZ y se agregan como fila nueva de detalle, con Solicitado=0.
+  const filasExtra = [];
+
+  Object.keys(mapaEntregas).forEach(codigo => {
+
+    if(codigosOriginales[codigo]) return; // ya se procesó en el loop de arriba
+
+    const cantidadEntregar = mapaEntregas[codigo];
+    if(cantidadEntregar <= 0) return;
+
+    const producto = productoPorCodigo[codigo];
+    if(!producto){
+      throw new Error("El código " + codigo + " no existe en MATRIZ — no se puede agregar como extra.");
+    }
+
+    const unidad = udmPorCodigo[codigo] || "";
+
+    registrarSalidaInterna_({
+      codigo: codigo,
+      producto: producto,
+      cantidad: cantidadEntregar,
+      udm: unidad,
+      area: areaReq,
+      ubicacion: ubicacionPorCodigo[codigo] || "",
+      folio: folio,
+      observacion: "Requisición interna " + folio + " — Área " + areaReq + " (extra agregado al entregar)"
+    }, usuario);
+
+    filasExtra.push([folio, codigo, producto, unidad, 0, cantidadEntregar]);
+    productosEntregados++;
+
+  });
+
+  if(filasExtra.length){
+    detalle.getRange(detalle.getLastRow()+1, 1, filasExtra.length, 6).setValues(filasExtra);
+  }
 
   if(productosEntregados === 0){
     throw new Error("Captura al menos una cantidad a entregar.");
