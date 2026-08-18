@@ -937,48 +937,50 @@ function restaurarBoton(){
 
 /**
  * Transición de pantalla completa entre validar credenciales y entrar a
- * la app — antes era un redirect seco. Se revela en círculo desde el
- * botón "Iniciar sesión", muestra un anillo de progreso "llenándose"
- * y termina con un check, saludando con el nombre completo. Puramente
- * cosmética: no cambia qué se guarda en localStorage ni la URL de
- * destino, solo retrasa la navegación ~1.05s (o ~0.3s con "reducir
- * movimiento").
+ * la app — antes era un redirect seco.
+ *
+ * IMPORTANTE — la navegación (window.top.location.href) se dispara
+ * SIEMPRE de inmediato, en el mismo turno síncrono que la respuesta de
+ * validarUsuario, exactamente igual que antes de que existiera esta
+ * animación. NUNCA se debe meter en un setTimeout: se confirmó en
+ * producción real (capturas del usuario) que retrasarla deja la
+ * pantalla trabada para siempre en "Bienvenido", sin entrar nunca a la
+ * app y sin ningún error visible. Motivo: la app corre dentro del
+ * iframe que arma script.google.com, y ese iframe solo deja navegar la
+ * ventana top como continuación directa del clic del usuario — un
+ * setTimeout rompe esa cadena de activación y el navegador bloquea la
+ * navegación en silencio.
+ *
+ * La animación de abajo es puramente decorativa y NO retrasa nada: se
+ * dispara en paralelo a la navegación real, que sigue viva encima
+ * mientras el navegador carga la siguiente página.
  */
 function reproducirTransicionEntrada(nombre, urlDestino){
 
   const overlay = document.getElementById("transicionEntrada");
 
-  if(!overlay){
-    window.top.location.href = urlDestino;
-    return;
+  if(overlay){
+
+    const btn = document.getElementById("btnEntrar");
+    if(btn){
+      const rect = btn.getBoundingClientRect();
+      overlay.style.setProperty("--origen-x", ((rect.left + rect.width/2) / window.innerWidth * 100) + "%");
+      overlay.style.setProperty("--origen-y", ((rect.top + rect.height/2) / window.innerHeight * 100) + "%");
+    }
+
+    const nombreCompleto = nombre ? String(nombre).trim() : "";
+    const saludo = document.getElementById("transicionSaludo");
+    const sub = document.getElementById("transicionSub");
+    if(saludo) saludo.innerText = nombreCompleto ? "¡Bienvenido, " + nombreCompleto + "!" : "¡Bienvenido!";
+    if(sub) sub.innerText = "Entrando…";
+
+    overlay.style.display = "flex";
+    void overlay.offsetWidth; // fuerza reflow para que la transición de abajo sí anime, no salte directo al estado final
+    overlay.classList.add("activo", "exito"); // directo al check — ya sabemos que el login fue exitoso
+
   }
 
-  const btn = document.getElementById("btnEntrar");
-  if(btn){
-    const rect = btn.getBoundingClientRect();
-    overlay.style.setProperty("--origen-x", ((rect.left + rect.width/2) / window.innerWidth * 100) + "%");
-    overlay.style.setProperty("--origen-y", ((rect.top + rect.height/2) / window.innerHeight * 100) + "%");
-  }
-
-  const reducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const nombreCompleto = nombre ? String(nombre).trim() : "";
-
-  const tiempoCarga = reducido ? 150 : 550; // debe coincidir con la transición CSS de .aroProgreso (.5s) para que el anillo termine de llenarse justo al pasar al check
-  const tiempoExito = reducido ? 150 : 500; // >= .15s delay + .25s trazo del check (400ms) + margen, para no cortar la animación
-
-  overlay.style.display = "flex";
-  void overlay.offsetWidth; // fuerza reflow para que las transiciones de abajo sí animen, no salten directo al estado final
-  overlay.classList.add("activo", "cargando");
-
-  setTimeout(function(){
-    overlay.classList.add("exito");
-    document.getElementById("transicionSaludo").innerText = nombreCompleto ? "¡Bienvenido, " + nombreCompleto + "!" : "¡Bienvenido!";
-    document.getElementById("transicionSub").innerText = "Todo listo";
-  }, tiempoCarga);
-
-  setTimeout(function(){
-    window.top.location.href = urlDestino;
-  }, tiempoCarga + tiempoExito);
+  window.top.location.href = urlDestino;
 
 }
 
