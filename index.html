@@ -1010,7 +1010,15 @@ display:inline-block;
 .badgeEstado.PARCIAL,
 .badgeEstado.ABIERTO,
 .badgeEstado.ABIERTA,
+.badgeEstado.APROBADA_PARCIAL,
+.badgeEstado.SURTIDO_PARCIAL,
+.badgeEstado.RECIBIDA_PARCIAL,
 .badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
+
+.badgeEstado.LISTA_DESPACHO,
+.badgeEstado.EN_TRANSITO{ background:var(--color-info-bg); color:var(--color-info); }
+
+.badgeEstado.CON_INCIDENCIA{ background:var(--color-danger-bg); color:var(--color-danger); }
 
 .tablaImportar{
 width:100%;
@@ -3381,6 +3389,8 @@ function abrirRequisicionesSucursal(){
 
   const contenedor = document.querySelector(".contenedor");
   window.itemsRequisicionSucursal = [];
+  window.filtroReqSucGrupo = "todas";
+  window.textoReqSucBandeja = "";
 
   contenedor.innerHTML = `
 
@@ -3765,23 +3775,107 @@ function cargarListaRequisicionesSucursal(){
 
 }
 
+/**
+ * Grupos de la bandeja — agrupan los 14 estados del pipeline en categorías
+ * de negocio, calculadas 100% en el cliente sobre la lista ya cargada
+ * (no agrega ninguna llamada al backend). Cada tile de KPI es también
+ * el filtro: al hacer clic se recorta la tabla de abajo a ese grupo.
+ */
+const GRUPOS_REQ_SUC_BANDEJA = {
+  todas:      { label:"Todas",           icono:"documento",       tono:"guinda",    estados:null },
+  pendiente:  { label:"Pendientes",      icono:"reloj",           tono:"terracota", estados:["PENDIENTE"] },
+  proceso:    { label:"En preparación",  icono:"cajas",           tono:"guinda",    estados:["APROBADA","APROBADA_PARCIAL","SURTIDO_PARCIAL","LISTA_DESPACHO"] },
+  transito:   { label:"En tránsito",     icono:"camion",          tono:"guinda",    estados:["EN_TRANSITO"] },
+  porCerrar:  { label:"Por cerrar",      icono:"check",           tono:"oliva",     estados:["RECIBIDA","RECIBIDA_PARCIAL"] },
+  incidencia: { label:"Con incidencia",  icono:"alertaTriangulo", tono:"terracota", estados:["CON_INCIDENCIA"] },
+  cerrada:    { label:"Cerradas",        icono:"candado",         tono:"oliva",     estados:["CERRADA","ENTREGADA"] }
+};
+
 function dibujarTablaRequisicionesSucursal(lista){
 
   const cont = document.getElementById("listaRequisicionesSucursal");
   if(!cont) return;
 
-  if(!lista || !lista.length){
+  window.listaReqSucBandeja = lista || [];
+  if(!window.filtroReqSucGrupo) window.filtroReqSucGrupo = "todas";
+
+  if(!window.listaReqSucBandeja.length){
     cont.innerHTML = tgEmptyState("documento", "No hay requisiciones de sucursal todavía");
     return;
   }
 
   cont.innerHTML = `
+    <div id="kpisReqSucBandeja" class="kpiGrid" style="margin-bottom:14px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"></div>
+    <div style="margin-bottom:10px;max-width:280px">
+      <input id="buscarReqSucBandeja" placeholder="🔎 Folio o solicitante..." oninput="filtrarReqSucBandeja()" autocomplete="off" style="margin:0">
+    </div>
+    <div id="tablaReqSucBandeja"></div>
+  `;
+
+  const elBuscar = document.getElementById("buscarReqSucBandeja");
+  if(elBuscar) elBuscar.value = window.textoReqSucBandeja || "";
+
+  redibujarBandejaReqSuc();
+
+}
+
+function filtrarGrupoReqSucBandeja(grupo){
+  window.filtroReqSucGrupo = grupo;
+  redibujarBandejaReqSuc();
+}
+
+function filtrarReqSucBandeja(){
+  const elBuscar = document.getElementById("buscarReqSucBandeja");
+  window.textoReqSucBandeja = elBuscar ? elBuscar.value : "";
+  redibujarBandejaReqSuc();
+}
+
+function redibujarBandejaReqSuc(){
+
+  const lista = window.listaReqSucBandeja || [];
+  const grupoActivo = window.filtroReqSucGrupo || "todas";
+  const texto = (window.textoReqSucBandeja || "").trim().toLowerCase();
+
+  const kpiCont = document.getElementById("kpisReqSucBandeja");
+  if(kpiCont){
+    kpiCont.innerHTML = Object.keys(GRUPOS_REQ_SUC_BANDEJA).map(clave => {
+      const g = GRUPOS_REQ_SUC_BANDEJA[clave];
+      const cantidad = g.estados ? lista.filter(r => g.estados.includes(r.estado)).length : lista.length;
+      const activo = clave === grupoActivo;
+      return `
+        <div class="kpiCard tono-${g.tono}" style="cursor:pointer;${activo ? "outline:2px solid var(--" + g.tono + ");" : ""}" onclick="filtrarGrupoReqSucBandeja('${clave}')">
+          <div class="kpiIcono">${tgIcon(g.icono,18)}</div>
+          <div class="kpiLabel">${g.label}</div>
+          <div class="kpiValor">${cantidad}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  const grupo = GRUPOS_REQ_SUC_BANDEJA[grupoActivo];
+  let filtrada = grupo.estados ? lista.filter(r => grupo.estados.includes(r.estado)) : lista;
+  if(texto){
+    filtrada = filtrada.filter(r =>
+      String(r.folio).toLowerCase().includes(texto) ||
+      String(r.solicitante).toLowerCase().includes(texto)
+    );
+  }
+
+  const tablaCont = document.getElementById("tablaReqSucBandeja");
+  if(!tablaCont) return;
+
+  if(!filtrada.length){
+    tablaCont.innerHTML = tgEmptyState("documento", "Ninguna requisición coincide con este filtro");
+    return;
+  }
+
+  tablaCont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
         <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
       <tbody>
-        ${lista.map(r => `
+        ${filtrada.map(r => `
           <tr>
             <td><b>${r.folio}</b></td>
             <td>${r.sucursal}</td>
