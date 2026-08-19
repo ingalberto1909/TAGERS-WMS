@@ -232,6 +232,43 @@ function obtenerDetalleRequisicionSucursalApp(folio, token){
 }
 
 /**
+ * Historial cronológico de una requisición de sucursal — timeline de
+ * quién hizo qué (aprobación, rechazo, surtido, despacho, recepción,
+ * incidencias, cierre/cancelación). HISTORIAL_REQUISICIONES ya se
+ * escribe desde cada acción del pipeline; esto solo la expone para
+ * lectura. Mismo chequeo de acceso por sucursal que el resto del folio.
+ */
+function obtenerHistorialRequisicionSucursalApp(folio, token){
+
+  const req = obtenerHojaRequisicionesSucursal_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+  let encabezado = null;
+  datosReq.forEach(f => { if(String(f[0]) === String(folio)) encabezado = f; });
+
+  if(!encabezado) throw new Error("No se encontró la requisición " + folio);
+
+  const acceso = obtenerAccesoSucursalApp(token);
+  if(!acceso.esTodasLasSucursales && String(encabezado[2]).trim() !== String(acceso.sucursal).trim()){
+    throw new Error("No se encontró la requisición " + folio);
+  }
+
+  const hoja = obtenerHojaHistorialRequisiciones_();
+  if(hoja.getLastRow() < 2) return [];
+
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,7).getValues();
+
+  // Las filas ya quedan en orden cronológico porque se escriben con
+  // appendRow en cada paso del pipeline — no hace falta reordenar.
+  return datos
+    .filter(f => String(f[0]) === String(folio))
+    .map(f => ({
+      fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : f[1],
+      usuario: f[2], accion: f[3], estadoAnterior: f[4], estadoNuevo: f[5], descripcion: f[6]
+    }));
+
+}
+
+/**
  * Datos de la transferencia asociada a una requisición (si ya se
  * despachó) — para la pestaña de tránsito/recepción del detalle.
  */

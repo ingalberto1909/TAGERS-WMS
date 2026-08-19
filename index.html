@@ -3948,6 +3948,10 @@ function verDetalleRequisicionSucursal(folio){
               ` : ""}
               <div id="mensajeDetalleRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
               <div id="accionesPipelineReqSuc" style="margin-top:14px"></div>
+              <details style="margin-top:14px" ontoggle="if(this.open) cargarHistorialReqSuc('${detalle.folio}')">
+                <summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted)">${tgIcon("reloj",13)} Ver historial</summary>
+                <div id="historialReqSuc" style="margin-top:10px">Cargando…</div>
+              </details>
             </div>
           `;
 
@@ -3961,6 +3965,41 @@ function verDetalleRequisicionSucursal(folio){
     })
     .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
     .obtenerAccesoSucursalApp(obtenerTokenSesion());
+
+}
+
+/** Timeline de HISTORIAL_REQUISICIONES — se carga solo al abrir el <details>, no en cada render del detalle. */
+function cargarHistorialReqSuc(folio){
+
+  const cont = document.getElementById("historialReqSuc");
+  if(!cont) return;
+
+  google.script.run
+    .withSuccessHandler(function(historial){
+
+      if(!historial || !historial.length){
+        cont.innerHTML = tgEmptyState("reloj", "Sin movimientos registrados todavía");
+        return;
+      }
+
+      cont.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${historial.map(h => `
+            <div style="display:flex;gap:10px;border-left:2px solid var(--border);padding-left:12px">
+              <div style="flex:1">
+                <div style="font-size:12.5px;font-weight:700">${h.accion}</div>
+                <div style="font-size:11.5px;color:var(--text-muted)">${h.fecha} — ${h.usuario}</div>
+                ${h.descripcion ? `<div style="font-size:12px;margin-top:2px">${h.descripcion}</div>` : ""}
+                ${h.estadoAnterior && h.estadoNuevo && h.estadoAnterior !== h.estadoNuevo ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${h.estadoAnterior} → ${h.estadoNuevo}</div>` : ""}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerHistorialRequisicionSucursalApp(folio, obtenerTokenSesion());
 
 }
 

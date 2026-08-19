@@ -657,3 +657,47 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'RS-032', grupo: 'requisiciones-sucursal', nombre: 'El historial registra cada paso del pipeline en orden', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerHistorialRequisicionSucursalApp debe devolver una fila por cada acción del pipeline (aprobación, surtido, despacho, recepción), en el mismo orden en que ocurrieron',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 15 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+    entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 15 }], tokenS02);
+    const historial = entorno.invocar('obtenerHistorialRequisicionSucursalApp', req.folio, tokenAdmin);
+    const acciones = historial.map(h => h.accion);
+    return {
+      datos: `${req.folio}: aprobada → surtida → despachada → recibida`,
+      esperado: '4 filas en historial, en ese orden exacto',
+      obtenido: `total=${historial.length}, acciones=${acciones.join(' | ')}`,
+      pasa: historial.length === 4
+        && acciones[0] === 'REQUISICIÓN APROBADA' && acciones[1] === 'SURTIDO REGISTRADO'
+        && acciones[2] === 'DESPACHO REALIZADO' && acciones[3] === 'RECEPCIÓN REGISTRADA',
+    };
+  },
+});
+
+prueba({
+  id: 'RS-033', grupo: 'requisiciones-sucursal', nombre: 'Una sucursal no puede ver el historial de otra', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerHistorialRequisicionSucursalApp debe aplicar el mismo chequeo de acceso por sucursal que obtenerDetalleRequisicionSucursalApp — ningún folio ajeno debe filtrarse por esta vía',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const tokenS04 = entorno.invocar('crearSesion_', 'sucursal4@tagers.com', 'Operador S04', 'OPERADOR');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 15);
+    let bloqueado = false;
+    try { entorno.invocar('obtenerHistorialRequisicionSucursalApp', req.folio, tokenS04); }
+    catch (e) { bloqueado = true; }
+    const propio = entorno.invocar('obtenerHistorialRequisicionSucursalApp', req.folio, tokenS02);
+    return {
+      datos: `${req.folio} es de S02; S04 intenta leer su historial, S02 lee el propio`,
+      esperado: 'S04 bloqueado, S02 ve su propio historial (1 fila: aprobación)',
+      obtenido: `bloqueadoS04=${bloqueado}, filasS02=${propio.length}`,
+      pasa: bloqueado === true && propio.length === 1,
+    };
+  },
+});
