@@ -1935,19 +1935,49 @@ pointer-events:none;
 
 @media (max-width:768px){
 
+/* Riel de íconos siempre visible (mismo criterio que el sidebar
+   colapsado de escritorio, pero disparado por tap en vez de hover —
+   en touch no hay hover). Reemplaza el drawer que antes vivía oculto
+   por completo (left:-100%) y solo aparecía como panel ancho encima
+   de un overlay oscuro. */
 #sidebar{
+position:relative;
+left:auto;
+top:auto;
+height:auto;
+width:64px;
+flex-shrink:0;
+overflow-x:hidden;
+overflow-y:auto;
+transition:width .2s ease;
+padding:16px 10px;
+padding-left:calc(10px + env(safe-area-inset-left));
+padding-top:calc(16px + env(safe-area-inset-top));
+}
+
+#sidebar:not(.abierto) .textoMenu,
+#sidebar:not(.abierto) .flechaGrupo{
+opacity:0;
+}
+
+#sidebar:not(.abierto) .submenu{
+max-height:0 !important;
+}
+
+/* Tap en el hamburguesa expande el riel a un panel completo (con
+   overlay oscuro detrás, igual que antes) para ver las etiquetas y
+   los subgrupos; al navegar o tocar fuera vuelve al riel angosto. */
+#sidebar.abierto{
 position:fixed;
-left:-100%;
+left:0;
 top:0;
 height:100%;
 width:min(250px,80vw);
+z-index:150;
 box-shadow:var(--shadow-lg);
+padding:20px 14px;
 padding-left:calc(14px + env(safe-area-inset-left));
 padding-top:calc(20px + env(safe-area-inset-top));
-}
-
-#sidebar.abierto{
-left:0;
 }
 
 .hamburguesa{
@@ -1977,12 +2007,12 @@ gap:8px;
 flex-direction:row;
 }
 
-.navInferior{
-display:flex;
-}
+/* .navInferior queda oculta (display:none de la regla base): con el
+   riel de íconos siempre visible, la barra inferior quedaba duplicando
+   accesos y tapando contenido — ver captura de referencia del usuario. */
 
 .contenedor{
-padding-bottom:calc(20px + 58px + env(safe-area-inset-bottom));
+padding-bottom:calc(20px + env(safe-area-inset-bottom));
 }
 
 /* MODALES: en escritorio se ven igual (caja centrada). En móvil, la
