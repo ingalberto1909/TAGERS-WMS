@@ -54,9 +54,40 @@
           var regla = reglas[r];
           if(regla.type !== CSSRule.MEDIA_RULE) continue;
           var texto = regla.media.mediaText;
-          var coincide = texto.match(/max-width:\s*(\d+)px/);
-          if(coincide && anchoReal <= parseInt(coincide[1], 10) && texto !== 'all'){
-            regla.media.mediaText = 'all';
+          if(texto === 'all' || texto === 'not all') continue; // ya se forzó antes en esta misma pasada
+
+          // OJO: forzar solo reglas max-width a "all" (como hacía antes esta
+          // función) rompe cualquier regla COMPUESTA que además tenga
+          // min-width — ej. "@media (min-width:769px) and (max-width:1024px)"
+          // (el ajuste de densidad de tablet) se volvía "all" sin más,
+          // perdiendo la condición de min-width, y esas reglas de tablet
+          // terminaban ganándole (por orden de cascada) a las reglas de
+          // mobile de más abajo en pantallas de celular reales. Peor aún:
+          // esta función NUNCA desactivaba "@media (min-width:769px)" (el
+          // bloque de escritorio completo, sidebar con hover incluido) —
+          // así que si el iframe de Google reporta un ancho de layout falso
+          // ≥769px (el bug que motivó todo este archivo), ESE bloque se
+          // queda activo para siempre en un celular real, sin que nada lo
+          // apague. Por eso el responsive de fases anteriores no se veía
+          // en producción aunque el CSS en sí estuviera bien: el problema
+          // nunca fueron las media queries, era que esta función solo sabía
+          // ENCENDER reglas, nunca APAGARLAS.
+          //
+          // Ahora se evalúan min-width Y max-width contra el ancho real del
+          // DISPOSITIVO (screen.width, el único dato confiable dentro del
+          // iframe) y se fuerza la regla a "all" o "not all" según
+          // corresponda — replicando lo que el navegador debería haber
+          // decidido solo si el iframe no le mintiera sobre el ancho.
+          var coincideMin = texto.match(/min-width:\s*(\d+)px/);
+          var coincideMax = texto.match(/max-width:\s*(\d+)px/);
+          if(!coincideMin && !coincideMax) continue; // no es una condición de ancho (ej. prefers-color-scheme) — se deja como está
+
+          var cumpleMin = !coincideMin || anchoReal >= parseInt(coincideMin[1], 10);
+          var cumpleMax = !coincideMax || anchoReal <= parseInt(coincideMax[1], 10);
+          var nuevoTexto = (cumpleMin && cumpleMax) ? 'all' : 'not all';
+
+          if(texto !== nuevoTexto){
+            regla.media.mediaText = nuevoTexto;
             tocoAlgo = true;
           }
         }
