@@ -11818,6 +11818,31 @@ window.addEventListener("load", function(){
 
 });
 
+/**
+ * El riel de íconos del sidebar en móvil depende de dos cosas que corren
+ * async y pueden llegar tarde dentro del iframe de script.google.com: que
+ * forzarResponsiveSiHaceFalta() ya haya "activado" el @media (max-width:768px)
+ * (ver el fix al inicio del <head>) y que aplicarIconosSidebar() ya haya
+ * reemplazado los <span class="icono"> vacíos por el SVG. Si cualquiera de
+ * las dos corre después del primer paint sin que el navegador repinte solo,
+ * el riel se ve en blanco hasta que el usuario toca algo (mismo bug de
+ * repintado que ya se documenta arriba). Se reintentan ambas en la misma
+ * cadencia que ya usa el fix de viewport, y también al volver de segundo
+ * plano (pageshow cubre el caso común en Chrome Android de reanudar desde
+ * el caché de retroceso con el DOM ya construido pero sin repintar).
+ */
+function asegurarRenderizadoMovilSidebar(){
+  if(window.tgForzarResponsive) window.tgForzarResponsive();
+  if(typeof aplicarIconosSidebar === "function") aplicarIconosSidebar();
+}
+window.addEventListener("load", function(){
+  setTimeout(asegurarRenderizadoMovilSidebar, 150);
+  setTimeout(asegurarRenderizadoMovilSidebar, 600);
+  setTimeout(asegurarRenderizadoMovilSidebar, 1500);
+  setTimeout(asegurarRenderizadoMovilSidebar, 3000);
+});
+window.addEventListener("pageshow", asegurarRenderizadoMovilSidebar);
+
 </script>
 
 </div>
