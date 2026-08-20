@@ -181,3 +181,80 @@ prueba({
     return { datos: 'rol=CONSULTA', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'permitido', pasa: bloqueado };
   },
 });
+
+prueba({
+  id: 'COM-010', grupo: 'compras', nombre: 'Editar una OC PENDIENTE reemplaza proveedor/observaciones/productos', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe sobrescribir proveedor, observaciones y el detalle completo (agregar, quitar, cambiar cantidad/precio), sin cambiar el folio',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR VIEJO', 'obs original', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20 },
+    ], token);
+    // Quita COD-002, cambia cantidad/precio de COD-001, agrega COD-003 nuevo.
+    const res = entorno.invocar('editarOrdenCompraApp', oc.folio, 'PROVEEDOR NUEVO', 'obs editada', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 25, udm: 'KG', precio: 16 },
+      { codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 3, udm: 'KG', precio: 8 },
+    ], token);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const filaOrden = entorno.leerHoja('ORDENES_COMPRA').find(f => f[0] === oc.folio);
+    return {
+      datos: `${oc.folio}: PROVEEDOR VIEJO con COD-001(10,$15)+COD-002(5,$20) → editada a PROVEEDOR NUEVO con COD-001(25,$16)+COD-003(3,$8)`,
+      esperado: 'mismo folio, proveedor/observaciones actualizados, 2 líneas (COD-002 fuera, COD-003 nueva), total=25×16+3×8=424',
+      obtenido: `folio=${res.folio}, proveedorHoja=${filaOrden[2]}, obsHoja=${filaOrden[6]}, items=${detalle.items.length}, codigos=${detalle.items.map(i=>i.codigo).join(',')}, cod001Cant=${detalle.items.find(i=>i.codigo==='COD-001').cantidad}, total=${res.total}`,
+      pasa: res.folio === oc.folio && filaOrden[2] === 'PROVEEDOR NUEVO' && filaOrden[6] === 'obs editada'
+        && detalle.items.length === 2 && !detalle.items.some(i => i.codigo === 'COD-002')
+        && detalle.items.some(i => i.codigo === 'COD-003') && detalle.items.find(i=>i.codigo==='COD-001').cantidad === 25
+        && res.total === 424,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-011', grupo: 'compras', nombre: 'No se puede editar una OC que ya no está PENDIENTE', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe rechazar edición en PARCIAL, RECIBIDA y CANCELADA — solo PENDIENTE es editable',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    const ocParcial = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 }], token);
+    entorno.invocar('registrarRecepcionOCApp', ocParcial.folio, [{ codigo: 'COD-001', cantidadRecibida: 4 }], token);
+    let bloqueadoParcial = false;
+    try { entorno.invocar('editarOrdenCompraApp', ocParcial.folio, 'OTRO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 1, udm: 'KG', precio: 1 }], token); }
+    catch (e) { bloqueadoParcial = true; }
+
+    const ocCancelada = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20 }], token);
+    entorno.invocar('cancelarOrdenCompraApp', ocCancelada.folio, token);
+    let bloqueadoCancelada = false;
+    try { entorno.invocar('editarOrdenCompraApp', ocCancelada.folio, 'OTRO', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 1, udm: 'KG', precio: 1 }], token); }
+    catch (e) { bloqueadoCancelada = true; }
+
+    return {
+      datos: 'una OC PARCIAL (recepción parcial) y otra CANCELADA',
+      esperado: 'ambas bloqueadas para editar',
+      obtenido: `bloqueadoParcial=${bloqueadoParcial}, bloqueadoCancelada=${bloqueadoCancelada}`,
+      pasa: bloqueadoParcial && bloqueadoCancelada,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-012', grupo: 'compras', nombre: 'Editar no deja filas huérfanas de otras OCs en DETALLE_OC', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe borrar y reescribir solo las filas de DETALLE_OC de la OC editada, sin tocar las de otras órdenes',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const ocOtra = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR OTRO', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20 }], token);
+    const ocEditar = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 }], token);
+    entorno.invocar('editarOrdenCompraApp', ocEditar.folio, 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 7, udm: 'KG', precio: 15 },
+      { codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 2, udm: 'KG', precio: 8 },
+    ], token);
+    const filasDetalleEditada = entorno.leerHoja('DETALLE_OC').filter(f => f[0] === ocEditar.folio);
+    const detalleOtra = entorno.invocar('obtenerDetalleOCApp', ocOtra.folio);
+    return {
+      datos: `${ocOtra.folio} sin tocar; ${ocEditar.folio} editada de 1 línea a 2`,
+      esperado: `DETALLE_OC de ${ocEditar.folio} tiene exactamente 2 filas (no 3, no filas viejas); ${ocOtra.folio} conserva su única línea intacta`,
+      obtenido: `filasEditada=${filasDetalleEditada.length}, itemsOtra=${detalleOtra.items.length}, codigoOtra=${detalleOtra.items[0] && detalleOtra.items[0].codigo}`,
+      pasa: filasDetalleEditada.length === 2 && detalleOtra.items.length === 1 && detalleOtra.items[0].codigo === 'COD-002',
+    };
+  },
+});

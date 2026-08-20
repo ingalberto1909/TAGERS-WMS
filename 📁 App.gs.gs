@@ -2515,6 +2515,130 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
 }
 
 /**
+ * Edita una Orden de Compra que sigue PENDIENTE — únicamente mientras no
+ * se le haya recibido nada (PARCIAL/RECIBIDA/CANCELADA quedan fuera, con
+ * el mismo criterio que ya usa cancelarOrdenCompraApp). El folio, la
+ * fecha de creación y el usuario que la generó no cambian; proveedor,
+ * observaciones y productos se reemplazan por completo — se borran las
+ * filas de DETALLE_OC de esa OC y se vuelven a escribir, igual que al
+ * generarla la primera vez. Como solo se permite en PENDIENTE, "Recibido"
+ * siempre es 0 en todas las líneas, así que no hay nada que preservar.
+ */
+function editarOrdenCompraApp(oc, proveedor, observaciones, items, token){
+
+  requerirAccesoAlmacenApp_(token);
+
+  oc = String(oc||"").trim().toUpperCase();
+  proveedor = String(proveedor||"").trim();
+
+  if(!proveedor){
+    throw new Error("Captura el proveedor de la orden.");
+  }
+
+  if(!items || !items.length){
+    throw new Error("Selecciona al menos un producto para comprar.");
+  }
+
+  const ss = SpreadsheetApp.getActive();
+  const ordenes = ss.getSheetByName("ORDENES_COMPRA");
+  const detalle = ss.getSheetByName("DETALLE_OC");
+
+  if(!ordenes || !detalle){
+    throw new Error("No existen las hojas ORDENES_COMPRA y/o DETALLE_OC.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  let total, filasDetalle;
+
+  conBloqueoApp_(function(){
+
+    const datosOrdenes = ordenes.getRange(2, 1, ordenes.getLastRow()-1, 7).getValues();
+    let filaOrden = -1;
+
+    for(let i=0;i<datosOrdenes.length;i++){
+      if(String(datosOrdenes[i][0]||"").trim().toUpperCase() === oc){
+        filaOrden = i + 2;
+        const estadoActual = String(datosOrdenes[i][4]||"").toUpperCase();
+        if(estadoActual !== "PENDIENTE"){
+          throw new Error("Solo se puede editar una orden mientras sigue PENDIENTE (esta ya está " + estadoActual + ").");
+        }
+        break;
+      }
+    }
+
+    if(filaOrden === -1){
+      throw new Error("No se encontró la orden " + oc);
+    }
+
+    total = 0;
+    filasDetalle = [];
+
+    items.forEach(item=>{
+      const cantidad = Number(item.cantidad) || 0;
+      if(cantidad <= 0) return;
+
+      const precio = Number(item.precio) || 0;
+      const presentacion = Number(item.presentacion) || 0;
+      const piezasOrdenadas = Number(item.piezasOrdenadas) || 0;
+
+      const importe = calcularValorInventario_(cantidad, precio, presentacion > 0 ? "SI" : "NO", presentacion);
+      total += importe;
+
+      filasDetalle.push([
+        oc,
+        item.codigo,
+        item.producto,
+        cantidad,
+        item.udm || "",
+        precio,
+        importe,
+        0, // Recibido — siempre 0, editar solo se permite en PENDIENTE
+        presentacion || "",
+        piezasOrdenadas || ""
+      ]);
+    });
+
+    if(!filasDetalle.length){
+      throw new Error("Ninguna cantidad capturada es mayor a cero.");
+    }
+
+    total = Math.round(total * 100) / 100;
+
+    ordenes.getRange(filaOrden, 3).setValue(proveedor);
+    ordenes.getRange(filaOrden, 6).setValue(total);
+    ordenes.getRange(filaOrden, 7).setValue(observaciones || "");
+
+    if(detalle.getRange(1, 9).getValue() === ""){
+      detalle.getRange(1, 9, 1, 2).setValues([["Presentación", "Piezas"]]);
+      detalle.getRange(1, 9, 1, 2).setFontWeight("bold");
+    }
+
+    if(detalle.getLastRow() > 1){
+      const anchoDetalle = Math.min(detalle.getLastColumn(), 10);
+      const datosDetalle = detalle.getRange(2, 1, detalle.getLastRow()-1, anchoDetalle).getValues();
+      for(let i = datosDetalle.length - 1; i >= 0; i--){
+        if(String(datosDetalle[i][0]||"").trim().toUpperCase() === oc){
+          detalle.deleteRows(i + 2, 1);
+        }
+      }
+    }
+
+    detalle.getRange(detalle.getLastRow()+1, 1, filasDetalle.length, 10).setValues(filasDetalle);
+
+  });
+
+  registrarAuditoria(
+    usuario, "COMPRAS", "ORDEN EDITADA", oc, "", "",
+    0, total, "Orden editada — proveedor: " + proveedor + " — " + filasDetalle.length + " producto(s)"
+  );
+
+  generarYGuardarPDFOrdenCompra_(oc);
+
+  return { folio: oc, total: total, productos: filasDetalle.length };
+
+}
+
+/**
  * Lista todas las Órdenes de Compra (para "Órdenes de Compra" e
  * "Historial de Compras" — misma fuente, la vista decide qué mostrar).
  */

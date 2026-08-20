@@ -7035,7 +7035,10 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
               <span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
               <span style="cursor:pointer;color:var(--text-muted)" title="Imprimir" onclick="imprimirOC('${o.oc}')">${tgIcon("imprimir",15)}</span>
             </td>
-            ${conAcciones ? `<td>${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}</td>` : ""}
+            ${conAcciones ? `<td style="white-space:nowrap;display:flex;gap:6px">
+              ${o.estado==="PENDIENTE" ? `<button class="boton secundario" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="abrirEditarOC('${o.oc}')">${tgIcon("editar",14)} Editar</button>` : ""}
+              ${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}
+            </td>` : ""}
           </tr>
         `).join("")}
       </tbody>
@@ -7188,6 +7191,252 @@ async function cancelarOC(oc){
   .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
 
   .cancelarOrdenCompraApp(oc, obtenerTokenSesion());
+
+}
+
+/**
+ * Edición de una OC — solo mientras sigue PENDIENTE (mismo criterio que
+ * ya valida editarOrdenCompraApp en el backend, aquí solo se evita
+ * ofrecer el botón cuando de todos modos se rechazaría). Reemplaza
+ * proveedor/observaciones/productos por completo, igual que si se
+ * volviera a generar la orden — por eso solo se permite en PENDIENTE,
+ * donde ninguna línea tiene nada recibido todavía.
+ */
+function abrirEditarOC(oc){
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">Cargando…</div></div>`;
+
+  google.script.run
+
+  .withSuccessHandler(function(datos){
+
+    if(!datos){ contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ No se encontró la orden ${oc}</div></div>`; return; }
+
+    if(datos.estado !== "PENDIENTE"){
+      contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ Esta orden ya está ${datos.estado} — solo se puede editar mientras sigue PENDIENTE.</div></div>`;
+      return;
+    }
+
+    window.ocEditando = datos.oc;
+    window.ocEditItems = datos.items.map(it => ({
+      codigo: it.codigo, producto: it.producto, udm: it.udm,
+      cantidad: it.cantidad, precio: it.precio,
+      presentacion: it.presentacion || 0, piezasOrdenadas: it.piezasOrdenadas || 0
+    }));
+
+    contenedor.innerHTML = `
+      <div class="vista-animada">
+
+        <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("editar",20)} Editar ${datos.oc}</h2>
+        <p style="color:var(--text-muted);font-size:13px;margin-top:-8px">Solo se puede editar mientras la orden sigue PENDIENTE — todavía sin recepciones registradas.</p>
+
+        <div class="cardProducto">
+          <div class="gridFormulario">
+            <div class="campo">
+              <label>Proveedor</label>
+              <input id="editarOcProveedor" value="${String(datos.proveedor).replace(/"/g,"&quot;")}">
+            </div>
+            <div class="campo">
+              <label>Observaciones (opcional)</label>
+              <input id="editarOcObservaciones" value="${String(datos.observaciones||"").replace(/"/g,"&quot;")}">
+            </div>
+          </div>
+        </div>
+
+        <div class="cardProducto">
+          <h3 style="margin:0 0 10px">Agregar producto</h3>
+          <div style="position:relative;max-width:500px">
+            <input id="buscarProductoEditarOC" placeholder="🔎 Buscar producto, código..." oninput="buscarProductoParaEditarOC()" autocomplete="off">
+            <div id="resultadosBuscarProductoEditarOC" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+          </div>
+        </div>
+
+        <div class="cardProducto">
+          <h3 style="margin:0 0 10px">Productos</h3>
+          <div id="tablaEditarOC"></div>
+        </div>
+
+        <div class="cardProducto">
+          <div id="mensajeEditarOC" style="display:none;margin-bottom:12px;font-size:13.5px;font-weight:600"></div>
+          <div class="boton" id="btnGuardarEdicionOC" onclick="guardarEdicionOC()">${tgIcon("guardar",17)} Guardar cambios</div>
+        </div>
+
+      </div>
+    `;
+
+    dibujarTablaEditarOC();
+
+  })
+
+  .withFailureHandler(function(e){ contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ ${e.message}</div></div>`; })
+
+  .obtenerDetalleOCApp(oc);
+
+}
+
+function dibujarTablaEditarOC(){
+
+  const cont = document.getElementById("tablaEditarOC");
+  if(!cont) return;
+
+  const lista = window.ocEditItems || [];
+
+  if(!lista.length){
+    cont.innerHTML = tgEmptyState("recibo", "Sin productos — agrega al menos uno arriba");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Precio</th><th style="text-align:right">Importe</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((p,i) => `
+          <tr>
+            <td>${p.producto}<br><span style="font-size:10px;color:var(--text-muted)">${p.codigo}</span></td>
+            <td style="text-align:right"><input type="number" id="editarOcCant${i}" value="${p.cantidad}" min="0" step="any" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
+            <td style="text-align:right"><input type="number" id="editarOcPrecio${i}" value="${p.precio}" min="0" step="any" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
+            <td style="text-align:right" id="editarOcImporte${i}">$${((Number(p.cantidad)||0)*(Number(p.precio)||0)).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoEditarOC(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div style="text-align:right;margin-top:10px;font-weight:700;font-size:14px" id="editarOcTotal">Total: $${lista.reduce((s,p)=>s+(Number(p.cantidad)||0)*(Number(p.precio)||0),0).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+  `;
+
+}
+
+/** Actualiza cantidad/precio en memoria y refresca solo importes/total —
+ * evita rehacer la tabla completa en cada tecleo, que le quitaría el
+ * foco al input mientras el usuario está escribiendo. */
+function sincronizarEditarOcDesdeInputs(){
+
+  const lista = window.ocEditItems || [];
+  let total = 0;
+
+  lista.forEach((p,i) => {
+    const cantInput = document.getElementById("editarOcCant"+i);
+    const precioInput = document.getElementById("editarOcPrecio"+i);
+    if(cantInput) p.cantidad = Number(cantInput.value) || 0;
+    if(precioInput) p.precio = Number(precioInput.value) || 0;
+
+    const importe = p.cantidad * p.precio;
+    total += importe;
+    const celdaImporte = document.getElementById("editarOcImporte"+i);
+    if(celdaImporte) celdaImporte.textContent = "$" + importe.toLocaleString("es-MX",{minimumFractionDigits:2});
+  });
+
+  const totalEl = document.getElementById("editarOcTotal");
+  if(totalEl) totalEl.textContent = "Total: $" + total.toLocaleString("es-MX",{minimumFractionDigits:2});
+
+}
+
+function quitarProductoEditarOC(indice){
+  sincronizarEditarOcDesdeInputs();
+  window.ocEditItems.splice(indice, 1);
+  dibujarTablaEditarOC();
+}
+
+let temporizadorBuscarProductoEditarOC = null;
+
+function buscarProductoParaEditarOC(){
+
+  clearTimeout(temporizadorBuscarProductoEditarOC);
+
+  const texto = document.getElementById("buscarProductoEditarOC").value.trim();
+  const resultados = document.getElementById("resultadosBuscarProductoEditarOC");
+
+  if(texto.length < 2){
+    resultados.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoEditarOC = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          resultados.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          resultados.style.display = "block";
+          return;
+        }
+
+        resultados.innerHTML = lista.map(p=>`
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarProductoAEditarOC(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        resultados.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        resultados.innerHTML = "⚠️ " + e.message;
+        resultados.style.display = "block";
+      })
+      .buscarProductoCatalogoApp(texto);
+
+  }, 300);
+
+}
+
+function agregarProductoAEditarOC(producto){
+
+  window.ocEditItems = window.ocEditItems || [];
+
+  const yaExiste = window.ocEditItems.some(p=>p.codigo === producto.codigo);
+
+  if(yaExiste){
+    mostrarMensajeTemporal("mensajeEditarOC", "Ese producto ya está en la orden", "error");
+  } else {
+    window.ocEditItems.push({
+      codigo: producto.codigo, producto: producto.producto, udm: producto.udm,
+      cantidad: 1, precio: producto.precio || 0, presentacion: 0, piezasOrdenadas: 0
+    });
+    dibujarTablaEditarOC();
+  }
+
+  document.getElementById("buscarProductoEditarOC").value = "";
+  document.getElementById("resultadosBuscarProductoEditarOC").innerHTML = "";
+  document.getElementById("resultadosBuscarProductoEditarOC").style.display = "none";
+
+}
+
+function guardarEdicionOC(){
+
+  sincronizarEditarOcDesdeInputs();
+
+  const proveedor = document.getElementById("editarOcProveedor").value.trim();
+  const observaciones = document.getElementById("editarOcObservaciones").value.trim();
+  const items = (window.ocEditItems || []).filter(p => (Number(p.cantidad)||0) > 0);
+
+  if(!proveedor){
+    mostrarMensajeTemporal("mensajeEditarOC", "Captura el proveedor", "error");
+    return;
+  }
+
+  if(!items.length){
+    mostrarMensajeTemporal("mensajeEditarOC", "Agrega al menos un producto con cantidad mayor a cero", "error");
+    return;
+  }
+
+  activarCargaBoton("btnGuardarEdicionOC", true);
+
+  google.script.run
+
+  .withSuccessHandler(function(resultado){
+    mostrarMensajeTemporal("mensajeEditarOC", "✅ Orden actualizada — Total: $" + resultado.total.toLocaleString("es-MX",{minimumFractionDigits:2}), "ok");
+    setTimeout(abrirOrdenesCompra, 1400);
+  })
+
+  .withFailureHandler(function(e){
+    mostrarMensajeTemporal("mensajeEditarOC", "⚠️ " + e.message, "error");
+    activarCargaBoton("btnGuardarEdicionOC", false);
+  })
+
+  .editarOrdenCompraApp(window.ocEditando, proveedor, observaciones, items, obtenerTokenSesion());
 
 }
 
