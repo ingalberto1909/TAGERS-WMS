@@ -1994,13 +1994,31 @@ grid-template-columns:1fr;
 }
 
 .kpiGrid{
-grid-template-columns:repeat(2,1fr);
-gap:8px;
+grid-template-columns:1fr;
+gap:10px;
 }
 
 .indicadores{
 grid-template-columns:repeat(3,1fr);
 gap:8px;
+}
+
+.gridFormulario{
+grid-template-columns:1fr;
+}
+
+/* Mapa de calor de racks: min-height:26px + aspect-ratio:1 (ver base) no
+   tiene techo — con muchas columnas en pantalla angosta podía forzar
+   overflow horizontal de toda la página. Se reduce el mínimo táctil en
+   mobile y, de respaldo, el contenedor scrollea internamente si aun así
+   no cabe, en vez de desbordar la página. */
+.heatmapGrid{
+overflow-x:auto;
+-webkit-overflow-scrolling:touch;
+}
+
+.heatmapCelda{
+min-height:18px;
 }
 
 .filaConEscaner{
@@ -2224,8 +2242,12 @@ animation:fadeInUp .2s ease;
 
 /* TABLET (769px–1024px): el sidebar sigue en modo mini-colapsado (ver el
    media query de min-width:769px), aquí solo se ajusta la densidad de
-   contenido para pantallas más angostas que un laptop grande. */
-@media (max-width:1024px){
+   contenido para pantallas más angostas que un laptop grande.
+   Acotado con min-width:769px para no pisar (por orden de cascada) las
+   reglas de @media (max-width:768px) de más abajo — antes este bloque,
+   al no tener min-width, ganaba en ≤768px por aparecer después en el
+   archivo y dejaba el kpiGrid en 3 columnas en vez de 1. */
+@media (min-width:769px) and (max-width:1024px){
 
 .kpiGrid{
 grid-template-columns:repeat(3,1fr);
@@ -2302,11 +2324,6 @@ display:none;
 
 .chipUsuarioHeader .datosUsuario{
 display:none;
-}
-
-.kpiGrid{
-grid-template-columns:repeat(2,1fr);
-gap:8px;
 }
 
 .kpiCard{
