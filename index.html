@@ -7289,12 +7289,13 @@ function dibujarTablaEditarOC(){
 
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
-      <thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Precio</th><th style="text-align:right">Importe</th><th></th></tr></thead>
+      <thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right" title="Tamaño de una presentación/paquete, en la misma UDM del producto — opcional, solo para que el PDF muestre &quot;N pz (tamaño)&quot; en vez de la cantidad suelta">Presentación</th><th style="text-align:right">Precio</th><th style="text-align:right">Importe</th><th></th></tr></thead>
       <tbody>
         ${lista.map((p,i) => `
           <tr>
             <td>${p.producto}<br><span style="font-size:10px;color:var(--text-muted)">${p.codigo}</span></td>
             <td style="text-align:right"><input type="number" id="editarOcCant${i}" value="${p.cantidad}" min="0" step="any" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
+            <td style="text-align:right"><input type="number" id="editarOcPresentacion${i}" value="${p.presentacion || ""}" min="0" step="any" placeholder="—" style="width:80px;max-width:80px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
             <td style="text-align:right"><input type="number" id="editarOcPrecio${i}" value="${p.precio}" min="0" step="any" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
             <td style="text-align:right" id="editarOcImporte${i}">$${((Number(p.cantidad)||0)*(Number(p.precio)||0)).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
             <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoEditarOC(${i})">✕</span></td>
@@ -7317,9 +7318,17 @@ function sincronizarEditarOcDesdeInputs(){
 
   lista.forEach((p,i) => {
     const cantInput = document.getElementById("editarOcCant"+i);
+    const presInput = document.getElementById("editarOcPresentacion"+i);
     const precioInput = document.getElementById("editarOcPrecio"+i);
     if(cantInput) p.cantidad = Number(cantInput.value) || 0;
+    if(presInput) p.presentacion = Number(presInput.value) || 0;
     if(precioInput) p.precio = Number(precioInput.value) || 0;
+
+    // "Piezas" (cuántas presentaciones son) se deriva de Cantidad ÷
+    // Presentación — el PDF solo muestra la columna Presentación cuando
+    // AMBOS valores son > 0 (ver construirHtmlOrdenCompra_), así que no
+    // basta con capturar el tamaño del paquete si no se recalcula esto.
+    p.piezasOrdenadas = p.presentacion > 0 ? Math.round((p.cantidad / p.presentacion) * 1000) / 1000 : 0;
 
     const importe = p.cantidad * p.precio;
     total += importe;

@@ -258,3 +258,27 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'COM-013', grupo: 'compras', nombre: 'Editar puede agregarle Presentación a una línea que no la tenía', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe guardar presentacion/piezasOrdenadas cuando se editan (bug real reportado: la UI de edición no tenía campo para Presentación, así que quedaba en "—" aunque el usuario la capturara)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // Se crea SIN presentación (como el caso real: "CEBOLLA EN POLVO" cantidad=5, sin paquete).
+    const oc = entorno.invocar('generarOrdenCompraApp', 'SAMS', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20 },
+    ], token);
+    // Se edita para decir "son bolsas de 1kg" — el frontend deriva piezasOrdenadas = cantidad/presentacion = 5.
+    entorno.invocar('editarOrdenCompraApp', oc.folio, 'SAMS', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20, presentacion: 1, piezasOrdenadas: 5 },
+    ], token);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const item = detalle.items[0];
+    return {
+      datos: 'línea creada sin presentación, editada para agregarle presentación=1kg (5 piezas)',
+      esperado: 'presentacion=1, piezasOrdenadas=5 quedan guardados (antes del fix se perdían, la UI no tenía cómo capturarlos)',
+      obtenido: `presentacion=${item.presentacion}, piezasOrdenadas=${item.piezasOrdenadas}`,
+      pasa: item.presentacion === 1 && item.piezasOrdenadas === 5,
+    };
+  },
+});
