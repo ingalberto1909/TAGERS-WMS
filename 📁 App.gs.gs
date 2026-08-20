@@ -2396,6 +2396,32 @@ function obtenerProductosPorProveedorApp(proveedor){
 }
 
 /**
+ * Si la Presentación capturada en una línea de OC (al generar o al
+ * editar) es distinta a la que ya tiene ese producto en MATRIZ (columna
+ * T), actualiza MATRIZ con el nuevo valor — mismo criterio que ya usa
+ * procesarCambioPrecioProducto_ para el precio (columna R) al recibir:
+ * sin lock propio (escritura de un solo valor, catálogo no crítico como
+ * la existencia) y sin tocar nada si la línea no trae presentación
+ * capturada, para nunca borrar por accidente una que ya existía.
+ */
+function sincronizarPresentacionMatriz_(codigo, presentacion){
+
+  const nueva = Number(presentacion) || 0;
+  if(nueva <= 0) return;
+
+  const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+  if(filaMatriz === -1) return;
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const actual = Number(hoja.getRange(filaMatriz, 20).getValue()) || 0; // columna T
+
+  if(nueva === actual) return;
+
+  hoja.getRange(filaMatriz, 20).setValue(nueva);
+
+}
+
+/**
  * FASE 2: genera la Orden de Compra. items = [{codigo, producto, udm,
  * cantidad, precio}, ...]. Crea el folio, guarda encabezado en
  * ORDENES_COMPRA, detalle en DETALLE_OC, y deja registro en AUDITORIA.
@@ -2502,6 +2528,8 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
   }
 
   detalle.getRange(detalle.getLastRow()+1, 1, filasDetalle.length, 10).setValues(filasDetalle);
+
+  items.forEach(item => sincronizarPresentacionMatriz_(item.codigo, item.presentacion));
 
   registrarAuditoria(
     usuario, "COMPRAS", "ORDEN GENERADA", folioOC, "", "",
@@ -2626,6 +2654,8 @@ function editarOrdenCompraApp(oc, proveedor, observaciones, items, token){
     detalle.getRange(detalle.getLastRow()+1, 1, filasDetalle.length, 10).setValues(filasDetalle);
 
   });
+
+  items.forEach(item => sincronizarPresentacionMatriz_(item.codigo, item.presentacion));
 
   registrarAuditoria(
     usuario, "COMPRAS", "ORDEN EDITADA", oc, "", "",

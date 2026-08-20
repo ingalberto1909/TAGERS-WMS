@@ -282,3 +282,58 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'COM-014', grupo: 'compras', nombre: 'Generar una OC con Presentación la refleja en MATRIZ columna T', metodo: 'EMPÍRICO',
+  objetivo: 'generarOrdenCompraApp debe sincronizar la Presentación capturada en la línea hacia MATRIZ (columna T) del producto, para que el catálogo quede al día',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const presentacionAntes = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[19];
+    entorno.invocar('generarOrdenCompraApp', 'SAMS', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20, presentacion: 2, piezasOrdenadas: 2.5 },
+    ], token);
+    const presentacionDespues = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[19];
+    return {
+      datos: 'COD-002 sin presentación en MATRIZ; se genera una OC con presentación=2kg en la línea',
+      esperado: 'MATRIZ.Presentación(COD-002) pasa de vacío a 2',
+      obtenido: `antes="${presentacionAntes}", despues=${presentacionDespues}`,
+      pasa: presentacionDespues === 2,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-015', grupo: 'compras', nombre: 'Editar Presentación también actualiza MATRIZ, sin borrarla si la línea no la trae', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe sincronizar Presentación hacia MATRIZ igual que al generar, pero NUNCA borrar la de MATRIZ cuando una línea se edita sin capturarla (0/vacío no debe pisar un valor ya guardado)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    // COD-001 (HARINA DE TRIGO) ya trae una Presentación capturada de antes (25kg) — simula
+    // el caso real: el catálogo ya tiene el dato, y una edición sin capturarlo no debe borrarlo.
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[19] = 25;
+    const presentacionOriginal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[19];
+
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    // Edita cambiando la cantidad, SIN capturar presentación en esta línea.
+    entorno.invocar('editarOrdenCompraApp', oc.folio, 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 12, udm: 'KG', precio: 15 },
+    ], token);
+    const presentacionTrasEdicionSinCapturar = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[19];
+
+    // Ahora sí la cambia explícitamente a 10kg.
+    entorno.invocar('editarOrdenCompraApp', oc.folio, 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 12, udm: 'KG', precio: 15, presentacion: 10, piezasOrdenadas: 1.2 },
+    ], token);
+    const presentacionTrasEdicionCapturada = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[19];
+
+    return {
+      datos: `MATRIZ.Presentación(COD-001) original=${presentacionOriginal}; se edita sin tocarla, luego se edita a 10`,
+      esperado: `sin capturarla en la línea queda igual (${presentacionOriginal}, no se borra); al capturarla explícitamente pasa a 10`,
+      obtenido: `sinCapturar=${presentacionTrasEdicionSinCapturar}, capturada=${presentacionTrasEdicionCapturada}`,
+      pasa: presentacionTrasEdicionSinCapturar === presentacionOriginal && presentacionTrasEdicionCapturada === 10,
+    };
+  },
+});
