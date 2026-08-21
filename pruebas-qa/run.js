@@ -40,6 +40,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'reportes/reportes.test.js',
   'inteligencia/inteligencia.test.js',
   'fefo/fefo.test.js',
+  'kpis/kpis-operativos.test.js',
 ];
 
 function cargarTodasLasPruebas() {

@@ -9120,6 +9120,8 @@ function volverInicio(){
 
   <div id="inteligenciaInventario" style="margin-bottom:20px"></div>
 
+  <div id="kpisOperativos" style="margin-bottom:20px"></div>
+
   <div class="panelesInicio3">
 
     <div class="cardProducto">
@@ -9170,6 +9172,7 @@ function volverInicio(){
   cargarResumenExtraInicio();
   cargarAccionesRequeridas();
   cargarInteligenciaInventario();
+  cargarKpisOperativos();
 
 }
 
@@ -9308,6 +9311,86 @@ function dibujarInteligenciaInventario(resumen){
             </div>
           `;
         }).join("")}
+      </div>
+    </div>
+  `;
+
+}
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 4: KPIs operativos (KpisOperativos.gs)
+// Solo Admin/Almacén (igual que el backend) — si el usuario no tiene
+// acceso, la llamada falla y la sección simplemente no se dibuja, sin
+// mostrar un error (mismo criterio que el resto de tarjetas entre
+// módulos de Acciones Requeridas). Cada valor puede venir null cuando no
+// hay datos suficientes en la ventana — se muestra "Sin datos
+// suficientes", nunca un 0%/100% inventado.
+// ===============================
+
+function cargarKpisOperativos(){
+
+  google.script.run
+    .withSuccessHandler(dibujarKpisOperativos)
+    .withFailureHandler(function(){ /* sin acceso o sin datos — la sección se queda vacía */ })
+    .obtenerKpisOperativosApp(obtenerTokenSesion(), {});
+
+}
+
+function formatearKpiPorcentaje_(valor){
+  return valor === null || valor === undefined ? "Sin datos suficientes" : valor + "%";
+}
+
+function dibujarKpisOperativos(datos){
+
+  const cont = document.getElementById("kpisOperativos");
+  if(!cont || !datos) return;
+
+  const tarjetas = [
+    {
+      icono: "checkCirculo", titulo: "Exactitud de inventario",
+      valor: formatearKpiPorcentaje_(datos.exactitudInventario.exactitudPorcentaje),
+      nota: datos.exactitudInventario.totalContados + " conteo(s) cerrado(s) en " + datos.exactitudInventario.diasHistorial + " días"
+    },
+    {
+      icono: "camion", titulo: "Fill rate — Requisiciones de Área",
+      valor: formatearKpiPorcentaje_(datos.fillRateArea.fillRatePorcentaje),
+      nota: datos.fillRateArea.folios + " folio(s) entregado(s)" + (datos.fillRateArea.folioCompletosPorcentaje === null ? "" : " — " + datos.fillRateArea.folioCompletosPorcentaje + "% completos")
+    },
+    {
+      icono: "camion", titulo: "Fill rate — Requisiciones de Sucursal",
+      valor: formatearKpiPorcentaje_(datos.fillRateSucursal.fillRatePorcentaje),
+      nota: datos.fillRateSucursal.folios + " folio(s)" + (datos.fillRateSucursal.folioCompletosPorcentaje === null ? "" : " — " + datos.fillRateSucursal.folioCompletosPorcentaje + "% completos")
+    },
+    {
+      icono: "recibo", titulo: "Recepciones completas de compras",
+      valor: formatearKpiPorcentaje_(datos.recepcionesCompras.completasPorcentaje),
+      nota: datos.recepcionesCompras.ordenesConRecepcion + " OC con recepción" + (datos.recepcionesCompras.enUnaSolaRecepcionPorcentaje === null ? "" : " — " + datos.recepcionesCompras.enUnaSolaRecepcionPorcentaje + "% en una sola vez")
+    },
+    {
+      icono: "reloj", titulo: "Tiempo de surtido — Área",
+      valor: datos.tiempoSurtidoArea.diasPromedio === null ? "Sin datos suficientes" : datos.tiempoSurtidoArea.diasPromedio + " días",
+      nota: datos.tiempoSurtidoArea.foliosEvaluados + " folio(s) evaluado(s)"
+    },
+    {
+      icono: "reloj", titulo: "Tiempo de surtido — Sucursal",
+      valor: datos.tiempoSurtidoSucursal.diasPromedio === null ? "Sin datos suficientes" : datos.tiempoSurtidoSucursal.diasPromedio + " días",
+      nota: datos.tiempoSurtidoSucursal.foliosEvaluados + " folio(s) evaluado(s)"
+    }
+  ];
+
+  cont.innerHTML = `
+    <div class="cardProducto">
+      <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:8px">${tgIcon("balanza",18)} KPIs Operativos</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Últimos ${datos.exactitudInventario.diasHistorial} días — un KPI en "Sin datos suficientes" significa que no hubo actividad para calcularlo en ese periodo, no que sea 0%.</p>
+      <div class="kpiGrid" style="margin:0">
+        ${tarjetas.map(t => `
+          <div class="kpiCard">
+            <div class="kpiIcono">${tgIcon(t.icono,18)}</div>
+            <div class="kpiLabel">${t.titulo}</div>
+            <div class="kpiValor" style="font-size:${t.valor === 'Sin datos suficientes' ? '13px' : ''}">${t.valor}</div>
+            <div class="kpiNota">${t.nota}</div>
+          </div>
+        `).join("")}
       </div>
     </div>
   `;
