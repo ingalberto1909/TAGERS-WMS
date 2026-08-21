@@ -188,7 +188,7 @@ function obtenerAccionesRequeridasApp(token){
     });
   }
 
-  const ocPendientes = obtenerOrdenesCompraApp().filter(o => o.estado === "PENDIENTE" || o.estado === "PARCIAL");
+  const ocPendientes = obtenerOrdenesCompraApp(token).filter(o => o.estado === "PENDIENTE" || o.estado === "PARCIAL");
   if(ocPendientes.length){
     atencion.push({
       tipo: "ordenes-compra", cantidad: ocPendientes.length,

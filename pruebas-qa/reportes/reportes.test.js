@@ -35,7 +35,8 @@ prueba({
   objetivo: 'obtenerReporteEjecutivoApp().valorPorCategoria debe agrupar MATRIZ por Categoría, sumando existencia×costo con la misma fórmula que el total general',
   ejecutar() {
     const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: matrizConCategorias() }) });
-    const rep = entorno.invocar('obtenerReporteEjecutivoApp');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const rep = entorno.invocar('obtenerReporteEjecutivoApp', token);
     const abarrotes = rep.valorPorCategoria.find(g => g.nombre === 'ABARROTES');
     const bebidas = rep.valorPorCategoria.find(g => g.nombre === 'BEBIDAS');
     // ABARROTES: HARINA 10x20=200 + AZUCAR 5x10=50 = 250 (SIN COSTO se excluye, costo=0)
@@ -54,7 +55,8 @@ prueba({
   objetivo: 'obtenerReporteEjecutivoApp().valorPorProveedor debe agrupar por Proveedor (columna distinta a Categoría), mismos números fuente',
   ejecutar() {
     const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: matrizConCategorias() }) });
-    const rep = entorno.invocar('obtenerReporteEjecutivoApp');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const rep = entorno.invocar('obtenerReporteEjecutivoApp', token);
     const provA = rep.valorPorProveedor.find(g => g.nombre === 'PROVEEDOR A');
     const provB = rep.valorPorProveedor.find(g => g.nombre === 'PROVEEDOR B');
     return {
@@ -77,7 +79,8 @@ prueba({
       filas.push(fila);
     }
     const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: filas }) });
-    const rep = entorno.invocar('obtenerReporteEjecutivoApp');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const rep = entorno.invocar('obtenerReporteEjecutivoApp', token);
     const otros = rep.valorPorCategoria.find(g => g.nombre.startsWith('Otros'));
     return {
       datos: '10 categorías con valores 1..10',
@@ -100,7 +103,8 @@ prueba({
       [hoy, '', 'SALIDA', 'F3', 'COD-002', 'AZUCAR', '', 15, 50, 35, 'Admin', ''],
     ];
     const entorno = crearEntorno({ hojas: hojasBase({ KARDEX: kardex }) });
-    const rep = entorno.invocar('obtenerReporteEjecutivoApp');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const rep = entorno.invocar('obtenerReporteEjecutivoApp', token);
     const ultimoMes = rep.tendenciaMensual.entradas.length - 1;
     return {
       datos: '2 entradas del mismo código (30+20) y 1 salida (15) en el mes actual',
@@ -124,7 +128,8 @@ prueba({
       [fueraDeVentana, '', 'ENTRADA', 'F2', 'COD-001', 'HARINA', 999, '', 0, 999, 'Admin', ''],
     ];
     const entorno = crearEntorno({ hojas: hojasBase({ KARDEX: kardex }) });
-    const rep = entorno.invocar('obtenerTendenciaMensualApp');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const rep = entorno.invocar('obtenerTendenciaMensualApp', token);
     const idxHace2Meses = rep.entradas.length - 1 - 2;
     const sumaTotal = rep.entradas.reduce((a,b) => a+b, 0);
     return {
@@ -141,7 +146,8 @@ prueba({
   objetivo: 'La suma de valorPorCategoria (sin recorte Top7, catálogo chico) debe coincidir con obtenerValorInventarioApp().total — misma fórmula, sin duplicar ni perder valor al agrupar',
   ejecutar() {
     const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: matrizConCategorias() }) });
-    const rep = entorno.invocar('obtenerReporteEjecutivoApp');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const rep = entorno.invocar('obtenerReporteEjecutivoApp', token);
     const sumaCategorias = rep.valorPorCategoria.reduce((a,g) => a + g.valor, 0);
     return {
       datos: 'mismo MATRIZ de prueba (250 ABARROTES + 300 BEBIDAS = 550)',

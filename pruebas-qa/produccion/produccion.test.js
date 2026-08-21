@@ -38,7 +38,7 @@ prueba({
     }, tokenAdmin);
 
     const existencia = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-010')[10];
-    const lotes = entorno.invocar('obtenerLotesProduccionApp', {});
+    const lotes = entorno.invocar('obtenerLotesProduccionApp', {}, tokenAdmin);
     const kardexFilas = entorno.leerHoja('KARDEX').length - 1;
 
     return {
@@ -96,7 +96,7 @@ prueba({
     const lote = entorno.invocar('registrarProduccionApp', { folioRequisicion: folioReq, nombreReceta: 'PAN DE MUERTO', codigoProducto: 'COD-010', cantidadProducida: 20, udm: 'PZ' }, tokenAdmin);
 
     entorno.invocar('cerrarLoteProduccionApp', lote.folio, tokenAdmin);
-    const lotes = entorno.invocar('obtenerLotesProduccionApp', {});
+    const lotes = entorno.invocar('obtenerLotesProduccionApp', {}, tokenAdmin);
     const existenciaMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-010')[10];
 
     return {
@@ -115,7 +115,8 @@ prueba({
     const matriz = hojaMatrizEstandar();
     matriz.push(filaProducto({ producto: 'PAN DE MUERTO', udm: 'PZ', codigo: 'COD-010', existencia: 0, ubicacion: 'C-01' }));
     const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: matriz }) });
-    const r = entorno.invocar('obtenerProductoTerminadoPorNombreRecetaApp', 'Pan de Muerto');
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const r = entorno.invocar('obtenerProductoTerminadoPorNombreRecetaApp', 'Pan de Muerto', token);
     return {
       datos: 'receta "Pan de Muerto" (mayúsculas/espacios distintos al nombre de MATRIZ)',
       esperado: 'código=COD-010',

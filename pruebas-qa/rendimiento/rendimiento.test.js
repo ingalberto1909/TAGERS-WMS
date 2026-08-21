@@ -68,9 +68,9 @@ prueba({
     const entorno = crearEntorno({ hojas: hojasBase() });
     const tokenOp = entorno.invocar('crearSesion_', 'operador@tagers.com', 'Op', 'OPERADOR');
 
-    const antes = entorno.invocar('obtenerDetalleProductoApp', 'COD-001'); // puebla la caché de MATRIZ con existencia=100
+    const antes = entorno.invocar('obtenerDetalleProductoApp', 'COD-001', tokenOp); // puebla la caché de MATRIZ con existencia=100
     entorno.invocar('guardarEntradaApp', { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', token: tokenOp }); // sube a 120, escribe directo a la hoja (sin pasar por caché)
-    const despues = entorno.invocar('obtenerDetalleProductoApp', 'COD-001'); // ¿lee 120 real, o 100 de la caché de 20s?
+    const despues = entorno.invocar('obtenerDetalleProductoApp', 'COD-001', tokenOp); // ¿lee 120 real, o 100 de la caché de 20s?
 
     const huboEntradaReal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10] === 120;
     const dashboardActualizado = despues.existencia === 120;

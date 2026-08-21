@@ -1,6 +1,7 @@
 
-function buscarRecetaParaRequisicionApp(texto){
-  return buscarRecetasApp(texto).filter(r => r.estado === "ACTIVA");
+function buscarRecetaParaRequisicionApp(texto, token){
+  requerirSesionActivaApp_(token);
+  return buscarRecetasApp(texto, token).filter(r => r.estado === "ACTIVA");
 }
 
 function generarFolioRequisicionReceta_(){
@@ -25,6 +26,8 @@ function generarFolioRequisicionReceta_(){
 
 function crearRequisicionRecetaApp(observaciones, items, token){
 
+  requerirSesionActivaApp_(token);
+
   const correo = obtenerCorreoDesdeToken_(token);
   const usuario = obtenerNombreDesdeToken(token);
   const area = obtenerAreaUsuarioPorCorreo_(correo);
@@ -34,7 +37,7 @@ function crearRequisicionRecetaApp(observaciones, items, token){
   }
 
   const activas = {};
-  obtenerRecetasApp().forEach(r => { if(r.estado === "ACTIVA") activas[r.codigo] = r; });
+  obtenerRecetasApp(token).forEach(r => { if(r.estado === "ACTIVA") activas[r.codigo] = r; });
 
   const validos = (items||[])
     .filter(it => it.codigoReceta && Number(it.cantidadSolicitada) > 0)
@@ -84,7 +87,9 @@ function crearRequisicionRecetaApp(observaciones, items, token){
 
 }
 
-function obtenerTipoRequisicionApp(folio){
+function obtenerTipoRequisicionApp(folio, token){
+
+  requerirSesionActivaApp_(token);
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   if(detalle.getLastRow() < 2) return "PRODUCTO";
@@ -103,7 +108,14 @@ function obtenerTipoRequisicionApp(folio){
 
 }
 
-function obtenerDetalleRequisicionRecetaApp(folio, token){
+// Versión interna sin guard propio — token sigue siendo opcional aquí,
+// pero solo para decidir si se filtra por área (ver obtenerDetalleRequisicionApp,
+// Requisiciones de producto): Producción la usa sin token a propósito para
+// mantener acceso a cualquier área, y ya valida la sesión por su cuenta
+// ANTES de llegar aquí (ver obtenerRequisicionListaParaProduccionApp). La
+// pública (abajo) es la única que debe llamarse desde el cliente, y esa sí
+// exige sesión siempre.
+function obtenerDetalleRequisicionRecetaApp_(folio, token){
 
   const req = obtenerHojaRequisiciones_();
   const datosReq = req.getRange(2,1,req.getLastRow()-1,8).getValues();
@@ -112,11 +124,6 @@ function obtenerDetalleRequisicionRecetaApp(folio, token){
 
   if(!encabezado) throw new Error("No se encontró la requisición " + folio);
 
-  // Mismo criterio que obtenerDetalleRequisicionApp (Requisiciones de
-  // producto): un área solo ve las suyas, salvo Admin/Almacén. `token`
-  // es opcional para no romper llamadas internas ya protegidas por su
-  // propio guard (p. ej. Producción, que ya exige requerirAccesoAlmacenApp_
-  // antes de llegar aquí) — solo se aplica el filtro cuando se recibe token.
   if(token){
     const acceso = obtenerAccesoRequisicionesApp(token);
     if(!acceso.esAdmin && String(encabezado[2]).trim() !== String(acceso.area).trim()){
@@ -133,7 +140,7 @@ function obtenerDetalleRequisicionRecetaApp(folio, token){
     .map(f => {
       let rendimiento = "";
       try{
-        rendimiento = obtenerDetalleRecetaApp(f[2]).rendimiento;
+        rendimiento = obtenerDetalleRecetaApp_(f[2]).rendimiento;
       }catch(e){
         rendimiento = "—"; // la receta pudo haberse renombrado después
       }
@@ -153,6 +160,11 @@ function obtenerDetalleRequisicionRecetaApp(folio, token){
     recetas: recetas
   };
 
+}
+
+function obtenerDetalleRequisicionRecetaApp(folio, token){
+  requerirSesionActivaApp_(token);
+  return obtenerDetalleRequisicionRecetaApp_(folio, token);
 }
 
 function parsearRendimiento_(rendimientoTexto){
@@ -184,13 +196,15 @@ function buscarProductoEnMatrizPorNombre_(nombre){
 
 function obtenerCalculoIngredientesRequisicionApp(folio, token){
 
-  const detalleReceta = obtenerDetalleRequisicionRecetaApp(folio, token);
+  requerirSesionActivaApp_(token);
+
+  const detalleReceta = obtenerDetalleRequisicionRecetaApp_(folio, token);
 
   const acumulado = {}; // ingrediente normalizado -> {nombre, necesario, udmReceta}
 
   detalleReceta.recetas.forEach(r => {
 
-    const receta = obtenerDetalleRecetaApp(r.nombreReceta);
+    const receta = obtenerDetalleRecetaApp_(r.nombreReceta);
     
     const factor = r.cantidadSolicitada;
 
@@ -377,6 +391,7 @@ function generarYGuardarPDFRequisicionReceta_(folio){
 
 }
 
-function obtenerPDFRequisicionRecetaApp(folio){
+function obtenerPDFRequisicionRecetaApp(folio, token){
+  requerirSesionActivaApp_(token);
   return generarYGuardarPDFRequisicionReceta_(folio);
 }

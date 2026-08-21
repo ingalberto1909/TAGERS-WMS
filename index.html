@@ -2886,7 +2886,7 @@ function buscarGlobalHeader(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .busquedaGlobalHeaderApp(texto);
+      .busquedaGlobalHeaderApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -3362,7 +3362,7 @@ function cargarSugeridosRequisicion(){
 
         })
         .withFailureHandler(function(){ cont.innerHTML = ""; })
-        .obtenerProductosSugeridosAreaApp(acceso.area);
+        .obtenerProductosSugeridosAreaApp(acceso.area, obtenerTokenSesion());
 
     })
     .withFailureHandler(function(){ cont.innerHTML = ""; })
@@ -3408,7 +3408,7 @@ function buscarProductoParaRequisicion(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRequisicionApp(texto);
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -4698,7 +4698,7 @@ function buscarProductoParaTransferenciaSucursal(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRequisicionApp(texto);
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -4893,7 +4893,7 @@ function verDetalleRequisicionSegunTipo(folio){
       }
     })
     .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
-    .obtenerTipoRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -5005,7 +5005,7 @@ function cargarPreparacionRequisicion(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerTipoRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -5201,7 +5201,7 @@ function buscarProductoExtraPreparacion(){
 
       })
       .withFailureHandler(function(){ cont.innerHTML = ""; cont.style.display = "none"; })
-      .buscarProductoParaRequisicionApp(texto);
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
 
   }, 250);
 
@@ -5329,7 +5329,7 @@ function descargarPDFRequisicion(folio){
 
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerTipoRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -5447,7 +5447,7 @@ function cargarCategoriasRecetas(){
       sel.innerHTML = `<option value="">Todas</option>` + categorias.map(c => `<option value="${c}">${c}</option>`).join("");
     })
     .withFailureHandler(function(){})
-    .obtenerCategoriasRecetasApp();
+    .obtenerCategoriasRecetasApp(obtenerTokenSesion());
 }
 
 function cargarListaRecetas(){
@@ -5459,7 +5459,7 @@ function cargarListaRecetas(){
     .withFailureHandler(function(e){
       document.getElementById("listaRecetas").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerRecetasApp();
+    .obtenerRecetasApp(obtenerTokenSesion());
 }
 
 function filtrarListaRecetas(){
@@ -5559,7 +5559,7 @@ function abrirDetalleReceta(nombre){
     .withFailureHandler(function(e){
       cont.innerHTML = "⚠️ " + e.message;
     })
-    .obtenerDetalleRecetaApp(nombre);
+    .obtenerDetalleRecetaApp(nombre, obtenerTokenSesion());
 
 }
 
@@ -5646,7 +5646,7 @@ function abrirFormularioReceta(nombreExistente){
       if(dl) dl.innerHTML = categorias.map(c => `<option value="${c}">`).join("");
     })
     .withFailureHandler(function(){})
-    .obtenerCategoriasRecetasApp();
+    .obtenerCategoriasRecetasApp(obtenerTokenSesion());
 
   if(nombreExistente){
     google.script.run
@@ -5660,7 +5660,7 @@ function abrirFormularioReceta(nombreExistente){
       .withFailureHandler(function(e){
         mostrarMensajeTemporal("mensajeFormReceta", "⚠️ " + e.message, "error");
       })
-      .obtenerDetalleRecetaApp(nombreExistente);
+      .obtenerDetalleRecetaApp(nombreExistente, obtenerTokenSesion());
   } else {
     dibujarTablaIngredientesReceta();
   }
@@ -5705,7 +5705,7 @@ function buscarIngredienteParaReceta(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRecetaApp(texto);
+      .buscarProductoParaRecetaApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -6129,7 +6129,7 @@ function buscarProductoTerminadoProduccion(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeProduccion", "⚠️ " + e.message, "error");
     })
-    .buscarProductoApp(codigo);
+    .buscarProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -6171,7 +6171,7 @@ function autocompletarProductoTerminadoProduccion(){
       // sigue pudiendo escanear/escribir el código a mano, igual que antes.
       document.getElementById("codigoProduccion").focus();
     })
-    .obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta);
+    .obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta, obtenerTokenSesion());
 
 }
 
@@ -6273,7 +6273,7 @@ function filtrarLotesProduccion(){
     .withFailureHandler(function(e){
       document.getElementById("tablaLotesProduccion").innerHTML = `<tr><td colspan="7">${tgEmptyState("alertaTriangulo", e.message)}</td></tr>`;
     })
-    .obtenerLotesProduccionApp(filtros);
+    .obtenerLotesProduccionApp(filtros, obtenerTokenSesion());
 
 }
 
@@ -6382,7 +6382,7 @@ function abrirCentroReabastecimiento(){
     .withFailureHandler(function(e){
       document.getElementById("listaProveedoresReabasto").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
-    .obtenerProveedoresReabastecimientoApp();
+    .obtenerProveedoresReabastecimientoApp(obtenerTokenSesion());
 
 }
 
@@ -6498,7 +6498,7 @@ function cargarReabastecimiento(proveedor){
     document.getElementById("resumenReabasto").innerText = "⚠️ " + e.message;
   })
 
-  .obtenerProductosPorProveedorApp(proveedor);
+  .obtenerProductosPorProveedorApp(proveedor, obtenerTokenSesion());
 
 }
 
@@ -6652,7 +6652,7 @@ function buscarProductoParaAgregar(){
         resultados.innerHTML = "⚠️ " + e.message;
         resultados.style.display = "block";
       })
-      .buscarProductoCatalogoApp(texto);
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -6842,7 +6842,7 @@ function buscarSugerenciasAnalisisCompras(){
 
       })
       .withFailureHandler(function(){ cont.style.display = "none"; })
-      .buscarProductoCatalogoApp(texto);
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -6956,7 +6956,7 @@ function consultarAnalisisCompras(){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerAnalisisProductoComprasApp(texto);
+    .obtenerAnalisisProductoComprasApp(texto, obtenerTokenSesion());
 
 }
 
@@ -7030,7 +7030,7 @@ function generarProyeccionCompras(){
     .withFailureHandler(function(e){
       cont.innerHTML = "⚠️ " + e.message;
     })
-    .generarProyeccionConsumoApp(texto, incremento);
+    .generarProyeccionConsumoApp(texto, incremento, obtenerTokenSesion());
 
 }
 
@@ -7146,7 +7146,7 @@ function cargarAnalisisCostos(){
       const kpisCont = document.getElementById("kpisAnalisisCostos");
       if(kpisCont) kpisCont.innerHTML = "⚠️ " + e.message;
     })
-    .obtenerAnalisisCostosApp(dias);
+    .obtenerAnalisisCostosApp(dias, obtenerTokenSesion());
 
 }
 
@@ -7184,7 +7184,7 @@ function abrirListaOrdenesCompra(idBoton, titulo, conAcciones){
     document.getElementById("listaOrdenesCompra").innerHTML = tgEmptyState("alertaTriangulo", e.message);
   })
 
-  .obtenerOrdenesCompraApp();
+  .obtenerOrdenesCompraApp(obtenerTokenSesion());
 
 }
 
@@ -7247,7 +7247,7 @@ function verPDFOrdenCompra(oc){
       if(ventana) ventana.close();
       alert("⚠️ " + e.message);
     })
-    .obtenerPDFOrdenCompraApp(oc);
+    .obtenerPDFOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -7270,7 +7270,7 @@ function descargarPDFOrdenCompra(oc){
       if(ventana) ventana.close();
       alert("⚠️ " + e.message);
     })
-    .obtenerPDFOrdenCompraApp(oc);
+    .obtenerPDFOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -7307,7 +7307,7 @@ function imprimirOC(oc){
     alert("⚠️ " + e.message);
   })
 
-  .obtenerPDFOrdenCompraApp(oc);
+  .obtenerPDFOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -7355,7 +7355,7 @@ function verDetalleOC(oc){
 
   .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
 
-  .obtenerDetalleOCApp(oc);
+  .obtenerDetalleOCApp(oc, obtenerTokenSesion());
 
 }
 
@@ -7452,7 +7452,7 @@ function abrirEditarOC(oc){
 
   .withFailureHandler(function(e){ contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ ${e.message}</div></div>`; })
 
-  .obtenerDetalleOCApp(oc);
+  .obtenerDetalleOCApp(oc, obtenerTokenSesion());
 
 }
 
@@ -7566,7 +7566,7 @@ function buscarProductoParaEditarOC(){
         resultados.innerHTML = "⚠️ " + e.message;
         resultados.style.display = "block";
       })
-      .buscarProductoCatalogoApp(texto);
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -7697,7 +7697,7 @@ function cargarOCPendientesSelect(){
 
   .withFailureHandler(function(e){ console.error(e.message); })
 
-  .obtenerOrdenesCompraApp();
+  .obtenerOrdenesCompraApp(obtenerTokenSesion());
 
 }
 
@@ -7810,7 +7810,7 @@ function buscarOCParaRecepcion(){
     mostrarMensajeTemporal("mensajeRecepcion", "⚠️ " + e.message, "error");
   })
 
-  .obtenerDetalleOCApp(oc);
+  .obtenerDetalleOCApp(oc, obtenerTokenSesion());
 
 }
 
@@ -8032,7 +8032,7 @@ function cargarFoliosAbiertosInventarioMensual(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
     })
-    .obtenerFoliosInventarioAbiertosApp();
+    .obtenerFoliosInventarioAbiertosApp(obtenerTokenSesion());
 
 }
 
@@ -8054,7 +8054,7 @@ function cargarAvanceInventarioMensual(){
       cont.innerText = avance.contados + " de " + avance.total + " contados (" + avance.porcentaje + "%)";
     })
     .withFailureHandler(function(){ cont.innerText = ""; })
-    .obtenerAvanceInventarioMensualApp(window.folioInventarioMensualActual);
+    .obtenerAvanceInventarioMensualApp(window.folioInventarioMensualActual, obtenerTokenSesion());
 
 }
 
@@ -8084,7 +8084,7 @@ function buscarCodigoParaInventarioMensual(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
     })
-    .buscarCodigoInventarioMensualApp(codigo, window.folioInventarioMensualActual);
+    .buscarCodigoInventarioMensualApp(codigo, window.folioInventarioMensualActual, obtenerTokenSesion());
 
 }
 
@@ -8126,7 +8126,7 @@ function buscarNombreParaInventarioMensual(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoPorNombreInventarioMensualApp(texto, window.folioInventarioMensualActual);
+      .buscarProductoPorNombreInventarioMensualApp(texto, window.folioInventarioMensualActual, obtenerTokenSesion());
 
   }, 300);
 
@@ -8158,7 +8158,7 @@ function cargarSiguientePendienteInventarioMensual(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
     })
-    .obtenerSiguientePendienteInventarioMensualApp(window.folioInventarioMensualActual);
+    .obtenerSiguientePendienteInventarioMensualApp(window.folioInventarioMensualActual, obtenerTokenSesion());
 
 }
 
@@ -8268,7 +8268,7 @@ function abrirRevisarDiferenciasMensual(){
       cargarDiferenciasInventarioMensual();
     })
     .withFailureHandler(function(e){ alert(e.message); })
-    .obtenerFoliosInventarioAbiertosApp();
+    .obtenerFoliosInventarioAbiertosApp(obtenerTokenSesion());
 
 }
 
@@ -8289,7 +8289,7 @@ function cargarDiferenciasInventarioMensual(){
       pintarDiferenciasInventarioMensual();
     })
     .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
-    .obtenerDiscrepanciasInventarioMensualApp(folio);
+    .obtenerDiscrepanciasInventarioMensualApp(folio, obtenerTokenSesion());
 
 }
 
@@ -8433,7 +8433,7 @@ function abrirCerrarInventarioMensual(){
       sel.innerHTML = folios.map(f=>`<option value="${f}">${f}</option>`).join("");
     })
     .withFailureHandler(function(e){ alert(e.message); })
-    .obtenerFoliosInventarioAbiertosApp();
+    .obtenerFoliosInventarioAbiertosApp(obtenerTokenSesion());
 
 }
 
@@ -8547,7 +8547,7 @@ function abrirHistorialInventarioMensual(){
     .withFailureHandler(function(e){
       document.getElementById("listaHistorialInventarios").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
-    .obtenerHistorialInventariosApp();
+    .obtenerHistorialInventariosApp(obtenerTokenSesion());
 
 }
 
@@ -8583,7 +8583,7 @@ function verDetalleInventarioMensual(folio){
     .withFailureHandler(function(e){
       document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerDetalleInventarioApp(folio);
+    .obtenerDetalleInventarioApp(folio, obtenerTokenSesion());
 
 }
 
@@ -8598,7 +8598,7 @@ function verPDFInventarioMensual(folio){
       ventana.location.href = res.verUrl;
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerPDFInventarioMensualApp(folio);
+    .obtenerPDFInventarioMensualApp(folio, obtenerTokenSesion());
 
 }
 
@@ -8613,7 +8613,7 @@ function descargarPDFCompletoInventarioMensual(folio){
       ventana.location.href = res.descargarUrl;
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerPDFInventarioMensualCompletoApp(folio);
+    .obtenerPDFInventarioMensualCompletoApp(folio, obtenerTokenSesion());
 
 }
 
@@ -8638,7 +8638,7 @@ function exportarExcelInventarioMensual(folio){
 
     })
     .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
-    .obtenerDetalleInventarioApp(folio);
+    .obtenerDetalleInventarioApp(folio, obtenerTokenSesion());
 
 }
 
@@ -8714,7 +8714,7 @@ function abrirDashboardInventarioMensual(){
     .withFailureHandler(function(e){
       document.getElementById("kpisDashboardInventario").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
-    .obtenerDashboardInventarioMensualApp();
+    .obtenerDashboardInventarioMensualApp(obtenerTokenSesion());
 
 }
 
@@ -8926,7 +8926,7 @@ function abrirDetalleProducto(codigo, estado, claveNotif){
     .withFailureHandler(function(error){
       document.getElementById("detalleCargando").innerText = "Error: " + error.message;
     })
-    .obtenerDetalleProductoApp(codigo);
+    .obtenerDetalleProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -8964,7 +8964,7 @@ function cargarHistorialComprasProducto(codigo){
     .withFailureHandler(function(e){
       cont.innerText = "⚠️ " + e.message;
     })
-    .obtenerHistorialComprasProductoApp(codigo);
+    .obtenerHistorialComprasProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -9562,7 +9562,7 @@ function cargarResumenInicio(){
     console.error(e.message);
   })
 
-  .obtenerResumenInicioApp();
+  .obtenerResumenInicioApp(obtenerTokenSesion());
 
 }
 
@@ -9579,7 +9579,7 @@ function cargarResumenExtraInicio(){
   google.script.run
     .withSuccessHandler(dibujarResumenExtraInicio)
     .withFailureHandler(function(e){ console.error(e.message); })
-    .obtenerResumenExtraDashboardApp();
+    .obtenerResumenExtraDashboardApp(obtenerTokenSesion());
 
 }
 
@@ -9692,7 +9692,7 @@ function cargarConteosProgramadosHoy(){
   google.script.run
     .withSuccessHandler(dibujarConteosProgramadosHoy)
     .withFailureHandler(function(e){ console.error(e.message); })
-    .obtenerConteosProgramadosHoyApp();
+    .obtenerConteosProgramadosHoyApp(obtenerTokenSesion());
 
 }
 
@@ -10478,7 +10478,7 @@ function buscarProductoEntrada(){
 
   })
 
-  .buscarProductoApp(codigo);
+  .buscarProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -10591,7 +10591,7 @@ function buscarProductoSalida(){
     mostrarMensajeTemporal("mensajeSalida", "⚠️ "+error.message, "error");
   })
 
-  .buscarProductoApp(codigo);
+  .buscarProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -10753,7 +10753,7 @@ function procesarPDFImportacion(archivo){
         }
 
       })
-      .analizarPDFRequerimientoApp(base64Puro, importacionArchivoNombre);
+      .analizarPDFRequerimientoApp(base64Puro, importacionArchivoNombre, obtenerTokenSesion());
 
   };
 
@@ -10848,7 +10848,7 @@ function procesarExcelImportacion(archivo){
         .withFailureHandler(function(error){
           resumen.innerText = "Error al buscar coincidencias: " + error.message;
         })
-        .analizarImportacionSalidasApp(items);
+        .analizarImportacionSalidasApp(items, obtenerTokenSesion());
 
     }catch(err){
       resumen.innerText = "No se pudo leer el archivo: " + err.message;
@@ -10972,7 +10972,7 @@ function asignarCodigoManual(indice){
     .withFailureHandler(function(error){
       alert("Error: " + error.message);
     })
-    .recalcularFilaImportacionManualApp(codigo, r.cantidadPedida);
+    .recalcularFilaImportacionManualApp(codigo, r.cantidadPedida, obtenerTokenSesion());
 
 }
 
@@ -11054,7 +11054,7 @@ function abrirAjustesInventario(){
 
   .withFailureHandler(function(e){ alert(e.message); })
 
-  .obtenerAjustesInventarioApp(100);
+  .obtenerAjustesInventarioApp(100, obtenerTokenSesion());
 
 }
 
@@ -11130,7 +11130,7 @@ function abrirGenerarConteo(){
 
   .withFailureHandler(function(e){ alert(e.message); })
 
-  .obtenerRacksConteoApp();
+  .obtenerRacksConteoApp(obtenerTokenSesion());
 
 }
 
@@ -11463,7 +11463,7 @@ function ejecutarRevisionDiscrepancias(){
 
   .withFailureHandler(function(e){ activarCargaBoton("btnBuscarDiscrepancias", false); alert("ERROR: "+e.message); })
 
-  .revisarDiscrepanciasApp();
+  .revisarDiscrepanciasApp(obtenerTokenSesion());
 
 }
 
@@ -11788,7 +11788,7 @@ function ejecutarBusquedaUbicacion(){
 
   .withFailureHandler(function(e){ activarCargaBoton("btnBuscarUbicacion", false); alert(e.message); })
 
-  .buscarUbicacionApp(termino);
+  .buscarUbicacionApp(termino, obtenerTokenSesion());
 
 }
 
@@ -11936,7 +11936,7 @@ function cargarReporteEjecutivo(){
   google.script.run
     .withSuccessHandler(dibujarReporteEjecutivo)
     .withFailureHandler(function(e){ console.error(e.message); alert("⚠️ " + e.message); })
-    .obtenerReporteEjecutivoApp();
+    .obtenerReporteEjecutivoApp(obtenerTokenSesion());
 
 }
 

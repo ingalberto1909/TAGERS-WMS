@@ -27,7 +27,7 @@ prueba({
       { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 20, udm: 'KG', precio: 22 },
       { codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 5, udm: 'KG', precio: 8 },
     ], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
     return {
       datos: '3 productos agregados en secuencia a la misma OC',
       esperado: '3 líneas en el detalle, ninguna perdida',
@@ -48,8 +48,8 @@ prueba({
     const oc2 = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR B', '', [
       { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20 },
     ], token);
-    const detalle1 = entorno.invocar('obtenerDetalleOCApp', oc1.folio);
-    const detalle2 = entorno.invocar('obtenerDetalleOCApp', oc2.folio);
+    const detalle1 = entorno.invocar('obtenerDetalleOCApp', oc1.folio, token);
+    const detalle2 = entorno.invocar('obtenerDetalleOCApp', oc2.folio, token);
     return {
       datos: `OC1=${oc1.folio}(PROVEEDOR A), OC2=${oc2.folio}(PROVEEDOR B)`,
       esperado: 'folios distintos, cada OC conserva su proveedor y solo su propio producto',
@@ -69,7 +69,7 @@ prueba({
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
     ], token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     return {
       datos: 'pedido=20, recibido=12',
       esperado: 'estado=PARCIAL, recibido=12',
@@ -89,7 +89,7 @@ prueba({
     ], token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 8 }], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     const existencia = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
     return {
       datos: 'pedido=20, recibido en dos partes: 12 + 8, existencia inicial=100',
@@ -109,7 +109,7 @@ prueba({
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 30 }], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     return {
       datos: 'pedido=10, intenta recibir=30',
       esperado: 'recibido=10 (topado), estado=RECIBIDA',
@@ -196,7 +196,7 @@ prueba({
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 25, udm: 'KG', precio: 16 },
       { codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 3, udm: 'KG', precio: 8 },
     ], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     const filaOrden = entorno.leerHoja('ORDENES_COMPRA').find(f => f[0] === oc.folio);
     return {
       datos: `${oc.folio}: PROVEEDOR VIEJO con COD-001(10,$15)+COD-002(5,$20) → editada a PROVEEDOR NUEVO con COD-001(25,$16)+COD-003(3,$8)`,
@@ -249,7 +249,7 @@ prueba({
       { codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 2, udm: 'KG', precio: 8 },
     ], token);
     const filasDetalleEditada = entorno.leerHoja('DETALLE_OC').filter(f => f[0] === ocEditar.folio);
-    const detalleOtra = entorno.invocar('obtenerDetalleOCApp', ocOtra.folio);
+    const detalleOtra = entorno.invocar('obtenerDetalleOCApp', ocOtra.folio, token);
     return {
       datos: `${ocOtra.folio} sin tocar; ${ocEditar.folio} editada de 1 línea a 2`,
       esperado: `DETALLE_OC de ${ocEditar.folio} tiene exactamente 2 filas (no 3, no filas viejas); ${ocOtra.folio} conserva su única línea intacta`,
@@ -272,7 +272,7 @@ prueba({
     entorno.invocar('editarOrdenCompraApp', oc.folio, 'SAMS', '', [
       { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 20, presentacion: 1, piezasOrdenadas: 5 },
     ], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     const item = detalle.items[0];
     return {
       datos: 'línea creada sin presentación, editada para agregarle presentación=1kg (5 piezas)',
