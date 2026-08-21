@@ -1653,21 +1653,29 @@ function cerrarConteoFolioApp(folio, token){
  * NUEVO: cuenta discrepancias pendientes y conteos cíclicos abiertos,
  * para las tarjetas KPI del dashboard de Inicio.
  */
+/**
+ * Fase 7 (rendimiento): antes esta función leía DISCREPANCIAS y
+ * CONTROL_CONTEOS directo de la hoja (getRange().getValues()), sin pasar
+ * por obtenerFilasHojaCacheadas_ — la única lectura del Dashboard que no
+ * usaba la caché de 20s. Como esta función se llama DOS VECES en cada
+ * carga del Dashboard (una vez dentro de obtenerResumenInicioApp, otra
+ * dentro de obtenerNotificacionesApp — dos viajes RPC separados que el
+ * frontend dispara juntos), esas dos hojas se leían completas dos veces
+ * seguidas sin ninguna razón. Ahora comparte la misma caché que ya usa
+ * el resto del Dashboard.
+ */
 function obtenerContadoresControl(){
-  const ss = SpreadsheetApp.getActive();
   let discrepancias = 0;
   let conteosAbiertos = 0;
 
-  const hojaDiscrepancias = ss.getSheetByName("DISCREPANCIAS");
-  if(hojaDiscrepancias && hojaDiscrepancias.getLastRow() > 1){
-    const datos = hojaDiscrepancias.getRange(2,10,hojaDiscrepancias.getLastRow()-1,1).getValues();
-    discrepancias = datos.filter(d=>d[0]=="PENDIENTE").length;
+  const datosDiscrepancias = obtenerFilasHojaCacheadas_("DISCREPANCIAS");
+  if(datosDiscrepancias.length > 1){
+    discrepancias = datosDiscrepancias.slice(1).filter(d=>d[9]=="PENDIENTE").length;
   }
 
-  const hojaControl = ss.getSheetByName("CONTROL_CONTEOS");
-  if(hojaControl && hojaControl.getLastRow() > 1){
-    const datos = hojaControl.getRange(2,8,hojaControl.getLastRow()-1,1).getValues();
-    conteosAbiertos = datos.filter(e=>e[0] != "CERRADO").length;
+  const datosControl = obtenerFilasHojaCacheadas_("CONTROL_CONTEOS");
+  if(datosControl.length > 1){
+    conteosAbiertos = datosControl.slice(1).filter(e=>e[7] != "CERRADO").length;
   }
 
   return { discrepancias: discrepancias, conteosAbiertos: conteosAbiertos };

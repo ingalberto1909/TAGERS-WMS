@@ -817,6 +817,10 @@ function despacharRequisicionSucursalApp(folio, token){
   });
 
   transferencias.appendRow([folioTransferencia, folio, almacenOrigen, sucursalDestino, fecha, usuario, "EN_TRANSITO"]);
+  // Fase 7: obtenerTransferenciasPendientesApp (Inteligencia.gs) ahora lee
+  // esta hoja vía la caché de 20s — sin esto, una transferencia recién
+  // despachada no aparecería en el Dashboard hasta que la caché expirara.
+  invalidarCacheHoja_("TRANSFERENCIAS");
 
   const detalleTransferencias = obtenerHojaTransferenciasDetalle_();
   const filasDetalle = filasEnviar.map(item => [folioTransferencia, item.codigo, item.producto, item.unidad, item.cantidad, ""]);
@@ -986,6 +990,7 @@ function recibirTransferenciaSucursalApp(folioTransferencia, recepciones, token)
 
   const estadoTransfNuevo = todosCompletos ? "RECIBIDA" : "RECIBIDA_PARCIAL";
   transferencias.getRange(filaTransf, 7).setValue(estadoTransfNuevo);
+  invalidarCacheHoja_("TRANSFERENCIAS"); // ver nota de Fase 7 en despacharRequisicionSucursalApp
 
   const estadoReqNuevo = incidenciasCreadas.length > 0
     ? ESTADO_REQ_SUCURSAL_.CON_INCIDENCIA

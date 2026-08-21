@@ -21,20 +21,26 @@ function obtenerTransferenciasPendientesApp(token){
 
   requerirSesionActivaApp_(token);
 
-  const hoja = obtenerHojaTransferenciasRequisiciones_();
-  if(hoja.getLastRow() < 2) return [];
-
-  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,7).getValues();
+  // Fase 7 (rendimiento): antes leía TRANSFERENCIAS directo de la hoja en
+  // cada carga del Dashboard — ahora comparte la misma caché de 20s que
+  // ya usa el resto. new Date(f[4]) en vez de "instanceof Date" porque
+  // en una lectura de caché tibia la fecha llega como texto ISO, no como
+  // Date real (ver la misma nota en FEFO.gs/obtenerLotesEntradaProximosACaducarApp).
+  const datos = obtenerFilasHojaCacheadas_("TRANSFERENCIAS");
+  datos.shift();
 
   return datos
     .filter(f => String(f[6]||"").trim() === "EN_TRANSITO")
-    .map(f => ({
-      folioTransferencia: f[0],
-      folioRequisicion: f[1],
-      origen: f[2],
-      destino: f[3],
-      fecha: f[4] instanceof Date ? Utilities.formatDate(f[4], Session.getScriptTimeZone(), "dd/MM/yyyy") : String(f[4]||"")
-    }));
+    .map(f => {
+      const fecha = new Date(f[4]);
+      return {
+        folioTransferencia: f[0],
+        folioRequisicion: f[1],
+        origen: f[2],
+        destino: f[3],
+        fecha: !isNaN(fecha.getTime()) ? Utilities.formatDate(fecha, Session.getScriptTimeZone(), "dd/MM/yyyy") : String(f[4]||"")
+      };
+    });
 
 }
 
@@ -49,22 +55,32 @@ function obtenerLotesProximosACaducarApp(token, diasUmbral){
   requerirSesionActivaApp_(token);
 
   const umbral = Number(diasUmbral) || 7;
-  const hoja = obtenerHojaProduccion_();
-  if(hoja.getLastRow() < 2) return [];
 
-  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,14).getValues();
+  // Fase 7 (rendimiento): antes leía PRODUCCION directo de la hoja en cada
+  // carga del Dashboard — ahora comparte la misma caché de 20s que ya usa
+  // el resto. new Date(f[2]) en vez de "instanceof Date": en una lectura
+  // de caché tibia la fecha llega como texto ISO, no como Date real (ver
+  // INT-004 en pruebas-qa/inteligencia para el mismo caso ya documentado).
+  const datos = obtenerFilasHojaCacheadas_("PRODUCCION");
+  datos.shift();
+
   const hoy = new Date();
   hoy.setHours(0,0,0,0);
 
   return datos
-    .filter(f => String(f[11]||"").trim() !== "AGOTADO" && f[2] instanceof Date && (Number(f[10])||0) > 0)
+    .filter(f => {
+      if(String(f[11]||"").trim() === "AGOTADO") return false;
+      if((Number(f[10])||0) <= 0) return false;
+      return !isNaN(new Date(f[2]).getTime());
+    })
     .map(f => {
-      const dias = Math.round((f[2] - hoy) / 86400000);
+      const caducidad = new Date(f[2]);
+      const dias = Math.round((caducidad - hoy) / 86400000);
       return {
         folio: f[0],
         codigo: f[5],
         producto: f[6],
-        caducidad: Utilities.formatDate(f[2], Session.getScriptTimeZone(), "dd/MM/yyyy"),
+        caducidad: Utilities.formatDate(caducidad, Session.getScriptTimeZone(), "dd/MM/yyyy"),
         diasRestantes: dias,
         cantidadDisponible: Number(f[10]) || 0,
         udm: f[9]

@@ -97,6 +97,12 @@ function registrarProduccionApp(datos, token){
 
   });
 
+  // Fase 7: obtenerLotesProximosACaducarApp ahora lee PRODUCCION vía la
+  // caché de 20s (ver Inteligencia.gs) — sin esto, un lote recién
+  // registrado no aparecería en el Dashboard hasta que la caché expirara
+  // sola. Mismo criterio que ya usa registrarEntradaInterna_ con KARDEX.
+  invalidarCacheHoja_("PRODUCCION");
+
   registrarEntradaInterna_(
     {
       codigo: codigoProducto, producto: nombreProducto, cantidad: cantidadProducida,
@@ -193,6 +199,7 @@ function cerrarLoteProduccionApp(folioLote, token){
 
   hoja.getRange(fila, 12).setValue("AGOTADO"); // L = Estado
   hoja.getRange(fila, 11).setValue(0);         // K = Cantidad disponible
+  invalidarCacheHoja_("PRODUCCION");
 
   const usuario = obtenerNombreDesdeToken(token);
   registrarAuditoria(usuario, "PRODUCCION", "LOTE CERRADO", folioLote, "", "", 0, 0, "Marcado como AGOTADO");

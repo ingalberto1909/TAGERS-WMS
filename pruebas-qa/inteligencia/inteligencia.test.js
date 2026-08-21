@@ -111,6 +111,11 @@ prueba({
     produccion.push(['LOTE-001', hoy, en3Dias, '', '', 'PROD-A', 'PASTEL DE CHOCOLATE', '', 10, 'PZA', 10, 'ACTIVO', 'Tester', '']);
     produccion.push(['LOTE-002', hoy, en30Dias, '', '', 'PROD-B', 'GALLETAS', '', 5, 'PZA', 5, 'ACTIVO', 'Tester', '']);
     produccion.push(['LOTE-003', hoy, en2DiasAgotado, '', '', 'PROD-C', 'PAN DULCE', '', 8, 'PZA', 3, 'AGOTADO', 'Tester', '']);
+    // Fase 7: obtenerLotesProximosACaducarApp ahora lee PRODUCCION vía la
+    // caché de 20s — como esta prueba escribe directo a la hoja (sin pasar
+    // por registrarProduccionApp, que ya invalida esa caché), hay que
+    // invalidarla a mano para que la lectura "después" vea estas filas.
+    entorno.invocar('invalidarCacheHoja_', 'PRODUCCION');
 
     const despues = entorno.invocar('obtenerLotesProximosACaducarApp', token, 7);
     const acciones = entorno.invocar('obtenerAccionesRequeridasApp', token);
