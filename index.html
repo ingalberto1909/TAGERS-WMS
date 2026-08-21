@@ -9118,6 +9118,8 @@ function volverInicio(){
     <div class="nota" id="valorInventarioNota"></div>
   </div>
 
+  <div id="inteligenciaInventario" style="margin-bottom:20px"></div>
+
   <div class="panelesInicio3">
 
     <div class="cardProducto">
@@ -9167,6 +9169,7 @@ function volverInicio(){
   cargarConteosProgramadosHoy();
   cargarResumenExtraInicio();
   cargarAccionesRequeridas();
+  cargarInteligenciaInventario();
 
 }
 
@@ -9245,6 +9248,62 @@ function dibujarAccionesRequeridas(datos){
                 <div style="font-size:11.5px;color:var(--text-muted);margin-top:1px">${a.detalle}</div>
               </div>
               <span style="color:var(--text-muted);flex-shrink:0">${tgIcon("chevronDerecha",16)}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+
+}
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 2: Inteligencia de Inventario (cobertura/consumo)
+// Sección separada de "¿Qué necesita atención?" (Fase 1) a propósito: esa
+// lista ya cubre agotado/bajo-mínimo por el criterio de Mínimo capturado
+// en MATRIZ. Esta es una señal DISTINTA — cuántos días de cobertura da el
+// consumo real (KARDEX) — y mezclarla ahí confundiría dos criterios de
+// alerta distintos con la misma tarjeta. Alcance: solo MATRIZ/S01 (ver
+// Inteligencia.gs) — no aplica a otras sucursales todavía.
+// ===============================
+
+const TG_COBERTURA_ESTILOS_ = {
+  critico: { color:"var(--guinda)",        icono:"xCirculo",        etiqueta:"🔴 Crítico",  nota:"menos de 3 días de cobertura" },
+  riesgo:  { color:"var(--terracota)",     icono:"alertaTriangulo", etiqueta:"🟠 Riesgo",   nota:"menos de 7 días de cobertura" },
+  normal:  { color:"var(--oliva)",         icono:"checkCirculo",    etiqueta:"🟢 Normal",   nota:"cobertura saludable" },
+  exceso:  { color:"var(--color-info,#2A5C8C)", icono:"cajas",      etiqueta:"🔵 Exceso",   nota:"45 días de cobertura o más — revisar" }
+};
+
+function cargarInteligenciaInventario(){
+
+  google.script.run
+    .withSuccessHandler(dibujarInteligenciaInventario)
+    .withFailureHandler(function(e){ console.error("Inteligencia de inventario: " + e.message); })
+    .obtenerResumenCoberturaApp(obtenerTokenSesion(), {});
+
+}
+
+function dibujarInteligenciaInventario(resumen){
+
+  const cont = document.getElementById("inteligenciaInventario");
+  if(!cont || !resumen) return;
+
+  const claves = ["critico", "riesgo", "normal", "exceso"];
+
+  cont.innerHTML = `
+    <div class="cardProducto">
+      <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:8px">${tgIcon("grafica",18)} Inteligencia de Inventario</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Cobertura por consumo real (últimos 30 días) — clasificación por días restantes, no solo por mínimo/máximo.</p>
+      <div class="kpiGrid" style="margin:0">
+        ${claves.map(k => {
+          const e = TG_COBERTURA_ESTILOS_[k];
+          const b = resumen[k] || { cantidad:0, valor:0 };
+          return `
+            <div class="kpiCard" style="cursor:pointer;border-left:4px solid ${e.color}" onclick="abrirModalCobertura('${k}')" title="Ver detalle">
+              <div class="kpiIcono" style="color:${e.color}">${tgIcon(e.icono,18)}</div>
+              <div class="kpiLabel">${e.etiqueta}</div>
+              <div class="kpiValor">${b.cantidad}</div>
+              <div class="kpiNota">${e.nota}${b.cantidad ? " — $" + b.valor.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2}) : ""}</div>
             </div>
           `;
         }).join("")}
@@ -9629,6 +9688,7 @@ function dibujarChartStockCritico(datos){
 // ===============================
 
 let modalListaDatosCompletos = [];
+let modalListaModoActual = "stock";
 
 function abrirModalListaStock(tipo){
 
@@ -9643,6 +9703,7 @@ function abrirModalListaStock(tipo){
     return;
   }
 
+  modalListaModoActual = "stock";
   buscarInput.value = "";
   document.querySelector("#modalLista .modalListaBuscar").style.display = "block";
 
@@ -9742,9 +9803,10 @@ function pintarModalLista(lista){
 function filtrarModalLista(){
 
   const texto = document.getElementById("modalListaBuscarInput").value.toUpperCase().trim();
+  const pintar = modalListaModoActual === "cobertura" ? pintarModalCobertura : pintarModalLista;
 
   if(!texto){
-    pintarModalLista(modalListaDatosCompletos);
+    pintar(modalListaDatosCompletos);
     return;
   }
 
@@ -9753,12 +9815,104 @@ function filtrarModalLista(){
     String(p.codigo).toUpperCase().includes(texto)
   );
 
-  pintarModalLista(filtrados);
+  pintar(filtrados);
 
 }
 
 function cerrarModalLista(){
   document.getElementById("modalLista").classList.remove("mostrar");
+}
+
+/**
+ * Drill-down de una tarjeta de Inteligencia de Inventario — reutiliza el
+ * mismo modal #modalLista que abrirModalListaStock (mismo patrón: pedir
+ * una vez, filtrar en cliente por clasificación, sin duplicar la
+ * consulta al backend por cada tarjeta).
+ */
+function abrirModalCobertura(clasificacion){
+
+  try{
+
+  const titulo = document.getElementById("modalListaTitulo");
+  const subtitulo = document.getElementById("modalListaSubtitulo");
+  const buscarInput = document.getElementById("modalListaBuscarInput");
+
+  if(!titulo || !subtitulo || !buscarInput){
+    alert("No se encontraron los elementos del modal. Recarga con Ctrl+Shift+R o prueba en incógnito.");
+    return;
+  }
+
+  modalListaModoActual = "cobertura";
+  buscarInput.value = "";
+  document.querySelector("#modalLista .modalListaBuscar").style.display = "block";
+
+  document.getElementById("modalListaBody").innerHTML = `
+    <table class="tablaActividad">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Código</th>
+          <th>Existencia</th>
+          <th>Consumo prom./día</th>
+          <th>Días de cobertura</th>
+          <th>Valor</th>
+        </tr>
+      </thead>
+      <tbody id="modalListaTbody"></tbody>
+    </table>
+    <div class="modalListaVacio" id="modalListaVacio" style="display:none;">Sin productos en esta clasificación 🎉</div>
+  `;
+
+  const e = TG_COBERTURA_ESTILOS_[clasificacion] || TG_COBERTURA_ESTILOS_.normal;
+  titulo.innerText = e.etiqueta;
+  subtitulo.innerText = "Cargando...";
+
+  document.getElementById("modalListaTbody").innerHTML = "";
+  document.getElementById("modalListaVacio").style.display = "none";
+  document.getElementById("modalLista").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      const filtrada = (lista || []).filter(p => p.clasificacion === clasificacion);
+      modalListaDatosCompletos = filtrada;
+      subtitulo.innerText = filtrada.length + " producto(s) — cobertura sobre consumo de los últimos 30 días";
+      pintarModalCobertura(modalListaDatosCompletos);
+    })
+    .withFailureHandler(function(error){
+      subtitulo.innerText = "Error al cargar: " + error.message;
+    })
+    .obtenerCoberturaInventarioApp(obtenerTokenSesion(), {});
+
+  }catch(err){
+    alert("⚠️ Error al abrir el modal: " + err.message);
+  }
+
+}
+
+function pintarModalCobertura(lista){
+
+  const tbody = document.getElementById("modalListaTbody");
+  const vacio = document.getElementById("modalListaVacio");
+
+  if(!lista || !lista.length){
+    tbody.innerHTML = "";
+    vacio.style.display = "block";
+    return;
+  }
+
+  vacio.style.display = "none";
+
+  tbody.innerHTML = lista.map(p => `
+    <tr onclick="abrirDetalleProducto('${p.codigo}')" style="cursor:pointer">
+      <td>${p.producto}</td>
+      <td>${p.codigo}</td>
+      <td>${p.existencia}</td>
+      <td>${p.consumoPromedioDiario}</td>
+      <td>${p.diasCobertura === null ? "—" : p.diasCobertura}</td>
+      <td>$${Number(p.valorInventario).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>
+  `).join("");
+
 }
 
 function dibujarHeatmapRacks(mapa){

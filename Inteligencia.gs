@@ -211,3 +211,159 @@ function obtenerAccionesRequeridasApp(token){
   return { urgente: urgente, atencion: atencion, revisar: revisar };
 
 }
+
+// ============================================
+// Fase 2 — Inteligencia de inventario (cobertura, consumo, exceso)
+// ============================================
+//
+// ALCANCE (decisión explícita, ver auditoría sección L/Q): KARDEX no
+// tiene columna Sucursal — un mismo Tipo "SALIDA" se usa tanto para
+// consumo directo de S01 como para mercancía despachada a una sucursal
+// (el destino solo queda en el texto libre de Observación). Por eso
+// esta capa suma TODA la Salida por Código sin distinguir destino, y
+// la cruza contra MATRIZ — exactamente el mismo alcance implícito que
+// ya tienen las tarjetas existentes de "Bajo mínimo"/"Agotados"
+// (leen MATRIZ.Existencia/Mínimo sin filtrar por sucursal, porque S01
+// es hoy la única sucursal operativa). No es una inconsistencia nueva:
+// es continuar el mismo criterio ya establecido.
+
+/**
+ * Suma de Salida en KARDEX por Código, dentro de los últimos `diasHistorial`
+ * días (por defecto 30). Devuelve un mapa { CODIGO: totalSalida }. Usa
+ * new Date(fila[0]) en vez de "instanceof Date" para comparar fechas: así
+ * funciona igual si la celda llega vacía/como texto (Date inválida, se
+ * descarta) y evita depender de que el valor haya sido construido con el
+ * mismo constructor Date que compara (ver INT-004 en pruebas-qa).
+ */
+function calcularConsumoPorCodigo_(diasHistorial){
+
+  const datos = obtenerFilasHojaCacheadas_("KARDEX");
+  datos.shift();
+
+  const hoy = new Date();
+  hoy.setHours(0,0,0,0);
+  const desde = new Date(hoy);
+  desde.setDate(desde.getDate() - diasHistorial);
+
+  const consumo = {};
+
+  datos.forEach(fila => {
+    if(String(fila[2]||"").trim() !== "SALIDA") return;
+
+    const fecha = new Date(fila[0]);
+    if(isNaN(fecha.getTime())) return;
+    fecha.setHours(0,0,0,0);
+    if(fecha < desde || fecha > hoy) return;
+
+    const codigo = String(fila[4]||"").trim();
+    if(!codigo) return;
+
+    const salida = Number(fila[7]) || 0;
+    consumo[codigo] = (consumo[codigo] || 0) + salida;
+  });
+
+  return consumo;
+
+}
+
+/**
+ * Cobertura de inventario por producto: consumo promedio diario (de
+ * KARDEX, ventana configurable), días de cobertura restantes al ritmo
+ * actual, y clasificación de riesgo. Solo cubre MATRIZ/S01 (ver nota de
+ * alcance arriba). Reutiliza calcularValorInventario_ — nunca reinventa
+ * el cálculo monetario.
+ *
+ * Umbrales configurables vía `opciones` (pedido explícito: "no
+ * hardcodeados si es posible") — con valores por defecto razonables
+ * cuando no se pasan:
+ *   diasHistorial   (30)  — ventana de consumo para el promedio
+ *   umbralCritico   (3)   — días de cobertura < esto → "critico"
+ *   umbralRiesgo    (7)   — días de cobertura < esto → "riesgo"
+ *   umbralExceso    (45)  — días de cobertura >= esto → "exceso"
+ *
+ * Si un producto no tuvo NINGÚN consumo en la ventana, no se inventa un
+ * número de días (ni infinito ni 0) — se marca clasificacion:"sin-consumo"
+ * y diasCobertura:null, por instrucción explícita de "no simular una
+ * métrica real como si fuera verdadera".
+ */
+function obtenerCoberturaInventarioApp(token, opciones){
+
+  requerirSesionActivaApp_(token);
+  opciones = opciones || {};
+
+  const diasHistorial = Number(opciones.diasHistorial) || 30;
+  const umbralCritico = Number(opciones.umbralCritico) || 3;
+  const umbralRiesgo = Number(opciones.umbralRiesgo) || 7;
+  const umbralExceso = Number(opciones.umbralExceso) || 45;
+
+  const consumoPorCodigo = calcularConsumoPorCodigo_(diasHistorial);
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  datos.shift();
+
+  return datos
+    .filter(f => !ubicacionVacia_(String(f[9]||"").trim()))
+    .map(f => {
+      const codigo = String(f[4]||"").trim();
+      const existencia = Number(f[10]) || 0;
+      const costo = Number(f[17]) || 0;
+      const convertir = f[18];
+      const presentacion = f[19];
+
+      const consumoTotal = consumoPorCodigo[codigo] || 0;
+      const consumoPromedioDiario = consumoTotal / diasHistorial;
+
+      let diasCobertura = null;
+      let clasificacion = "sin-consumo";
+
+      if(consumoPromedioDiario > 0){
+        diasCobertura = Math.round((existencia / consumoPromedioDiario) * 10) / 10;
+        if(diasCobertura < umbralCritico) clasificacion = "critico";
+        else if(diasCobertura < umbralRiesgo) clasificacion = "riesgo";
+        else if(diasCobertura >= umbralExceso) clasificacion = "exceso";
+        else clasificacion = "normal";
+      }
+
+      return {
+        producto: f[0],
+        codigo: codigo,
+        existencia: existencia,
+        consumoPromedioDiario: Math.round(consumoPromedioDiario * 100) / 100,
+        diasCobertura: diasCobertura,
+        clasificacion: clasificacion,
+        valorInventario: (existencia > 0 && costo > 0) ? calcularValorInventario_(existencia, costo, convertir, presentacion) : 0
+      };
+    });
+
+}
+
+/**
+ * Resumen agregado (conteo + valor monetario total) por clasificación de
+ * cobertura, para las tarjetas KPI del Dashboard. Reutiliza
+ * obtenerCoberturaInventarioApp — no duplica el cruce KARDEX/MATRIZ.
+ */
+function obtenerResumenCoberturaApp(token, opciones){
+
+  const detalle = obtenerCoberturaInventarioApp(token, opciones);
+
+  const resumen = {
+    critico: { cantidad: 0, valor: 0 },
+    riesgo: { cantidad: 0, valor: 0 },
+    normal: { cantidad: 0, valor: 0 },
+    exceso: { cantidad: 0, valor: 0 },
+    "sin-consumo": { cantidad: 0, valor: 0 }
+  };
+
+  detalle.forEach(p => {
+    const bucket = resumen[p.clasificacion];
+    bucket.cantidad += 1;
+    bucket.valor += p.valorInventario;
+  });
+
+  Object.keys(resumen).forEach(k => {
+    resumen[k].valor = Math.round(resumen[k].valor * 100) / 100;
+  });
+
+  return resumen;
+
+}

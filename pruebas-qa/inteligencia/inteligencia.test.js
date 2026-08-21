@@ -185,3 +185,163 @@ prueba({
     };
   },
 });
+
+/*
+ * TAGERS WMS 2.0 — Fase 2 (Inteligencia de inventario).
+ * Cubre obtenerCoberturaInventarioApp / obtenerResumenCoberturaApp:
+ * consumo promedio (ventana de KARDEX), días de cobertura, clasificación
+ * de riesgo con umbrales configurables, y reutilización de
+ * calcularValorInventario_ para el valor monetario. Alcance: MATRIZ/S01
+ * únicamente (ver nota en Inteligencia.gs) — no se prueba nada de
+ * sucursal porque el propio código no distingue destino en KARDEX.
+ */
+
+function agregarSalidaKardex_(entorno, fecha, codigo, producto, salida) {
+  entorno.leerHoja('KARDEX').push([fecha, '10:00:00', 'SALIDA', 'F-TEST', codigo, producto, 0, salida, 0, 0, 'Tester', '']);
+}
+
+prueba({
+  id: 'INT-008', grupo: 'inteligencia', nombre: 'Producto sin ningún consumo en la ventana: sin-consumo, no se inventa un número de días', metodo: 'EMPÍRICO',
+  objetivo: 'Cuando consumoPromedioDiario es 0, diasCobertura debe ser null y clasificacion "sin-consumo" — nunca 0 ni Infinity simulando un dato real',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const detalle = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    const sal = detalle.find(p => p.codigo === 'COD-003');
+    return {
+      datos: 'COD-003 (SAL DE MESA) sin ninguna fila de SALIDA en KARDEX',
+      esperado: 'clasificacion="sin-consumo", diasCobertura=null, consumoPromedioDiario=0',
+      obtenido: `clasificacion=${sal.clasificacion}, dias=${sal.diasCobertura}, consumo=${sal.consumoPromedioDiario}`,
+      pasa: !!sal && sal.clasificacion === 'sin-consumo' && sal.diasCobertura === null && sal.consumoPromedioDiario === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'INT-009', grupo: 'inteligencia', nombre: 'Consumo alto frente a existencia clasifica como crítico', metodo: 'EMPÍRICO',
+  objetivo: 'COD-001 (existencia=100) con consumo que arroja menos de 3 días de cobertura debe clasificar "critico"',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const hoy = entorno.crearFechaDesdeHoy(0);
+    agregarSalidaKardex_(entorno, hoy, 'COD-001', 'HARINA DE TRIGO', 1200); // 1200/30 = 40/día → 100/40 = 2.5 días
+    const detalle = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    const harina = detalle.find(p => p.codigo === 'COD-001');
+    return {
+      datos: 'COD-001 existencia=100, Salida=1200 en KARDEX (ventana 30 días por defecto)',
+      esperado: 'consumoPromedioDiario=40, diasCobertura=2.5, clasificacion="critico" (umbral por defecto: <3)',
+      obtenido: `consumo=${harina.consumoPromedioDiario}, dias=${harina.diasCobertura}, clasificacion=${harina.clasificacion}`,
+      pasa: !!harina && harina.consumoPromedioDiario === 40 && harina.diasCobertura === 2.5 && harina.clasificacion === 'critico',
+    };
+  },
+});
+
+prueba({
+  id: 'INT-010', grupo: 'inteligencia', nombre: 'Cobertura entre umbral de riesgo y de exceso clasifica como riesgo o normal correctamente', metodo: 'EMPÍRICO',
+  objetivo: 'COD-001 con consumo moderado debe caer en "riesgo" (< 7 días) y con consumo más bajo en "normal" (entre 7 y 45 días), sin cruzarse',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const hoy = entorno.crearFechaDesdeHoy(0);
+    // 150/30 = 5/día → 100/5 = 20 días... para "riesgo" (<7) necesitamos consumo mayor.
+    agregarSalidaKardex_(entorno, hoy, 'COD-001', 'HARINA DE TRIGO', 450); // 450/30=15/día → 100/15=6.67 días (riesgo)
+    agregarSalidaKardex_(entorno, hoy, 'COD-003', 'SAL DE MESA', 100); // 100/30=3.33/día → 50/3.33=15 días (normal)
+    const detalle = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    const harina = detalle.find(p => p.codigo === 'COD-001');
+    const sal = detalle.find(p => p.codigo === 'COD-003');
+    return {
+      datos: 'COD-001: 100 existencia / 15 consumo diario ≈ 6.67 días. COD-003: 50 existencia / 3.33 consumo diario = 15 días',
+      esperado: 'COD-001 clasifica "riesgo" (<7), COD-003 clasifica "normal" (entre 7 y 45)',
+      obtenido: `COD-001=${harina.clasificacion} (${harina.diasCobertura}d), COD-003=${sal.clasificacion} (${sal.diasCobertura}d)`,
+      pasa: harina.clasificacion === 'riesgo' && sal.clasificacion === 'normal',
+    };
+  },
+});
+
+prueba({
+  id: 'INT-011', grupo: 'inteligencia', nombre: 'Consumo muy bajo frente a existencia clasifica como exceso', metodo: 'EMPÍRICO',
+  objetivo: 'COD-001 con consumo que arroja 45 días de cobertura o más debe clasificar "exceso" (nunca recomendarse compra automática — solo etiqueta de revisión)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const hoy = entorno.crearFechaDesdeHoy(0);
+    agregarSalidaKardex_(entorno, hoy, 'COD-001', 'HARINA DE TRIGO', 60); // 60/30=2/día → 100/2=50 días
+    const detalle = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    const harina = detalle.find(p => p.codigo === 'COD-001');
+    return {
+      datos: 'COD-001 existencia=100, Salida=60 en 30 días → consumo 2/día → 50 días de cobertura',
+      esperado: 'clasificacion="exceso" (umbral por defecto: >=45)',
+      obtenido: `dias=${harina.diasCobertura}, clasificacion=${harina.clasificacion}`,
+      pasa: harina.diasCobertura === 50 && harina.clasificacion === 'exceso',
+    };
+  },
+});
+
+prueba({
+  id: 'INT-012', grupo: 'inteligencia', nombre: 'Producto sin ubicación (temporada) se excluye de cobertura, igual que de bajo-mínimo', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerCoberturaInventarioApp debe aplicar el mismo filtro ubicacionVacia_ que ya usa obtenerProductosBajoMinimo, para no generar alertas de productos de temporada sin ubicación asignada',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const detalle = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    return {
+      datos: 'COD-005 (PRODUCTO SIN UBICACION) tiene ubicación "--" en el catálogo base',
+      esperado: 'COD-005 no aparece en el detalle de cobertura',
+      obtenido: `codigos=${detalle.map(p=>p.codigo).join(',')}`,
+      pasa: !detalle.some(p => p.codigo === 'COD-005'),
+    };
+  },
+});
+
+prueba({
+  id: 'INT-013', grupo: 'inteligencia', nombre: 'Umbrales configurables cambian la clasificación sin tocar código', metodo: 'EMPÍRICO',
+  objetivo: 'Pasar umbralRiesgo/umbralCritico distintos en `opciones` debe mover la frontera de clasificación — confirma que no están hardcodeados',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const hoy = entorno.crearFechaDesdeHoy(0);
+    agregarSalidaKardex_(entorno, hoy, 'COD-001', 'HARINA DE TRIGO', 450); // 6.67 días de cobertura
+    const conDefecto = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    const conUmbralAmplio = entorno.invocar('obtenerCoberturaInventarioApp', token, { umbralRiesgo: 5 });
+    const harinaDefecto = conDefecto.find(p => p.codigo === 'COD-001');
+    const harinaAmplio = conUmbralAmplio.find(p => p.codigo === 'COD-001');
+    return {
+      datos: 'COD-001 con 6.67 días de cobertura; una llamada usa umbralRiesgo por defecto (7), otra pasa umbralRiesgo=5',
+      esperado: 'con umbral=7 clasifica "riesgo"; con umbral=5 (6.67 ya no es < 5) clasifica "normal"',
+      obtenido: `defecto=${harinaDefecto.clasificacion}, umbralRiesgo=5→${harinaAmplio.clasificacion}`,
+      pasa: harinaDefecto.clasificacion === 'riesgo' && harinaAmplio.clasificacion === 'normal',
+    };
+  },
+});
+
+prueba({
+  id: 'INT-014', grupo: 'inteligencia', nombre: 'diasHistorial configurable: una venta fuera de la ventana estándar solo cuenta con ventana más amplia', metodo: 'EMPÍRICO',
+  objetivo: 'Una SALIDA de hace 40 días no debe contarse con diasHistorial=30 (por defecto) pero sí con diasHistorial=60 — la ventana de consumo es un parámetro, no un valor fijo',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const hace40Dias = entorno.crearFechaDesdeHoy(-40);
+    agregarSalidaKardex_(entorno, hace40Dias, 'COD-001', 'HARINA DE TRIGO', 300);
+    const ventana30 = entorno.invocar('obtenerCoberturaInventarioApp', token, {});
+    const ventana60 = entorno.invocar('obtenerCoberturaInventarioApp', token, { diasHistorial: 60 });
+    const harina30 = ventana30.find(p => p.codigo === 'COD-001');
+    const harina60 = ventana60.find(p => p.codigo === 'COD-001');
+    return {
+      datos: 'Única SALIDA de COD-001 fue hace 40 días',
+      esperado: 'con ventana de 30 días no se cuenta (sin-consumo); con ventana de 60 días sí se cuenta',
+      obtenido: `ventana30=${harina30.clasificacion}, ventana60=${harina60.clasificacion} (consumo=${harina60.consumoPromedioDiario})`,
+      pasa: harina30.clasificacion === 'sin-consumo' && harina60.consumoPromedioDiario > 0,
+    };
+  },
+});
+
+prueba({
+  id: 'INT-015', grupo: 'inteligencia', nombre: 'obtenerResumenCoberturaApp agrega conteo y valor monetario reutilizando calcularValorInventario_', metodo: 'EMPÍRICO',
+  objetivo: 'El resumen debe sumar cantidad y valor por clasificación sin reimplementar el cálculo monetario — el valor de cada bucket debe coincidir con la suma manual de existencia×costo de sus productos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const resumen = entorno.invocar('obtenerResumenCoberturaApp', token, {});
+    // Catálogo base sin ninguna SALIDA: los 4 productos con ubicación (COD-001..004) caen en "sin-consumo".
+    // Valor esperado = suma de existencia×costo: COD-001 100×10=1000, COD-002 5×10=50, COD-003 50×10=500, COD-004 12×10=120.
+    const esperado = 1000 + 50 + 500 + 120;
+    return {
+      datos: 'Catálogo base (COD-001..004 con ubicación, sin ninguna SALIDA en KARDEX)',
+      esperado: `sin-consumo: cantidad=4, valor=${esperado}`,
+      obtenido: `cantidad=${resumen['sin-consumo'].cantidad}, valor=${resumen['sin-consumo'].valor}`,
+      pasa: resumen['sin-consumo'].cantidad === 4 && resumen['sin-consumo'].valor === esperado,
+    };
+  },
+});
