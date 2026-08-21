@@ -9030,6 +9030,8 @@ function volverInicio(){
 
   <div id="panelConteosProgramados" style="display:none;margin-bottom:20px"></div>
 
+  <div id="accionesRequeridas" style="margin-bottom:20px"></div>
+
   <div class="kpiGrid">
     <div class="kpiCard tono-guinda">
       <div class="kpiIcono">${tgIcon("paquete",18)}</div>
@@ -9043,25 +9045,25 @@ function volverInicio(){
       <div class="kpiValor" id="kpiUbicaciones"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">con producto asignado</div>
     </div>
-    <div class="kpiCard tono-terracota">
+    <div class="kpiCard tono-terracota" style="cursor:pointer" onclick="abrirModalListaStock('bajo')" title="Ver productos bajo mínimo">
       <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
       <div class="kpiLabel">Bajo mínimo</div>
       <div class="kpiValor" id="kpiBajo"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requieren reorden</div>
     </div>
-    <div class="kpiCard tono-guinda">
+    <div class="kpiCard tono-guinda" style="cursor:pointer" onclick="abrirModalListaStock('agotado')" title="Ver productos agotados">
       <div class="kpiIcono">${tgIcon("xCirculo",18)}</div>
       <div class="kpiLabel">Agotados</div>
       <div class="kpiValor" id="kpiAgotados"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requiere atención</div>
     </div>
-    <div class="kpiCard tono-oliva">
+    <div class="kpiCard tono-oliva" style="cursor:pointer" onclick="abrirRevisarDiscrepancias()" title="Ir a Revisar discrepancias">
       <div class="kpiIcono">${tgIcon("documento",18)}</div>
       <div class="kpiLabel">Discrepancias</div>
       <div class="kpiValor" id="kpiDiscrepancias"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">pendientes de aprobar</div>
     </div>
-    <div class="kpiCard tono-terracota">
+    <div class="kpiCard tono-terracota" style="cursor:pointer" onclick="abrirCapturarConteo()" title="Ir a Capturar conteo">
       <div class="kpiIcono">${tgIcon("refrescar",18)}</div>
       <div class="kpiLabel">Conteos abiertos</div>
       <div class="kpiValor" id="kpiConteos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
@@ -9164,6 +9166,91 @@ function volverInicio(){
   actualizarNotificaciones();
   cargarConteosProgramadosHoy();
   cargarResumenExtraInicio();
+  cargarAccionesRequeridas();
+
+}
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 1: "¿Qué necesita atención?" (Inteligencia.gs)
+// Mismo bloque de datos sirve de sección prioritaria del Dashboard y de
+// Centro de Tareas — es la misma pregunta ("¿qué hago hoy?") en una sola
+// lista ordenada por severidad, no dos listas separadas con la misma info.
+// ===============================
+
+const RUTAS_ACCIONES_REQUERIDAS_ = {
+  "inventario-agotado": function(){ abrirModalListaStock("agotado"); },
+  "inventario-bajo": function(){ abrirModalListaStock("bajo"); },
+  "discrepancias": abrirRevisarDiscrepancias,
+  "conteos": abrirCapturarConteo,
+  "requisiciones-pendientes": abrirRequisicionesPendientes,
+  "requisiciones-sucursal": abrirRequisicionesSucursal,
+  "ordenes-compra": abrirOrdenesCompra,
+  "lotes-produccion": abrirLotesProduccion
+};
+
+function irAAccionRequerida(vista){
+  const fn = RUTAS_ACCIONES_REQUERIDAS_[vista];
+  if(fn) fn();
+}
+
+function cargarAccionesRequeridas(){
+
+  google.script.run
+    .withSuccessHandler(dibujarAccionesRequeridas)
+    .withFailureHandler(function(e){ console.error("Acciones requeridas: " + e.message); })
+    .obtenerAccionesRequeridasApp(obtenerTokenSesion());
+
+}
+
+function dibujarAccionesRequeridas(datos){
+
+  const cont = document.getElementById("accionesRequeridas");
+  if(!cont || !datos) return;
+
+  const todas = []
+    .concat((datos.urgente||[]).map(a => Object.assign({ severidad:"urgente" }, a)))
+    .concat((datos.atencion||[]).map(a => Object.assign({ severidad:"atencion" }, a)))
+    .concat((datos.revisar||[]).map(a => Object.assign({ severidad:"revisar" }, a)));
+
+  if(!todas.length){
+    cont.innerHTML = `
+      <div class="cardProducto" style="border-left:4px solid var(--oliva);display:flex;align-items:center;gap:10px">
+        ${tgIcon("checkCirculo",20)}
+        <div>
+          <div style="font-weight:700">Todo en orden</div>
+          <div style="font-size:12.5px;color:var(--text-muted)">No hay pendientes que requieran tu atención ahora mismo.</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const estilos = {
+    urgente:  { color:"var(--guinda)",        etiqueta:"🔴 URGENTE" },
+    atencion: { color:"var(--terracota)",     etiqueta:"🟠 ATENCIÓN" },
+    revisar:  { color:"var(--color-warning)", etiqueta:"🟡 REVISAR" }
+  };
+
+  cont.innerHTML = `
+    <div class="cardProducto" style="border-left:4px solid var(--guinda)">
+      <h3 style="margin:0 0 12px;display:flex;align-items:center;gap:8px">${tgIcon("alertaCirculo",18)} ¿Qué necesita atención?</h3>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${todas.map(a => {
+          const e = estilos[a.severidad];
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:var(--bg);cursor:pointer" onclick="irAAccionRequerida('${a.accion.vista}')">
+              <div style="min-width:0">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.03em;color:${e.color}">${e.etiqueta}</div>
+                <div style="font-weight:600;font-size:13.5px;margin-top:1px">${a.titulo}</div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-top:1px">${a.detalle}</div>
+              </div>
+              <span style="color:var(--text-muted);flex-shrink:0">${tgIcon("chevronDerecha",16)}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
 
 }
 
@@ -9578,28 +9665,39 @@ function abrirModalListaStock(tipo){
     <div class="modalListaVacio" id="modalListaVacio" style="display:none;">Sin productos en esta categoría 🎉</div>
   `;
 
-  if(tipo === "critico"){
-    titulo.innerText = "🔴 Agotado / bajo mínimo";
-    subtitulo.innerText = "Cargando...";
-  } else {
-    titulo.innerText = "🟢 Stock óptimo";
-    subtitulo.innerText = "Cargando...";
-  }
+  const titulos = {
+    critico: "🔴 Agotado / bajo mínimo",
+    optimo: "🟢 Stock óptimo",
+    bajo: "🟠 Bajo mínimo",
+    agotado: "🔴 Agotados"
+  };
+  titulo.innerText = titulos[tipo] || titulos.critico;
+  subtitulo.innerText = "Cargando...";
 
   document.getElementById("modalListaTbody").innerHTML = "";
   document.getElementById("modalListaVacio").style.display = "none";
   document.getElementById("modalLista").classList.add("mostrar");
 
+  // "bajo" y "agotado" son un drill-down de las tarjetas del Dashboard
+  // (Fase 1, TAGERS Intelligence) — obtenerProductosPorEstadoStock solo
+  // conoce "critico"/"optimo" (agotado+bajo juntos), así que se pide
+  // "critico" igual y se separa en el cliente por el campo estado que ya
+  // trae cada producto, sin tocar el contrato del backend.
+  const tipoBackend = (tipo === "bajo" || tipo === "agotado") ? "critico" : tipo;
+
   google.script.run
     .withSuccessHandler(function(lista){
-      modalListaDatosCompletos = lista || [];
-      subtitulo.innerText = modalListaDatosCompletos.length + " producto(s) — solo productos con ubicación asignada";
+      let filtrada = lista || [];
+      if(tipo === "bajo") filtrada = filtrada.filter(p => p.estado === "Bajo");
+      if(tipo === "agotado") filtrada = filtrada.filter(p => p.estado === "Agotado");
+      modalListaDatosCompletos = filtrada;
+      subtitulo.innerText = filtrada.length + " producto(s) — solo productos con ubicación asignada";
       pintarModalLista(modalListaDatosCompletos);
     })
     .withFailureHandler(function(error){
       subtitulo.innerText = "Error al cargar: " + error.message;
     })
-    .obtenerProductosPorEstadoStock(tipo);
+    .obtenerProductosPorEstadoStock(tipoBackend);
 
   }catch(err){
     alert("⚠️ Error al abrir el modal: " + err.message);

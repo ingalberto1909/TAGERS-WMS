@@ -32,6 +32,7 @@ const ARCHIVOS_BACKEND = [
   'ProgramacionConteos.gs',
   'AnalisisCompras.gs',
   'MovimientosDashboard.gs',
+  'Inteligencia.gs',
 ];
 
 /**
@@ -134,6 +135,17 @@ function crearEntorno(opciones) {
     propiedades: propertiesService,
     session,
     lockService,
+    /**
+     * Construye un Date DENTRO del mismo realm de vm que corre el backend
+     * — necesario para sembrar celdas de fecha a mano (push directo a una
+     * hoja) que el código real vaya a comprobar con "instanceof Date":
+     * un Date armado con el `Date` del proceso de Node (fuera del vm) es
+     * un realm distinto, y esa comprobación fallaría en silencio aunque
+     * el valor "se vea" igual. Ver INT-004 en pruebas-qa/inteligencia.
+     */
+    crearFechaDesdeHoy(diasDesdeHoy) {
+      return vm.runInContext('new Date(new Date().getTime() + (' + (Number(diasDesdeHoy) || 0) + ' * 86400000))', contexto);
+    },
     /** Invoca una función real cargada, por nombre. */
     invocar(nombreFuncion, ...args) {
       const fn = contexto[nombreFuncion];
