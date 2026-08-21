@@ -901,6 +901,23 @@ function recibirTransferenciaSucursalApp(folioTransferencia, recepciones, token)
   const mapaRecepciones = {};
   (recepciones||[]).forEach(r => { mapaRecepciones[String(r.codigo).trim()] = Number(r.cantidadRecibida) || 0; });
 
+  // La columna "Recibido" (M) de DETALLE_REQUISICIONES_SUCURSAL se reserva
+  // desde asegurarEncabezadosPipelineDetalleSucursal_ pero hasta ahora
+  // nunca se escribía aquí — lo recibido solo quedaba en
+  // TRANSFERENCIAS_DETALLE. Sin esto, cualquier lectura que confíe en esa
+  // columna (fill rate, reportes) siempre ve 0/vacío para el flujo de
+  // pipeline aunque la recepción sí haya ocurrido. Se llena por línea,
+  // acumulando por si la transferencia se recibe en varias vueltas.
+  const detalleReq = obtenerHojaDetalleRequisicionesSucursal_();
+  asegurarEncabezadosPipelineDetalleSucursal_(detalleReq);
+  const filaDetalleReqPorCodigo = {};
+  if(detalleReq.getLastRow() > 1){
+    detalleReq.getRange(2,1,detalleReq.getLastRow()-1,13).getValues().forEach((f,i) => {
+      if(String(f[0]) !== String(folioReq)) return;
+      filaDetalleReqPorCodigo[String(f[1]).trim()] = i+2;
+    });
+  }
+
   let productosRecibidos = 0, todosCompletos = true, hayLineas = false;
   const incidenciasCreadas = [];
 
@@ -933,6 +950,12 @@ function recibirTransferenciaSucursalApp(folioTransferencia, recepciones, token)
     const ajuste = ajustarExistenciaYReservaSucursal_(codigo, sucursalDestino, cantidadRecibida, 0, {});
 
     detalleTransf.getRange(i+2, 6).setValue(cantidadRecibida); // F = CantidadRecibida
+
+    const filaDetalleReq = filaDetalleReqPorCodigo[codigo];
+    if(filaDetalleReq){
+      const recibidoAcumuladoPrevio = Number(detalleReq.getRange(filaDetalleReq, 13).getValue()) || 0;
+      detalleReq.getRange(filaDetalleReq, 13).setValue(recibidoAcumuladoPrevio + cantidadRecibida); // M = Recibido
+    }
 
     registrarKardex(
       "TRANSFERENCIA-ENTRADA", folioTransferencia, codigo, producto, cantidadRecibida, "",

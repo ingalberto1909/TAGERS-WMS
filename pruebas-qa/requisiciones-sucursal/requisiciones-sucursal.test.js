@@ -701,3 +701,27 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'RS-034', grupo: 'requisiciones-sucursal', nombre: 'recibirTransferenciaSucursalApp acumula la columna Recibido en DETALLE_REQUISICIONES_SUCURSAL', metodo: 'EMPÍRICO',
+  objetivo: 'La columna "Recibido" (M) que asegurarEncabezadosPipelineDetalleSucursal_ reserva se quedaba siempre en blanco — cualquier reporte que la lea (ver KpisOperativos.gs) no la veía llenarse nunca. Debe acumular correctamente incluso cuando la recepción llega en dos vueltas parciales',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = crearYAprobarRequisicionSucursal_(entorno, tokenS02, tokenAdmin, 'COD-001', 'HARINA DE TRIGO', 'KG', 20, 20);
+    entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 20 }], tokenAdmin);
+    const despacho = entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenAdmin);
+
+    // Primera vuelta: recibe solo 12 de 20 (queda RECIBIDA_PARCIAL con incidencia).
+    entorno.invocar('recibirTransferenciaSucursalApp', despacho.folioTransferencia, [{ codigo: 'COD-001', cantidadRecibida: 12 }], tokenS02);
+    const filaTrasParcial = entorno.leerHoja('DETALLE_REQUISICIONES_SUCURSAL').find(f => f[0] === req.folio);
+    const recibidoTrasParcial = Number(filaTrasParcial[12]);
+
+    return {
+      datos: `${req.folio}: 20 solicitadas/aprobadas/surtidas/enviadas, primera recepción de 12`,
+      esperado: 'columna Recibido (índice 12) de DETALLE_REQUISICIONES_SUCURSAL queda en 12, no en 0/blanco',
+      obtenido: `recibido=${recibidoTrasParcial}`,
+      pasa: recibidoTrasParcial === 12,
+    };
+  },
+});

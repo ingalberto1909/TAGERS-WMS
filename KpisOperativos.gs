@@ -153,14 +153,16 @@ const ESTADOS_SUCURSAL_CON_ENTREGA_ = ["RECIBIDA", "RECIBIDA_PARCIAL", "CON_INCI
  * pero "cuánto llegó realmente" según qué flujo se usó para esa línea:
  *   - Flujo heredado de un paso: columna Entregado de
  *     DETALLE_REQUISICIONES_SUCURSAL (índice 5).
- *   - Flujo de pipeline con transferencia: la columna "Recibido" que el
- *     comentario de asegurarEncabezadosPipelineDetalleSucursal_ reserva
- *     en DETALLE_REQUISICIONES_SUCURSAL (índice 12) NUNCA se escribe en
- *     ningún lugar de RequisicionesSucursal.gs — recibirTransferenciaSucursalApp
- *     solo registra CantidadRecibida en TRANSFERENCIAS_DETALLE. Por eso
- *     esta función junta TRANSFERENCIAS (FolioTransferencia→FolioRequisicion)
- *     con TRANSFERENCIAS_DETALLE (CantidadRecibida por código) en vez de
- *     leer esa columna, que siempre estaría en 0/vacía para ese flujo.
+ *   - Flujo de pipeline con transferencia: recibirTransferenciaSucursalApp
+ *     ahora también acumula en la columna "Recibido" de
+ *     DETALLE_REQUISICIONES_SUCURSAL (índice 12) — pero cualquier
+ *     transferencia recibida ANTES de ese fix se quedó con esa columna en
+ *     0/vacía para siempre (no se hizo backfill de datos históricos). Por
+ *     eso esta función sigue sin confiar en esa columna: junta
+ *     TRANSFERENCIAS (FolioTransferencia→FolioRequisicion) con
+ *     TRANSFERENCIAS_DETALLE (CantidadRecibida por código), que es
+ *     confiable para toda la historia, no solo para lo recibido después
+ *     del fix.
  * Se toma el máximo de las dos fuentes por línea — en la práctica solo
  * una de las dos aplica, nunca ambas, porque una requisición sigue un
  * solo flujo de principio a fin.
