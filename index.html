@@ -1869,6 +1869,87 @@ cursor:pointer;
 color:var(--color-primary);
 }
 
+/* FAB DE ACCIONES RÁPIDAS (Fase 5 — móvil operativo) — oculto por
+   defecto (mismo criterio que .navInferior arriba): solo se activa
+   dentro de @media (max-width:768px) más abajo, así que en escritorio
+   nunca existe visualmente pase lo que pase. */
+.fabAccionesMoviles{
+display:none;
+position:fixed;
+right:calc(16px + env(safe-area-inset-right));
+bottom:calc(20px + env(safe-area-inset-bottom));
+z-index:96;
+flex-direction:column;
+align-items:flex-end;
+gap:10px;
+}
+
+.fabBoton{
+width:56px;
+height:56px;
+border-radius:50%;
+border:none;
+background:var(--guinda);
+color:#fff;
+font-size:26px;
+line-height:1;
+box-shadow:var(--shadow-lg);
+cursor:pointer;
+display:flex;
+align-items:center;
+justify-content:center;
+transition:transform .18s ease;
+}
+
+.fabAccionesMoviles.abierto .fabBoton{
+transform:rotate(45deg);
+}
+
+.fabAccionesLista{
+display:flex;
+flex-direction:column;
+align-items:flex-end;
+gap:8px;
+opacity:0;
+pointer-events:none;
+transform:translateY(8px);
+transition:opacity .16s ease,transform .16s ease;
+}
+
+.fabAccionesMoviles.abierto .fabAccionesLista{
+opacity:1;
+pointer-events:auto;
+transform:translateY(0);
+}
+
+.fabAccionItem{
+display:flex;
+align-items:center;
+gap:8px;
+border:none;
+background:var(--bg-panel);
+color:var(--text);
+padding:9px 14px 9px 9px;
+border-radius:999px;
+box-shadow:var(--shadow-md,var(--shadow-lg));
+font-size:13px;
+font-weight:600;
+cursor:pointer;
+white-space:nowrap;
+}
+
+.fabAccionIcono{
+width:34px;
+height:34px;
+border-radius:50%;
+background:var(--bg);
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:16px;
+flex-shrink:0;
+}
+
 /* RESPONSIVE */
 
 @media (min-width:769px){
@@ -2061,7 +2142,15 @@ flex-direction:row;
    accesos y tapando contenido — ver captura de referencia del usuario. */
 
 .contenedor{
-padding-bottom:calc(20px + env(safe-area-inset-bottom));
+padding-bottom:calc(90px + env(safe-area-inset-bottom));
+}
+
+/* FAB de acciones rápidas (Fase 5): el riel de íconos ya resuelve
+   NAVEGACIÓN entre pantallas — esto es distinto, un atajo para las
+   ACCIONES operativas de piso (buscar/escanear/recibir/surtir/contar)
+   sin tener que entrar primero a un módulo del menú. */
+.fabAccionesMoviles{
+display:flex;
 }
 
 /* MODALES: en escritorio se ven igual (caja centrada). En móvil, la
@@ -2841,6 +2930,11 @@ document.addEventListener("click", function(e){
     const resultados = document.getElementById("resultadosBuscadorHeader");
     if(resultados) resultados.style.display = "none";
     if(anchoRealDispositivo() <= 480) buscador.classList.remove("expandido");
+  }
+  const fab = document.getElementById("fabAccionesMoviles");
+  if(fab && fab.classList.contains("abierto") && !fab.contains(e.target)){
+    fab.classList.remove("abierto");
+    document.getElementById("fabBotonPrincipal").setAttribute("aria-expanded", "false");
   }
 });
 
@@ -5771,6 +5865,62 @@ function cerrarSidebarMovilSiAplica(){
     document.getElementById("overlaySidebar").classList.remove("mostrar");
   }
 }
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 5: Mobile operativo (acciones de piso)
+// El FAB solo abre/cierra una lista de atajos — cada atajo llama
+// exactamente a la misma función que ya usa el menú de escritorio para
+// esa pantalla (abrirEntradas, abrirSalidas, abrirCapturarConteo) o al
+// mismo flujo de escaneo (abrirEscaner) y búsqueda (buscadorGlobalHeader)
+// que ya existen. Ninguna lógica de negocio nueva.
+// ===============================
+
+function toggleFabAccionesMoviles(){
+  const cont = document.getElementById("fabAccionesMoviles");
+  const abriendo = !cont.classList.contains("abierto");
+  cont.classList.toggle("abierto", abriendo);
+  document.getElementById("fabBotonPrincipal").setAttribute("aria-expanded", abriendo ? "true" : "false");
+}
+
+function ejecutarAccionRapidaMovil_(tipo){
+
+  document.getElementById("fabAccionesMoviles").classList.remove("abierto");
+  document.getElementById("fabBotonPrincipal").setAttribute("aria-expanded", "false");
+
+  if(tipo === "buscar"){
+    const cont = document.getElementById("buscadorHeaderContenedor");
+    if(cont) cont.classList.add("expandido");
+    const input = document.getElementById("buscadorGlobalHeader");
+    if(input){
+      input.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => input.focus(), 80);
+    }
+  } else if(tipo === "escanear"){
+    abrirEscaner("entradaEscaneoRapidoMovil");
+  } else if(tipo === "recibir"){
+    abrirEntradas();
+  } else if(tipo === "surtir"){
+    abrirSalidas();
+  } else if(tipo === "contar"){
+    abrirCapturarConteo();
+  }
+
+}
+
+// El escaneo rápido del FAB no llena un formulario — abre directamente
+// la ficha del producto escaneado (mismo modal #modalDetalle que ya usa
+// el resto del sistema), porque desde el FAB no hay ningún formulario
+// abierto todavía al momento de escanear.
+document.addEventListener("DOMContentLoaded", function(){
+  const entradaRapida = document.getElementById("entradaEscaneoRapidoMovil");
+  if(entradaRapida){
+    entradaRapida.addEventListener("change", function(){
+      const codigo = this.value;
+      this.value = "";
+      if(codigo) abrirDetalleProducto(codigo);
+    });
+  }
+});
 
 // Fija el sidebar expandido en escritorio (independiente del hover), se recuerda entre sesiones.
 function toggleAnclarSidebar(){
@@ -12395,6 +12545,23 @@ function aplicarFiltros(){
 </header>
 
 <div class="contenedor"></div>
+
+<!-- Fase 5 — Mobile operativo: acciones de piso de primera clase
+     (buscar/escanear/recibir/surtir/contar), reutilizando exactamente
+     los mismos flujos que ya usa el menú de escritorio — nunca lógica
+     nueva, solo un atajo. Solo se ve en móvil (ver CSS .fabAccionesMoviles). -->
+<div class="fabAccionesMoviles" id="fabAccionesMoviles">
+  <div class="fabAccionesLista" id="fabAccionesLista">
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('contar')"><span class="fabAccionIcono">🧮</span>Contar</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('surtir')"><span class="fabAccionIcono">📤</span>Surtir</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('recibir')"><span class="fabAccionIcono">📥</span>Recibir</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('escanear')"><span class="fabAccionIcono">📷</span>Escanear</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('buscar')"><span class="fabAccionIcono">🔍</span>Buscar</button>
+  </div>
+  <button class="fabBoton" id="fabBotonPrincipal" onclick="toggleFabAccionesMoviles()" aria-label="Acciones rápidas" aria-expanded="false">+</button>
+</div>
+
+<input type="hidden" id="entradaEscaneoRapidoMovil">
 
 <nav class="navInferior" id="navInferior">
 <button class="navInferiorBtn" data-permiso-id="btnInicio" onclick="volverInicio()"><span class="navInferiorIcono" id="navInfIconoInicio"></span><span>Inicio</span></button>
