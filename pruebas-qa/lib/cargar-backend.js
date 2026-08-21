@@ -33,6 +33,7 @@ const ARCHIVOS_BACKEND = [
   'AnalisisCompras.gs',
   'MovimientosDashboard.gs',
   'Inteligencia.gs',
+  'FEFO.gs',
 ];
 
 /**

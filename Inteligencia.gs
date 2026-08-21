@@ -97,9 +97,9 @@ function obtenerLotesProximosACaducarApp(token, diasUmbral){
  * NOTA HONESTA (ver auditoría): "discrepancias" no tiene hoy ningún
  * campo de severidad en DISCREPANCIAS, así que TODAS se listan en
  * atención — no se inventa un criterio de "crítica" que no existe en
- * los datos. "Exceso de inventario" y "cobertura por consumo" (pedido,
- * secciones 11-13) requieren el motor de consumo promedio de Fase 2 y
- * deliberadamente NO están en este agregador todavía.
+ * los datos. Las caducidades de mercancía comprada (Fase 3, FEFO.gs) se
+ * exponen como tarjeta separada de las de producción por ser una
+ * ESTIMACIÓN, no un dato exacto — ver cabecera de FEFO.gs.
  */
 function obtenerAccionesRequeridasApp(token){
 
@@ -205,6 +205,22 @@ function obtenerAccionesRequeridasApp(token){
       titulo: lotesPorCaducar.length + " lote(s) de producción próximos a caducar",
       detalle: "Dentro de los próximos 7 días — solo producción interna por ahora",
       accion: { vista: "lotes-produccion" }
+    });
+  }
+
+  // Fase 3 (FEFO.gs): estimación sobre mercancía COMPRADA (ENTRADA) — se
+  // mantiene como tarjeta separada de "caducidades" (arriba) porque su
+  // confiabilidad es distinta: PRODUCCION decrementa una cantidad
+  // disponible real por lote, esto es una estimación FEFO (ver cabecera
+  // de FEFO.gs). Mezclarlas presentaría un dato estimado como si fuera
+  // tan exacto como el de producción.
+  const lotesCompraPorCaducar = obtenerLotesEntradaProximosACaducarApp(token, 7);
+  if(lotesCompraPorCaducar.length){
+    revisar.push({
+      tipo: "caducidades-compra", cantidad: lotesCompraPorCaducar.length,
+      titulo: lotesCompraPorCaducar.length + " lote(s) de compra con caducidad estimada próxima",
+      detalle: "Estimación FEFO dentro de los próximos 7 días — no es una fecha exacta, ver detalle",
+      accion: { vista: "lotes-entrada" }
     });
   }
 

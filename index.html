@@ -9188,7 +9188,8 @@ const RUTAS_ACCIONES_REQUERIDAS_ = {
   "requisiciones-pendientes": abrirRequisicionesPendientes,
   "requisiciones-sucursal": abrirRequisicionesSucursal,
   "ordenes-compra": abrirOrdenesCompra,
-  "lotes-produccion": abrirLotesProduccion
+  "lotes-produccion": abrirLotesProduccion,
+  "lotes-entrada": abrirModalCaducidadesCompra
 };
 
 function irAAccionRequerida(vista){
@@ -9803,7 +9804,8 @@ function pintarModalLista(lista){
 function filtrarModalLista(){
 
   const texto = document.getElementById("modalListaBuscarInput").value.toUpperCase().trim();
-  const pintar = modalListaModoActual === "cobertura" ? pintarModalCobertura : pintarModalLista;
+  const pintaresPorModo = { cobertura: pintarModalCobertura, "caducidad-compra": pintarModalCaducidadesCompra };
+  const pintar = pintaresPorModo[modalListaModoActual] || pintarModalLista;
 
   if(!texto){
     pintar(modalListaDatosCompletos);
@@ -9910,6 +9912,97 @@ function pintarModalCobertura(lista){
       <td>${p.consumoPromedioDiario}</td>
       <td>${p.diasCobertura === null ? "—" : p.diasCobertura}</td>
       <td>$${Number(p.valorInventario).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>
+  `).join("");
+
+}
+
+/**
+ * Drill-down de la tarjeta "caducidades-compra" (Fase 3, FEFO.gs) —
+ * mismo patrón de #modalLista que abrirModalCobertura. La cantidad es una
+ * ESTIMACIÓN (reparto FEFO contra la existencia actual, no un dato exacto
+ * por lote) — el subtítulo lo deja explícito para no presentarlo como si
+ * fuera tan preciso como los lotes de producción.
+ */
+function abrirModalCaducidadesCompra(){
+
+  try{
+
+  const titulo = document.getElementById("modalListaTitulo");
+  const subtitulo = document.getElementById("modalListaSubtitulo");
+  const buscarInput = document.getElementById("modalListaBuscarInput");
+
+  if(!titulo || !subtitulo || !buscarInput){
+    alert("No se encontraron los elementos del modal. Recarga con Ctrl+Shift+R o prueba en incógnito.");
+    return;
+  }
+
+  modalListaModoActual = "caducidad-compra";
+  buscarInput.value = "";
+  document.querySelector("#modalLista .modalListaBuscar").style.display = "block";
+
+  document.getElementById("modalListaBody").innerHTML = `
+    <table class="tablaActividad">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Código</th>
+          <th>Lote</th>
+          <th>Caducidad</th>
+          <th>Días</th>
+          <th>Cantidad estimada</th>
+        </tr>
+      </thead>
+      <tbody id="modalListaTbody"></tbody>
+    </table>
+    <div class="modalListaVacio" id="modalListaVacio" style="display:none;">Sin lotes de compra próximos a caducar 🎉</div>
+  `;
+
+  titulo.innerText = "🟡 Caducidades de compra (estimado)";
+  subtitulo.innerText = "Cargando...";
+
+  document.getElementById("modalListaTbody").innerHTML = "";
+  document.getElementById("modalListaVacio").style.display = "none";
+  document.getElementById("modalLista").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      modalListaDatosCompletos = lista || [];
+      subtitulo.innerText = modalListaDatosCompletos.length + " lote(s) — estimación FEFO, no es la fecha exacta de cada unidad en existencia";
+      pintarModalCaducidadesCompra(modalListaDatosCompletos);
+    })
+    .withFailureHandler(function(error){
+      subtitulo.innerText = "Error al cargar: " + error.message;
+    })
+    .obtenerLotesEntradaProximosACaducarApp(obtenerTokenSesion(), 7);
+
+  }catch(err){
+    alert("⚠️ Error al abrir el modal: " + err.message);
+  }
+
+}
+
+function pintarModalCaducidadesCompra(lista){
+
+  const tbody = document.getElementById("modalListaTbody");
+  const vacio = document.getElementById("modalListaVacio");
+
+  if(!lista || !lista.length){
+    tbody.innerHTML = "";
+    vacio.style.display = "block";
+    return;
+  }
+
+  vacio.style.display = "none";
+
+  tbody.innerHTML = lista.map(l => `
+    <tr onclick="abrirDetalleProducto('${l.codigo}')" style="cursor:pointer">
+      <td>${l.producto}</td>
+      <td>${l.codigo}</td>
+      <td>${l.lote}</td>
+      <td>${l.caducidad}</td>
+      <td style="color:${l.diasRestantes < 0 ? 'var(--guinda)' : 'inherit'}">${l.diasRestantes}</td>
+      <td>${l.cantidadEstimada}</td>
     </tr>
   `).join("");
 
