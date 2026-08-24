@@ -1418,8 +1418,14 @@ function generarConteoRacksApp(racks, token){
  * generación (columna G) — o nunca se ha generado.
  */
 function obtenerConteosProgramadosHoyApp(token){
-
   requerirSesionActivaApp_(token);
+  return obtenerConteosProgramadosHoyApp_();
+}
+
+// Versión interna sin sesión — la usa también el aviso por correo de las
+// 6 a.m. (Notificaciones.gs), que corre desde un disparador de tiempo sin
+// ningún usuario ni token detrás.
+function obtenerConteosProgramadosHoyApp_(){
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("PROGRAMACION_CONTEOS");

@@ -37,6 +37,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'legado/movimientos-dashboard.test.js',
   'legado/onedit-entrada-salida.test.js',
   'notificaciones/notificaciones.test.js',
+  'notificaciones/notificaciones-correo.test.js',
   'reportes/reportes.test.js',
   'inteligencia/inteligencia.test.js',
   'fefo/fefo.test.js',

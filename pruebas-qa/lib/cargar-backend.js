@@ -35,6 +35,8 @@ const ARCHIVOS_BACKEND = [
   'Inteligencia.gs',
   'FEFO.gs',
   'KpisOperativos.gs',
+  'Respaldos.gs',
+  'Notificaciones.gs',
 ];
 
 /**
