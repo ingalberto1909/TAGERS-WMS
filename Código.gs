@@ -362,7 +362,11 @@ function abrirCapturaConteo(){
 
 }
 
-function buscarCodigoConteo(codigo, folio){
+function buscarCodigoConteo(codigo, folio, token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // activamente la pantalla "Capturar conteo" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -399,7 +403,11 @@ function buscarCodigoConteo(codigo, folio){
 
 }
 
-function obtenerSiguientePendiente(folio) {
+function obtenerSiguientePendiente(folio, token) {
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // activamente la pantalla "Capturar conteo" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -853,7 +861,11 @@ observacion
 
 }
 
-function obtenerFoliosAbiertos(){
+function obtenerFoliosAbiertos(token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usan
+  // activamente "Capturar conteo" y "Cerrar conteo" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja =
     SpreadsheetApp
@@ -1191,7 +1203,11 @@ function revisarDiscrepancias(){
 
 }
 
-function obtenerDiscrepanciasPendientes(){
+function obtenerDiscrepanciasPendientes(token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // activamente "Aprobar discrepancias" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -1422,7 +1438,12 @@ function obtenerRacks(){
 
 }
 
-function obtenerUbicacionesRack(rack){
+function obtenerUbicacionesRack(rack, token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // Mapa del Almacén (?page=mapa), que además nunca tuvo control de sesión
+  // propio (ver MapaAlmacenV3.html).
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("MATRIZ");
@@ -1479,7 +1500,10 @@ function obtenerUbicacionesRack(rack){
 
 }
 
-function buscarProducto(texto) {
+function buscarProducto(texto, token) {
+
+  // Mismo hallazgo que obtenerUbicacionesRack (ver arriba).
+  requerirSesionActivaApp_(token);
 
   if (!texto || texto.length < 2) return [];
 
@@ -1520,7 +1544,10 @@ function buscarProducto(texto) {
 
 }
 
-function obtenerResumenRacks() {
+function obtenerResumenRacks(token) {
+
+  // Mismo hallazgo que obtenerUbicacionesRack (ver arriba).
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getRange(2,1,hoja.getLastRow()-1,17).getValues();

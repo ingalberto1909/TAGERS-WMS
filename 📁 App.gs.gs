@@ -120,7 +120,15 @@ function include(nombre){
   return HtmlService.createHtmlOutputFromFile(nombre).getContent();
 }
 
-function obtenerInventario() {
+function obtenerInventario(token) {
+  // Hallazgo de seguridad (auditoría de rendimiento, ago-2026): esta función
+  // se quedó sin requerirSesionActivaApp_ cuando se cerraron ~57 endpoints
+  // similares en la fase de seguridad anterior — no sigue el sufijo "...App"
+  // que usó esa auditoría para encontrarlas, así que se le escapó. Expone
+  // TODO el catálogo (producto/código/ubicación/existencia) a cualquier
+  // visitante anónimo con access:ANYONE — la usa activamente la pantalla
+  // "Existencias" del sidebar (abrirInventario() en index.html).
+  requerirSesionActivaApp_(token);
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getDataRange().getValues();
   datos.shift();
@@ -301,7 +309,17 @@ function registrarSalidaApp(datos){
   return registrarSalidaInterna_(datos, obtenerNombreDesdeToken(datos.token));
 }
 
-function obtenerKardex(limite) {
+function obtenerKardex(limite, token) {
+  // Mismo hallazgo que obtenerInventario (ver comentario ahí) — expone el
+  // historial completo de Kardex sin validar sesión. La usa activamente la
+  // pantalla "Kardex" del sidebar. La versión interna (obtenerKardex_) la
+  // sigue usando obtenerMovimientosRecientes sin token — su único llamador,
+  // obtenerResumenInicioApp, ya valida la sesión en su propia primera línea.
+  requerirSesionActivaApp_(token);
+  return obtenerKardex_(limite);
+}
+
+function obtenerKardex_(limite) {
   const ss = SpreadsheetApp.getActive();
   const kardex = ss.getSheetByName("KARDEX");
   if (!kardex) return [];
@@ -1132,7 +1150,10 @@ function obtenerDetalleProductoApp(codigo, token){
  * separados por estado, para el modal de "Stock crítico" en Inicio.
  * tipo: "critico" (agotado + bajo mínimo) u "optimo" (arriba del mínimo).
  */
-function obtenerProductosPorEstadoStock(tipo){
+function obtenerProductosPorEstadoStock(tipo, token){
+  // Mismo hallazgo que obtenerInventario (ver comentario ahí) — la usa
+  // activamente el modal "Stock crítico" del Dashboard.
+  requerirSesionActivaApp_(token);
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getDataRange().getValues();
   datos.shift();
@@ -1163,7 +1184,7 @@ function obtenerProductosPorEstadoStock(tipo){
 }
 
 function obtenerMovimientosRecientes(limite){
-  return obtenerKardex(limite || 8);
+  return obtenerKardex_(limite || 8);
 }
 
 function obtenerEntradasSalidas7dias(){
@@ -1478,9 +1499,15 @@ function marcarConteoProgramadoGeneradoApp(filas, token){
 
   const hoy = new Date();
 
-  (filas || []).forEach(fila => {
-    hoja.getRange(fila, 7).setValue(hoy);
-  });
+  // getRangeList + un solo setValue() en vez de un setValue() por fila:
+  // mismo resultado (todas las filas reciben la misma fecha), una sola
+  // llamada a la API de Sheets en vez de N — importante porque "filas"
+  // no es necesariamente contiguo (racks marcados a mano en la pantalla).
+  const filasValidas = (filas || []).filter(fila => Number(fila) > 0);
+  if(filasValidas.length){
+    const rangos = filasValidas.map(fila => "G" + fila);
+    hoja.getRangeList(rangos).setValue(hoy);
+  }
 
   return { ok: true };
 }
@@ -2463,6 +2490,7 @@ function sincronizarPresentacionMatriz_(codigo, presentacion){
   if(nueva === actual) return;
 
   hoja.getRange(filaMatriz, 20).setValue(nueva);
+  invalidarCacheHoja_("MATRIZ");
 
 }
 
@@ -3877,6 +3905,7 @@ function migrarCostoUnitarioAPorUnidadApp(token){
   });
 
   rango.setValues(nuevos);
+  invalidarCacheHoja_("MATRIZ");
 
   return { filas: datos.length, migrados: migrados };
 
@@ -3904,6 +3933,7 @@ function congelarFormulasExistenciaMatrizApp(token){
   const valores = rango.getValues(); // valores YA calculados por la fórmula actual
 
   rango.setValues(valores); // se reescriben como número plano — la fórmula desaparece
+  invalidarCacheHoja_("MATRIZ");
 
   return { filas: valores.length };
 
@@ -3977,6 +4007,7 @@ function procesarCambioPrecioProducto_(codigo, producto, proveedor, precioFactur
   if(precioNuevo <= 0 || precioNuevo === precioAnterior) return;
 
   hoja.getRange(filaMatriz, 18).setValue(precioNuevo);
+  invalidarCacheHoja_("MATRIZ");
 
   const diferencia = precioNuevo - precioAnterior;
   const porcentaje = precioAnterior !== 0 ? (diferencia / precioAnterior) * 100 : 0;
@@ -4528,25 +4559,47 @@ function aprobarDiscrepanciasLoteInventarioMensualApp(filas, token){
   const usuario = obtenerNombreDesdeToken(token);
   const hoja = obtenerHojaInventarioMensual_();
 
+  const filasValidas = (filas||[]).filter(fila => Number(fila) > 0);
+
   let aprobadas = 0;
 
-  (filas||[]).forEach(fila=>{
+  if(filasValidas.length){
 
-    const estadoActual = hoja.getRange(fila,12).getValue();
-    if(estadoActual === "APROBADO") return;
+    // Antes: hasta 6 llamadas a la API de Sheets POR fila (5 getRange().getValue()
+    // + 1 setValue()) dentro del forEach — con 50 filas eso son ~300 llamadas.
+    // Ahora: una sola lectura en bloque que cubre desde la primera hasta la
+    // última fila a aprobar (aunque "filas" no sea contiguo, sigue siendo 1
+    // sola llamada), se calcula todo en memoria, y una sola escritura en
+    // bloque al final con getRangeList — mismo resultado, mismos datos de
+    // auditoría, sin tocar la hoja fila por fila.
+    const filaMin = Math.min.apply(null, filasValidas);
+    const filaMax = Math.max.apply(null, filasValidas);
+    const bloque = hoja.getRange(filaMin, 1, filaMax - filaMin + 1, 12).getValues();
 
-    const codigo = hoja.getRange(fila,4).getValue();
-    const producto = hoja.getRange(fila,5).getValue();
-    const teorica = Number(hoja.getRange(fila,9).getValue()) || 0;
-    const fisico = Number(hoja.getRange(fila,10).getValue()) || 0;
-    const folio = hoja.getRange(fila,1).getValue();
+    const rangosAprobar = [];
 
-    hoja.getRange(fila,12).setValue("APROBADO");
-    aprobadas++;
+    filasValidas.forEach(fila => {
+      const f = bloque[fila - filaMin];
+      const estadoActual = f[11]; // col 12
+      if(estadoActual === "APROBADO") return;
 
-    registrarAuditoria(usuario, "INVENTARIO_MENSUAL", "APROBACIÓN DIFERENCIA", folio, codigo, producto, teorica, fisico, "Aprobada en lote");
+      const folio = f[0];      // col 1
+      const codigo = f[3];     // col 4
+      const producto = f[4];   // col 5
+      const teorica = Number(f[8]) || 0;  // col 9
+      const fisico = Number(f[9]) || 0;   // col 10
 
-  });
+      rangosAprobar.push("L" + fila); // col 12 = L
+      aprobadas++;
+
+      registrarAuditoria(usuario, "INVENTARIO_MENSUAL", "APROBACIÓN DIFERENCIA", folio, codigo, producto, teorica, fisico, "Aprobada en lote");
+    });
+
+    if(rangosAprobar.length){
+      hoja.getRangeList(rangosAprobar).setValue("APROBADO");
+    }
+
+  }
 
   return { aprobadas: aprobadas };
 
@@ -5693,6 +5746,12 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
 
   let productosEntregados = 0;
   const codigosOriginales = {};
+  // Antes: un .setValue() por cada línea entregada dentro de este mismo
+  // forEach (hasta una llamada a Sheets por producto de la requisición).
+  // Ahora: se muta en memoria el mismo arreglo datosDetalle que ya se leyó
+  // arriba, y se escribe UNA sola vez al final (ver más abajo) — mismas
+  // filas, mismos valores, una sola llamada a la API en vez de N.
+  let huboCambiosDetalle = false;
 
   datosDetalle.forEach((f, i) => {
 
@@ -5721,10 +5780,15 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
       observacion: "Requisición interna " + folio + " — Área " + areaReq
     }, usuario);
 
-    detalle.getRange(i+2, 6).setValue(cantidadEntregar);
+    datosDetalle[i][5] = cantidadEntregar;
+    huboCambiosDetalle = true;
     productosEntregados++;
 
   });
+
+  if(huboCambiosDetalle){
+    detalle.getRange(2, 1, datosDetalle.length, 6).setValues(datosDetalle);
+  }
 
   // Códigos que Almacén agregó al momento de entregar — no estaban en la
   // solicitud original (ver doc de la función). Se resuelven contra

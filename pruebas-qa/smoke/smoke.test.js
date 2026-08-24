@@ -315,11 +315,12 @@ prueba({
   objetivo: 'obtenerKardex debe devolver las últimas N filas, más recientes primero',
   ejecutar() {
     const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
     const kardex = entorno.hojas.KARDEX._filas();
     for (let i = 1; i <= 5; i++) {
       kardex.push([new Date(), '10:00:00', 'ENTRADA', 'ENT-' + i, 'COD-00' + i, 'Producto ' + i, 1, 0, 0, 1, 'Usuario', '']);
     }
-    const r = entorno.invocar('obtenerKardex', 3);
+    const r = entorno.invocar('obtenerKardex', 3, token);
     return {
       datos: '5 movimientos en Kardex, límite=3',
       esperado: '3 filas, la más reciente (folio ENT-5) primero',

@@ -4335,7 +4335,7 @@ function dibujarFormularioAprobacionReqSuc(lineas){
         `).join("")}
       </tbody>
     </table>
-    <div class="boton success" style="margin-top:10px" onclick="aprobarLineasReqSucUI()">${tgIcon("check",17)} Aprobar</div>
+    <div class="boton success" id="btnAprobarLineasReqSuc" style="margin-top:10px" onclick="aprobarLineasReqSucUI()">${tgIcon("check",17)} Aprobar</div>
   `;
 }
 
@@ -4351,13 +4351,19 @@ function aprobarLineasReqSucUI(){
     mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad a aprobar", "error");
     return;
   }
+  activarCargaBoton("btnAprobarLineasReqSuc", true);
+
   google.script.run
     .withSuccessHandler(function(res){
+      activarCargaBoton("btnAprobarLineasReqSuc", false);
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ " + res.lineasAprobadas + " línea(s) aprobadas — estado: " + res.estado, "ok");
       cargarListaRequisicionesSucursal();
       setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
     })
-    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnAprobarLineasReqSuc", false);
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error");
+    })
     .aprobarLineaRequisicionSucursalApp(detalle.folio, aprobaciones, obtenerTokenSesion());
 }
 
@@ -4391,7 +4397,7 @@ function dibujarFormularioSurtidoReqSuc(lineas){
         `).join("")}
       </tbody>
     </table>
-    <div class="boton success" style="margin-top:10px" onclick="surtirReqSucUI()">${tgIcon("cajas",17)} Registrar surtido</div>
+    <div class="boton success" id="btnSurtirReqSuc" style="margin-top:10px" onclick="surtirReqSucUI()">${tgIcon("cajas",17)} Registrar surtido</div>
   `;
 }
 
@@ -4407,13 +4413,19 @@ function surtirReqSucUI(){
     mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad surtida", "error");
     return;
   }
+  activarCargaBoton("btnSurtirReqSuc", true);
+
   google.script.run
     .withSuccessHandler(function(res){
+      activarCargaBoton("btnSurtirReqSuc", false);
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Surtido registrado — estado: " + res.estado, "ok");
       cargarListaRequisicionesSucursal();
       setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
     })
-    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnSurtirReqSuc", false);
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error");
+    })
     .surtirRequisicionSucursalApp(detalle.folio, surtido, obtenerTokenSesion());
 }
 
@@ -5676,7 +5688,7 @@ function abrirFormularioReceta(nombreExistente){
 
       <div style="display:flex;gap:10px;margin-top:16px">
         <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirRecetas()">Cancelar</div>
-        <div class="boton" onclick="guardarReceta()">💾 Guardar receta</div>
+        <div class="boton" id="btnGuardarReceta" onclick="guardarReceta()">💾 Guardar receta</div>
       </div>
 
     </div>
@@ -5850,13 +5862,17 @@ function guardarReceta(){
   }
 
   const handlerExito = function(){
+    activarCargaBoton("btnGuardarReceta", false);
     alert("✓ Receta " + (window.recetaFormEsEdicion ? "actualizada" : "creada") + " correctamente");
     abrirRecetas();
   };
 
   const handlerError = function(e){
+    activarCargaBoton("btnGuardarReceta", false);
     mostrarMensajeTemporal("mensajeFormReceta", "⚠️ " + e.message, "error");
   };
+
+  activarCargaBoton("btnGuardarReceta", true);
 
   if(window.recetaFormEsEdicion){
     google.script.run
@@ -8291,7 +8307,7 @@ function abrirRevisarDiferenciasMensual(){
     <label>Buscar producto</label>
     <input id="filtroProductoDiferencias" placeholder="Nombre o código..." oninput="pintarDiferenciasInventarioMensual()">
 
-    <div class="boton success" onclick="aprobarTodasDiferenciasInventarioMensual()">${tgIcon("checkCirculo",17)} Aprobar todas las que se muestran abajo</div>
+    <div class="boton success" id="btnAprobarTodasDiferenciasInvMensual" onclick="aprobarTodasDiferenciasInventarioMensual()">${tgIcon("checkCirculo",17)} Aprobar todas las que se muestran abajo</div>
 
     <div id="listaDiferenciasInventarioMensual" style="margin-top:14px">${tgEmptyState("buscar","Selecciona un inventario")}</div>
 
@@ -8374,7 +8390,7 @@ function pintarDiferenciasInventarioMensual(){
       <div style="display:flex;gap:8px;margin-top:8px">
         ${d.estado === "APROBADO"
           ? `<div style="flex:1;text-align:center;color:var(--color-success);font-weight:700;padding:8px;display:flex;align-items:center;justify-content:center;gap:6px">${tgIcon("checkCirculo",16)} Aprobada</div>`
-          : `<div class="boton success" style="flex:1;margin:0" onclick="aprobarDiferenciaInventarioMensual(${d.fila})">${tgIcon("checkCirculo",16)} Aprobar</div>`}
+          : `<div class="boton success" style="flex:1;margin:0" onclick="aprobarDiferenciaInventarioMensual(${d.fila}, this)">${tgIcon("checkCirculo",16)} Aprobar</div>`}
         <div class="boton secundario" style="flex:1;margin:0" onclick="editarConteoInventarioMensual(${d.fila})">${tgIcon("editar",15)} Editar conteo</div>
       </div>
     </div>
@@ -8394,17 +8410,25 @@ async function aprobarTodasDiferenciasInventarioMensual(){
 
   if(!(await tgConfirmar("¿Aprobar las " + lista.length + " diferencia(s) que se muestran actualmente?"))) return;
 
+  activarCargaBoton("btnAprobarTodasDiferenciasInvMensual", true);
+
   google.script.run
     .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnAprobarTodasDiferenciasInvMensual", false);
       alert("✅ Se aprobaron " + resultado.aprobadas + " diferencia(s)");
       cargarDiferenciasInventarioMensual();
     })
-    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnAprobarTodasDiferenciasInvMensual", false);
+      alert("⚠️ " + e.message);
+    })
     .aprobarDiscrepanciasLoteInventarioMensualApp(lista.map(d=>d.fila), obtenerTokenSesion());
 
 }
 
-function aprobarDiferenciaInventarioMensual(fila){
+function aprobarDiferenciaInventarioMensual(fila, boton){
+
+  if(botonOcupado_(boton)) return;
 
   const comentario = document.getElementById("comentarioDif-"+fila).value;
 
@@ -8412,7 +8436,10 @@ function aprobarDiferenciaInventarioMensual(fila){
     .withSuccessHandler(function(){
       cargarDiferenciasInventarioMensual();
     })
-    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .withFailureHandler(function(e){
+      liberarBoton_(boton);
+      alert("⚠️ " + e.message);
+    })
     .aprobarDiscrepanciaInventarioMensualApp(fila, comentario, obtenerTokenSesion());
 
 }
@@ -10036,7 +10063,7 @@ function abrirModalListaStock(tipo){
     .withFailureHandler(function(error){
       subtitulo.innerText = "Error al cargar: " + error.message;
     })
-    .obtenerProductosPorEstadoStock(tipoBackend);
+    .obtenerProductosPorEstadoStock(tipoBackend, obtenerTokenSesion());
 
   }catch(err){
     alert("⚠️ Error al abrir el modal: " + err.message);
@@ -10475,6 +10502,22 @@ function limpiarFormularioEntrada(){
 function activarCargaBoton(id, cargando){
   const btn = document.getElementById(id);
   if(btn) btn.classList.toggle("cargando", cargando);
+}
+
+// Mismo mecanismo que activarCargaBoton (reutiliza la clase .boton.cargando:
+// spinner + pointer-events:none) pero para botones que no tienen un id fijo
+// porque se repiten uno por fila en una lista (aprobar/rechazar/cancelar
+// dentro de una tabla). Se le pasa el propio elemento con "this" desde el
+// onclick — evita doble envío por doble clic sin tener que inventarle un id
+// único a cada fila.
+function botonOcupado_(boton){
+  if(!boton) return false;
+  if(boton.classList.contains("cargando")) return true;
+  boton.classList.add("cargando");
+  return false;
+}
+function liberarBoton_(boton){
+  if(boton) boton.classList.remove("cargando");
 }
 
 // Muestra un mensaje corto dentro del formulario (no bloquea como alert())
@@ -11289,7 +11332,7 @@ function cargarFoliosAbiertosConteo(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeConteo", "⚠️ " + e.message, "error");
     })
-    .obtenerFoliosAbiertos();
+    .obtenerFoliosAbiertos(obtenerTokenSesion());
 
 }
 
@@ -11328,7 +11371,7 @@ function buscarCodigoParaConteo(){
     mostrarMensajeTemporal("mensajeConteo", "⚠️ " + e.message, "error");
   })
 
-  .buscarCodigoConteo(codigo, window.folioConteoActual);
+  .buscarCodigoConteo(codigo, window.folioConteoActual, obtenerTokenSesion());
 
 }
 
@@ -11355,7 +11398,7 @@ function cargarSiguientePendiente(){
     mostrarMensajeTemporal("mensajeConteo", "⚠️ " + e.message, "error");
   })
 
-  .obtenerSiguientePendiente(window.folioConteoActual);
+  .obtenerSiguientePendiente(window.folioConteoActual, obtenerTokenSesion());
 
 }
 
@@ -11549,7 +11592,7 @@ function abrirAprobarDiscrepancias(){
 
   .withFailureHandler(function(e){ alert(e.message); })
 
-  .obtenerDiscrepanciasPendientes();
+  .obtenerDiscrepanciasPendientes(obtenerTokenSesion());
 
 }
 
@@ -11597,8 +11640,8 @@ function dibujarDiscrepancias(lista){
       <input id="comentario-${d.fila}" placeholder="Opcional">
 
       <div style="display:flex;gap:8px;margin-top:10px;">
-        <div class="boton success" style="flex:1;margin:0" onclick="aprobarDiscrepanciaDesdeApp(${d.fila})">${tgIcon("checkCirculo",16)} Aprobar</div>
-        <div class="boton danger" style="flex:1;margin:0" onclick="rechazarDiscrepanciaDesdeApp(${d.fila})">${tgIcon("xCirculo",16)} Rechazar</div>
+        <div class="boton success" style="flex:1;margin:0" onclick="aprobarDiscrepanciaDesdeApp(${d.fila}, this)">${tgIcon("checkCirculo",16)} Aprobar</div>
+        <div class="boton danger" style="flex:1;margin:0" onclick="rechazarDiscrepanciaDesdeApp(${d.fila}, this)">${tgIcon("xCirculo",16)} Rechazar</div>
       </div>
     </div>
 
@@ -11608,7 +11651,9 @@ function dibujarDiscrepancias(lista){
 
 }
 
-function aprobarDiscrepanciaDesdeApp(fila){
+function aprobarDiscrepanciaDesdeApp(fila, boton){
+
+  if(botonOcupado_(boton)) return;
 
   const motivo=document.getElementById("motivo-"+fila).value;
   const comentario=document.getElementById("comentario-"+fila).value;
@@ -11616,11 +11661,13 @@ function aprobarDiscrepanciaDesdeApp(fila){
   google.script.run
 
   .withSuccessHandler(function(){
+    liberarBoton_(boton);
     mostrarMensajeTemporal("mensajeAprobarLote", "✅ Discrepancia aprobada", "ok");
     abrirAprobarDiscrepancias();
   })
 
   .withFailureHandler(function(e){
+    liberarBoton_(boton);
     mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ "+e.message, "error");
   })
 
@@ -11628,18 +11675,22 @@ function aprobarDiscrepanciaDesdeApp(fila){
 
 }
 
-function rechazarDiscrepanciaDesdeApp(fila){
+function rechazarDiscrepanciaDesdeApp(fila, boton){
+
+  if(botonOcupado_(boton)) return;
 
   const comentario=document.getElementById("comentario-"+fila).value || "Sin comentario";
 
   google.script.run
 
   .withSuccessHandler(function(){
+    liberarBoton_(boton);
     mostrarMensajeTemporal("mensajeAprobarLote", "Discrepancia rechazada", "ok");
     abrirAprobarDiscrepancias();
   })
 
   .withFailureHandler(function(e){
+    liberarBoton_(boton);
     mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ "+e.message, "error");
   })
 
@@ -11736,7 +11787,7 @@ function abrirCerrarConteo(){
 
   .withFailureHandler(function(e){ alert(e.message); })
 
-  .obtenerFoliosAbiertos();
+  .obtenerFoliosAbiertos(obtenerTokenSesion());
 
 }
 
@@ -12150,7 +12201,7 @@ function abrirKardex(){
   google.script.run
   .withSuccessHandler(mostrarKardex)
   .withFailureHandler(function(e){ alert(e.message); })
-  .obtenerKardex(200);
+  .obtenerKardex(200, obtenerTokenSesion());
 
 }
 
@@ -12237,7 +12288,7 @@ function abrirInventario(){
   google.script.run
   .withSuccessHandler(mostrarInventario)
   .withFailureHandler(function(e){ alert(e.message); })
-  .obtenerInventario();
+  .obtenerInventario(obtenerTokenSesion());
 
 }
 

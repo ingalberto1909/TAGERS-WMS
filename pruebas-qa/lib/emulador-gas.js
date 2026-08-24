@@ -35,6 +35,23 @@ function crearHojaEmulada(nombre, filasIniciales) {
       numCols = numCols || 1;
       return crearRangoEmulado(this, fila, col, numFilas, numCols);
     },
+    // Emula Sheet.getRangeList(a1Notations) — el código real solo la usa
+    // con celdas sueltas tipo "G5" (columna en letras + fila), nunca con
+    // rangos tipo "A1:B2", así que basta con soportar ese caso.
+    getRangeList(a1Notations) {
+      const hoja = this;
+      const rangos = (a1Notations || []).map(a1 => {
+        const m = /^([A-Z]+)(\d+)$/.exec(String(a1).trim());
+        if (!m) throw new Error('getRangeList: notación A1 no soportada por el emulador: ' + a1);
+        const letras = m[1];
+        let col = 0;
+        for (let i = 0; i < letras.length; i++) col = col * 26 + (letras.charCodeAt(i) - 64);
+        return hoja.getRange(Number(m[2]), col, 1, 1);
+      });
+      return {
+        setValue(v) { rangos.forEach(r => r.setValue(v)); return this; },
+      };
+    },
     getDataRange() {
       const ultimaFila = Math.max(filas.length, 1);
       const ultimaCol = Math.max(this.getLastColumn(), 1);

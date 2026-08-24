@@ -22,8 +22,8 @@ const { prueba } = require('../lib/runner');
 const { crearEntorno } = require('../lib/cargar-backend');
 const { hojasBase } = require('../lib/datos-prueba');
 
-function entornoConLogin(rolCorreo) {
-  const entorno = crearEntorno({ hojas: hojasBase() });
+function entornoConLogin(rolCorreo, hojasExtra) {
+  const entorno = crearEntorno({ hojas: hojasBase(hojasExtra) });
   const token = entorno.invocar('crearSesion_', rolCorreo.correo, rolCorreo.nombre, rolCorreo.rol);
   return { entorno, token };
 }
@@ -176,6 +176,64 @@ prueba({
       esperado: 'MATRIZ=45, 1 fila nueva en AUDITORIA_AJUSTES',
       obtenido: `MATRIZ=${existencia}, auditoriaAjustes=${auditoriaFilas}`,
       pasa: existencia === 45 && auditoriaFilas === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-007', grupo: 'inventario', nombre: 'Aprobar diferencias de Inventario Mensual en lote (getRangeList) escribe la fila correcta de cada una', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarDiscrepanciasLoteInventarioMensualApp se reescribió para leer/escribir en bloque (antes: un getRange().getValue()/.setValue() por fila) — debe seguir marcando "APROBADO" exactamente en la fila de cada elemento de la lista, sin tocar las demás, y sin volver a contar las que ya estaban aprobadas',
+  ejecutar() {
+    const hoy = new Date();
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' }, {
+      INVENTARIO_MENSUAL: [
+        ['Folio', 'Fecha', 'Usuario', 'Código', 'Producto', 'Ubicación', 'UDM', 'Categoría', 'Existencia Teórica', 'Existencia Física', 'Diferencia', 'Estado'],
+        ['INV-1', hoy, 'Admin', 'COD-001', 'HARINA DE TRIGO', 'A-01', 'KG', 'Abarrotes', 100, 90, -10, 'PENDIENTE'],
+        ['INV-1', hoy, 'Admin', 'COD-002', 'AZUCAR ESTANDAR', 'A-02', 'KG', 'Abarrotes', 50, 48, -2, 'PENDIENTE'],
+        ['INV-1', hoy, 'Admin', 'COD-003', 'SAL DE MESA', 'A-03', 'KG', 'Abarrotes', 30, 30, 0, 'APROBADO'],
+      ],
+    });
+
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    const resultado = entorno.invocar('aprobarDiscrepanciasLoteInventarioMensualApp', [2, 3, 4], token);
+    const filas = entorno.leerHoja('INVENTARIO_MENSUAL');
+    const auditoriaDespues = entorno.leerHoja('AUDITORIA').length;
+
+    const estadosCorrectos = filas[1][11] === 'APROBADO' && filas[2][11] === 'APROBADO' && filas[3][11] === 'APROBADO';
+    const datosIntactos = filas[1][3] === 'COD-001' && filas[2][3] === 'COD-002' && filas[3][3] === 'COD-003';
+
+    return {
+      datos: 'fila 2 y 3 PENDIENTE, fila 4 ya APROBADA — se llama con las 3 filas [2,3,4]',
+      esperado: 'aprobadas=2 (la ya aprobada no se recuenta), las 3 filas quedan en estado APROBADO, código de cada fila sin alterar, 2 filas nuevas en AUDITORIA',
+      obtenido: `aprobadas=${resultado.aprobadas}, estados=[${filas[1][11]},${filas[2][11]},${filas[3][11]}], datosIntactos=${datosIntactos}, auditoria +${auditoriaDespues - auditoriaAntes}`,
+      pasa: resultado.aprobadas === 2 && estadosCorrectos && datosIntactos && (auditoriaDespues - auditoriaAntes) === 2,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-008', grupo: 'inventario', nombre: 'Marcar conteos programados como generados (getRangeList) solo toca las filas indicadas', metodo: 'EMPÍRICO',
+  objetivo: 'marcarConteoProgramadoGeneradoApp se reescribió para usar getRangeList + un solo setValue() en vez de un setValue() por fila — debe seguir poniendo la fecha de hoy exactamente en la columna G (ÚltimaGeneración) de cada fila marcada, sin tocar las filas no incluidas',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const prog = entorno.leerHoja('PROGRAMACION_CONTEOS');
+    prog.push(['PC-0001', 'A01', 'LUNES', 'SEMANAL', 'Alberto Romero', 'ACTIVO', '']);
+    prog.push(['PC-0002', 'B01', 'LUNES', 'SEMANAL', 'Alberto Romero', 'ACTIVO', '']);
+    prog.push(['PC-0003', 'C01', 'MARTES', 'SEMANAL', 'Alberto Romero', 'ACTIVO', '']); // no se marca — debe quedar sin tocar
+
+    entorno.invocar('marcarConteoProgramadoGeneradoApp', [2, 3], token);
+
+    const filas = entorno.leerHoja('PROGRAMACION_CONTEOS');
+    const filaA01TieneFecha = !!filas[1][6];
+    const filaB01TieneFecha = !!filas[2][6];
+    const filaC01SigueVacia = filas[3][6] === '' || filas[3][6] === undefined;
+    const idsIntactos = filas[1][0] === 'PC-0001' && filas[2][0] === 'PC-0002' && filas[3][0] === 'PC-0003';
+
+    return {
+      datos: '3 racks programados (A01, B01, C01) — se marcan como generados solo A01 (fila 2) y B01 (fila 3)',
+      esperado: 'A01 y B01 quedan con fecha de hoy en ÚltimaGeneración; C01 (fila 4, no incluida) sigue vacía; ningún ID se altera',
+      obtenido: `A01tieneFecha=${filaA01TieneFecha}, B01tieneFecha=${filaB01TieneFecha}, C01sigueVacia=${filaC01SigueVacia}, idsIntactos=${idsIntactos}`,
+      pasa: filaA01TieneFecha && filaB01TieneFecha && filaC01SigueVacia && idsIntactos,
     };
   },
 });

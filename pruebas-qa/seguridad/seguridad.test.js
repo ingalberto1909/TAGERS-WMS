@@ -378,3 +378,53 @@ prueba({
     };
   },
 });
+
+// Hallazgo de la auditoría de rendimiento (ago-2026): estas 10 funciones se
+// escaparon del barrido de Fase 6 porque ese barrido buscó específicamente
+// el sufijo "...App" — estas nunca lo tuvieron (7 viven en 📁 App.gs.gs y
+// Código.gs pero las llama activamente index.html; las otras 3 son de
+// Código.gs y las llama MapaAlmacenV3.html, página que además nunca tuvo
+// NINGÚN control de sesión propio — se detectaron auditando manualmente
+// cada llamada de google.script.run que NO terminaba en "App(" en ambos
+// archivos HTML activos.
+const FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_ = [
+  // 📁 App.gs.gs — index.html
+  { nombre: 'obtenerInventario', args: [] },
+  { nombre: 'obtenerKardex', args: [200] },
+  { nombre: 'obtenerProductosPorEstadoStock', args: ['critico'] },
+  // Código.gs — index.html (pantalla "Capturar/Cerrar conteo", "Aprobar discrepancias")
+  { nombre: 'buscarCodigoConteo', args: ['COD-001', 'CC-1'] },
+  { nombre: 'obtenerSiguientePendiente', args: ['CC-1'] },
+  { nombre: 'obtenerFoliosAbiertos', args: [] },
+  { nombre: 'obtenerDiscrepanciasPendientes', args: [] },
+  // Código.gs — MapaAlmacenV3.html (?page=mapa, sin login propio hasta esta corrección)
+  { nombre: 'obtenerResumenRacks', args: [] },
+  { nombre: 'buscarProducto', args: ['harina'] },
+  { nombre: 'obtenerUbicacionesRack', args: ['A'] },
+];
+
+prueba({
+  id: 'SEG-020', grupo: 'seguridad', nombre: 'Auditoría de rendimiento — 10 funciones sin sufijo "App" que se escaparon de Fase 6 ahora exigen sesión', metodo: 'EMPÍRICO',
+  objetivo: 'Cada función listada debe rechazar una llamada sin token válido — incluye las 3 que sirven al Mapa del Almacén (?page=mapa), página que antes de esta corrección no validaba sesión en NINGUNA de sus funciones',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const sinBloquear = [];
+
+    FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_.forEach(({ nombre, args }) => {
+      let bloqueado = false;
+      try {
+        entorno.invocar(nombre, ...args, undefined);
+      } catch (e) {
+        bloqueado = /sesión/i.test(e.message);
+      }
+      if (!bloqueado) sinBloquear.push(nombre);
+    });
+
+    return {
+      datos: FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_.length + ' funciones probadas sin token (7 de index.html + 3 de MapaAlmacenV3.html)',
+      esperado: 'las ' + FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_.length + ' rechazan la llamada con el mensaje de sesión inválida',
+      obtenido: sinBloquear.length ? 'NO bloquearon: ' + sinBloquear.join(', ') : 'todas bloquearon correctamente',
+      pasa: sinBloquear.length === 0,
+    };
+  },
+});
