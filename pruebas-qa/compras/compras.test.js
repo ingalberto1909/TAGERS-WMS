@@ -337,3 +337,106 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'COM-016', grupo: 'compras', nombre: 'Sugerencias de requisición: combina fórmula Min/Máx con el consumo histórico real', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerSugerenciasRequisicionAutomaticaApp debe traer los productos bajo mínimo con ambas sugerencias, y quedarse con la MAYOR de las dos como cantidadSugerida',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    // Se compraron 120 en el año, pero ya se consumieron — hoy vuelve a estar
+    // bajo mínimo (existencia=5, mínimo=10, máximo=100). El historial de LO
+    // COMPRADO no depende de la existencia actual, son cosas distintas.
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 120, udm: 'KG', precio: 22 },
+    ], token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-002', cantidadRecibida: 120 }], token);
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 5; // simula que ya se consumió lo recibido
+    entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
+
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const linea = sugerencias.find(s => s.codigo === 'COD-002');
+
+    // Fórmula: puntoMedio(10,100)=55, existencia=5 -> sugeridoPorFormula=50.
+    // Historial: 120 recibidos en los últimos 12 meses -> promedioMensual=10.
+    return {
+      datos: 'COD-002: existencia=5, mínimo=10, máximo=100, se recibieron 120 en una sola compra reciente',
+      esperado: 'sugeridoPorFormula=50 (fórmula Min/Máx), sugeridoPorHistorial=10 (120/12 meses), cantidadSugerida=50 (la mayor de las dos)',
+      obtenido: linea ? `sugeridoPorFormula=${linea.sugeridoPorFormula}, sugeridoPorHistorial=${linea.sugeridoPorHistorial}, cantidadSugerida=${linea.cantidadSugerida}, tieneHistorial=${linea.tieneHistorial}` : 'NO ENCONTRADO',
+      pasa: !!linea && linea.sugeridoPorFormula === 50 && linea.sugeridoPorHistorial === 10 && linea.cantidadSugerida === 50 && linea.tieneHistorial === true,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-017', grupo: 'compras', nombre: 'Sugerencias de requisición: sin historial de compras, se queda solo con la fórmula', metodo: 'EMPÍRICO',
+  objetivo: 'Un producto bajo mínimo que nunca se ha comprado (sin líneas en DETALLE_OC) debe aparecer con tieneHistorial=false y cantidadSugerida=sugeridoPorFormula, sin tronar por falta de datos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // COD-002 bajo mínimo por defecto, CERO compras registradas en esta prueba.
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const linea = sugerencias.find(s => s.codigo === 'COD-002');
+
+    return {
+      datos: 'COD-002 bajo mínimo, sin ninguna OC recibida en el historial',
+      esperado: 'tieneHistorial=false, sugeridoPorHistorial=0, cantidadSugerida=sugeridoPorFormula',
+      obtenido: linea ? `tieneHistorial=${linea.tieneHistorial}, sugeridoPorHistorial=${linea.sugeridoPorHistorial}, cantidadSugerida=${linea.cantidadSugerida}, sugeridoPorFormula=${linea.sugeridoPorFormula}` : 'NO ENCONTRADO',
+      pasa: !!linea && linea.tieneHistorial === false && linea.sugeridoPorHistorial === 0 && linea.cantidadSugerida === linea.sugeridoPorFormula,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-018', grupo: 'compras', nombre: 'Sugerencias de requisición: una compra de hace más de 12 meses no cuenta en el histórico', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerHistorialComprasPorCodigo_ debe ignorar recepciones cuya OC tiene fecha anterior a hace 12 meses — el consumo histórico es una ventana móvil, no "desde siempre"',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 240, udm: 'KG', precio: 22 },
+    ], token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-002', cantidadRecibida: 240 }], token);
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 5; // simula que ya se consumió lo recibido — vuelve a estar bajo mínimo
+
+    // Se "envejece" la OC a hace 13 meses, directo en la hoja (no hay parámetro de fecha en generarOrdenCompraApp).
+    const filaOC = entorno.leerHoja('ORDENES_COMPRA').find(f => f[0] === oc.folio);
+    const hace13Meses = new Date();
+    hace13Meses.setMonth(hace13Meses.getMonth() - 13);
+    filaOC[1] = hace13Meses;
+    entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
+
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const linea = sugerencias.find(s => s.codigo === 'COD-002');
+
+    return {
+      datos: '240 unidades recibidas, pero la OC se fechó hace 13 meses (fuera de la ventana de 12 meses)',
+      esperado: 'tieneHistorial=false — la compra existe pero está fuera de la ventana de 12 meses, no debe contarse',
+      obtenido: linea ? `tieneHistorial=${linea.tieneHistorial}, totalUltimos12Meses=${linea.totalUltimos12Meses}` : 'NO ENCONTRADO',
+      pasa: !!linea && linea.tieneHistorial === false && linea.totalUltimos12Meses === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-019', grupo: 'compras', nombre: 'Sugerencias de requisición: solo lista productos bajo mínimo, ordenados por déficit', metodo: 'EMPÍRICO',
+  objetivo: 'Productos con existencia por ENCIMA de su mínimo no deben aparecer en la lista; los que sí aparecen deben venir ordenados de mayor a menor déficit (más urgente primero)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const matriz = entorno.leerHoja('MATRIZ');
+    // COD-001 HARINA: por defecto existencia=100/mínimo=10 (muy por encima) -> no debe aparecer.
+    // COD-002 AZUCAR: existencia=5/mínimo=10 (déficit=5) -> sí aparece.
+    // COD-003 SAL: se baja a existencia=1/mínimo=5 (déficit=4) -> sí aparece, pero con menos urgencia que COD-002... (déficit menor)
+    matriz.find(f => f[4] === 'COD-003')[10] = 1;
+    entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
+
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const codigos = sugerencias.map(s => s.codigo);
+
+    return {
+      datos: 'COD-001 muy por encima de su mínimo; COD-002 déficit=5; COD-003 déficit=4',
+      esperado: 'COD-001 NO aparece; COD-002 y COD-003 sí, con COD-002 primero (mayor déficit)',
+      obtenido: `códigos en orden=[${codigos.join(', ')}]`,
+      pasa: !codigos.includes('COD-001') && codigos.indexOf('COD-002') === 0 && codigos.includes('COD-003'),
+    };
+  },
+});

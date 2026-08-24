@@ -2652,7 +2652,7 @@ const ICONOS_MENU = {
   btnRevisarDiscrepancias:"buscar", btnAprobarDiscrepancias:"checkCirculo", btnCerrarConteo:"recibo",
   btnNuevaRequisicion:"mas", btnNuevaRequisicionReceta:"receta", btnMisRequisiciones:"documento",
   btnRequisicionesPendientes:"reloj", btnPreparacionRequisicion:"paquete", btnEntregasRequisicion:"checkCirculo",
-  btnHistorialRequisicion:"reloj", btnRequisicionesSucursal:"ubicacion", btnTransferenciasSucursal:"camion", btnCentroReabastecimiento:"refrescar", btnOrdenesCompra:"recibo",
+  btnHistorialRequisicion:"reloj", btnRequisicionesSucursal:"ubicacion", btnTransferenciasSucursal:"camion", btnCentroReabastecimiento:"refrescar", btnSugerenciasRequisicion:"grafica", btnOrdenesCompra:"recibo",
   btnRecepcionMercancia:"camion", btnHistorialCompras:"reloj", btnAnalisisCostos:"dinero",
   btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
@@ -3023,7 +3023,7 @@ const PERMISOS_ROL = {
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     "btnTransferenciasSucursal",
-    "btnCentroReabastecimiento","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
+    "btnCentroReabastecimiento","btnSugerenciasRequisicion","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
     "btnAnalisisCostos","btnAnalisisCompras","btnProveedores",
     "btnGenerarInventarioMensual","btnCapturarInventarioMensual","btnRevisarDiferenciasMensual",
     "btnCerrarInventarioMensual","btnHistorialInventarioMensual","btnDashboardInventarioMensual",
@@ -6443,6 +6443,88 @@ function abrirCentroReabastecimiento(){
       document.getElementById("listaProveedoresReabasto").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
     .obtenerProveedoresReabastecimientoApp(obtenerTokenSesion());
+
+}
+
+/**
+ * TAGERS WMS 2.0 — Sugerencias de requisición (pedido del usuario, punto 5):
+ * todos los productos bajo mínimo en un solo lugar (sin tener que elegir
+ * proveedor primero, a diferencia de Centro de Reabastecimiento), con la
+ * cantidad sugerida por fórmula Min/Max Y la sugerida por el consumo real
+ * de los últimos 12 meses lado a lado — de solo lectura, no crea nada por
+ * su cuenta. "Generar OC" reutiliza el mismo flujo por proveedor que ya
+ * usa Centro de Reabastecimiento.
+ */
+function abrirSugerenciasRequisicion(){
+
+  marcarActivo("btnSugerenciasRequisicion");
+
+  const contenedor=document.querySelector(".contenedor");
+
+  contenedor.innerHTML=`
+
+  <div class="vista-animada">
+
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("grafica",20)} Sugerencias de Requisición</h2>
+  <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">
+    Productos bajo mínimo, ordenados por urgencia — con la cantidad sugerida por fórmula Min/Máx y por tu consumo real de los últimos 12 meses.
+  </p>
+
+  <div class="cardProducto">
+    <div id="listaSugerenciasRequisicion">
+      <div class="skeleton skeletonLinea" style="width:70%"></div>
+      <div class="skeleton skeletonLinea" style="width:55%"></div>
+      <div class="skeleton skeletonLinea" style="width:65%"></div>
+    </div>
+  </div>
+
+  </div>
+
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarSugerenciasRequisicion)
+    .withFailureHandler(function(e){
+      document.getElementById("listaSugerenciasRequisicion").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerSugerenciasRequisicionAutomaticaApp(obtenerTokenSesion());
+
+}
+
+function dibujarSugerenciasRequisicion(lista){
+
+  const cont = document.getElementById("listaSugerenciasRequisicion");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("checkCirculo", "Ningún producto está bajo mínimo ahora mismo");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead>
+        <tr>
+          <th>Producto</th><th style="text-align:right">Existencia</th><th style="text-align:right">Mínimo</th>
+          <th style="text-align:right">Por fórmula</th><th style="text-align:right">Por consumo (12m)</th>
+          <th style="text-align:right">Sugerido</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lista.map(p=>`
+          <tr>
+            <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo} — ${p.proveedor}</span></td>
+            <td style="text-align:right">${formatearCantidadJS(p.existencia)} ${p.udm}</td>
+            <td style="text-align:right">${formatearCantidadJS(p.minimo)} ${p.udm}</td>
+            <td style="text-align:right">${formatearCantidadJS(p.sugeridoPorFormula)}</td>
+            <td style="text-align:right">${p.tieneHistorial ? formatearCantidadJS(p.sugeridoPorHistorial) : "Sin historial"}</td>
+            <td style="text-align:right;font-weight:800;color:var(--guinda)">${formatearCantidadJS(p.cantidadSugerida)} ${p.udm}</td>
+            <td><span class="boton secundario" style="width:auto;padding:7px 12px;margin:0;font-size:12px" onclick="abrirReabastoProveedor('${String(p.proveedor).replace(/'/g,"\\'")}')">Generar OC</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
 
 }
 
@@ -12535,6 +12617,7 @@ function aplicarFiltros(){
   </button>
   <div class="submenu" id="grupoCompras">
     <button class="menuLateralBtn sub" id="btnCentroReabastecimiento" onclick="abrirCentroReabastecimiento()" title="Centro de reabastecimiento"><span class="icono">🧭</span><span class="textoMenu">Centro de reabastecimiento</span></button>
+    <button class="menuLateralBtn sub" id="btnSugerenciasRequisicion" onclick="abrirSugerenciasRequisicion()" title="Sugerencias de requisición"><span class="icono">🤖</span><span class="textoMenu">Sugerencias de requisición</span></button>
     <button class="menuLateralBtn sub" id="btnOrdenesCompra" onclick="abrirOrdenesCompra()" title="Órdenes de compra"><span class="icono">🧾</span><span class="textoMenu">Órdenes de compra</span></button>
     <button class="menuLateralBtn sub" id="btnRecepcionMercancia" onclick="abrirRecepcionMercancia()" title="Recepción de mercancía"><span class="icono">📦</span><span class="textoMenu">Recepción de mercancía</span></button>
     <button class="menuLateralBtn sub" id="btnHistorialCompras" onclick="abrirHistorialCompras()" title="Historial de compras"><span class="icono">📜</span><span class="textoMenu">Historial de compras</span></button>
