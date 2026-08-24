@@ -374,8 +374,7 @@ function obtenerKardex_(limite) {
 
 function buscarUbicacionApp(termino, token){
   requerirSesionActivaApp_(token);
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
   datos.shift();
 
   const t = String(termino).toUpperCase().trim();
@@ -979,8 +978,7 @@ function obtenerResumenDashboard(){
 
 function buscarProductoApp(codigo, token){
   requerirSesionActivaApp_(token);
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getDataRange().getValues();
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ");
 
   for(let i=1;i<datos.length;i++){
     if(String(datos[i][4]) == String(codigo)){
@@ -2296,8 +2294,7 @@ function busquedaGlobalHeaderApp(texto, token){
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return { productos: [], racks: [], proveedores: [] };
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 18).getValues(); // A..R
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1); // A..R (y más, pero el resto de la función solo usa hasta R)
 
   const productos = [];
   const racksEncontrados = {};
@@ -2352,8 +2349,7 @@ function buscarProductoCatalogoApp(texto, token){
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return [];
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 18).getValues(); // A..R
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1); // A..R (y más)
 
   const resultados = [];
 
@@ -2390,8 +2386,7 @@ function obtenerProveedoresReabastecimientoApp(token){
 
   requerirSesionActivaApp_(token);
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 18).getValues(); // A..R
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1); // A..R (y más)
 
   const mapa = {};
 
@@ -2429,8 +2424,7 @@ function obtenerProductosPorProveedorApp(proveedor, token){
 
   const proveedorBuscado = normalizarProveedor_(proveedor);
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 20).getValues(); // A..T
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1); // A..T (y más)
 
   return datos
     .filter(f=>{
@@ -5468,8 +5462,7 @@ function buscarProductoParaRequisicionApp(texto, token){
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return [];
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 11).getValues(); // A..K
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1); // A..K (y más)
 
   const resultados = [];
 
@@ -5955,8 +5948,7 @@ function obtenerProductosSugeridosAreaApp(area, token){
   });
 
   // Existencia actual, para que se vea disponible al sugerir.
-  const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow()-1, 11).getValues();
+  const datosMatriz = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
   const existenciaPorCodigo = {};
   datosMatriz.forEach(f => { if(f[4]) existenciaPorCodigo[String(f[4]).trim()] = Number(f[10]) || 0; });
 

@@ -133,3 +133,51 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'REND-006', grupo: 'rendimiento', nombre: 'Auditoría de rendimiento: búsqueda global del header ya comparte la caché de 20s de MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'busquedaGlobalHeaderApp se llama en cada tecleo del buscador global — antes leía MATRIZ completa en cada llamada; ahora, igual que el Dashboard, 3 llamadas seguidas deben traducirse en 1 sola lectura real de la hoja',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const hojaReal = entorno.hojas.MATRIZ;
+    let lecturasReales = 0;
+    const getDataRangeOriginal = hojaReal.getDataRange.bind(hojaReal);
+    hojaReal.getDataRange = function () { lecturasReales++; return getDataRangeOriginal(); };
+
+    entorno.invocar('busquedaGlobalHeaderApp', 'harina', token);
+    entorno.invocar('busquedaGlobalHeaderApp', 'harin', token);
+    entorno.invocar('busquedaGlobalHeaderApp', 'hari', token);
+
+    return {
+      datos: '3 tecleos seguidos en el buscador global ("harina" -> "harin" -> "hari") dentro de la misma ventana de 20s',
+      esperado: '1 sola lectura real de MATRIZ, las otras 2 servidas desde caché',
+      obtenido: `lecturasReales=${lecturasReales}`,
+      pasa: lecturasReales === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'REND-007', grupo: 'rendimiento', nombre: 'Auditoría de rendimiento: un cambio de Presentación/Costo en MATRIZ invalida la caché correctamente', metodo: 'EMPÍRICO',
+  objetivo: 'Al extender el caché de MATRIZ a más lecturas (búsquedas/catálogo), toda escritura directa a MATRIZ que antes NO invalidaba la caché (sincronizarPresentacionMatriz_, procesarCambioPrecioProducto_) ahora debe hacerlo — si no, buscarProductoCatalogoApp podría mostrar precio/presentación viejos hasta por 20s',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    const antes = entorno.invocar('buscarProductoCatalogoApp', 'harina', token); // puebla la caché
+    const precioAntes = antes[0] && antes[0].precio;
+
+    entorno.invocar('procesarCambioPrecioProducto_', 'COD-001', 'HARINA DE TRIGO', 'Proveedor X', 999, 'Usuario', 'OC-1');
+
+    const despues = entorno.invocar('buscarProductoCatalogoApp', 'harina', token); // ¿lee el precio nuevo, o el viejo cacheado?
+    const precioDespues = despues[0] && despues[0].precio;
+
+    return {
+      datos: `precio antes del cambio: ${precioAntes}, cambiado a 999 vía procesarCambioPrecioProducto_`,
+      esperado: 'la búsqueda del catálogo refleja el precio nuevo (999) de inmediato, no el viejo cacheado',
+      obtenido: `precioAntes=${precioAntes}, precioDespues=${precioDespues}`,
+      pasa: precioDespues === 999,
+    };
+  },
+});
