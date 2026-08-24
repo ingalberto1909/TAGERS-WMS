@@ -1325,6 +1325,22 @@ transition:box-shadow .2s ease;
 .panelesInicio3 .cardProducto{
 max-width:none;
 margin:0;
+/* Bug real de CSS Grid: un <canvas> (elemento reemplazado) dentro de una
+   celda 1fr no se encoge por debajo de su ancho intrínseco (300px nativo
+   de Chart.js antes de que su JS lo redimensione) a menos que la celda
+   tenga min-width:0 — sin esto, la tarjeta de la gráfica empujaba todo
+   el grid ~54px fuera del viewport en móvil (confirmado con Playwright:
+   Entradas vs. Salidas y Stock crítico del Dashboard). */
+min-width:0;
+}
+
+/* Cualquier <canvas> de Chart.js: nunca debe exceder el ancho de su
+   contenedor. Chart.js normalmente ya fija su propio ancho por JS, pero
+   antes de esa primera medición (o si el contenedor todavía no tiene su
+   ancho final, como dentro de un grid) el canvas puede quedarse con su
+   ancho nativo y desbordar horizontalmente la página en móvil. */
+canvas{
+max-width:100%;
 }
 
 .kpiCardNueva{
@@ -2105,8 +2121,11 @@ display:flex;
 grid-template-columns:1fr;
 }
 
+/* 2 columnas (no 1) — tarjetas grandes y tocables, pero sin la lista
+   larga de 6 tarjetas apiladas a lo alto de toda la pantalla que
+   obligaba a scrollear de más antes de ver el resto del Dashboard. */
 .kpiGrid{
-grid-template-columns:1fr;
+grid-template-columns:repeat(2,1fr);
 gap:10px;
 }
 
