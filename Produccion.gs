@@ -28,18 +28,15 @@ function generarFolioLote_(hoja, fecha){
 function obtenerRequisicionListaParaProduccionApp(folio, token){
   // Producción es de las pocas pantallas a las que CONSULTA sí tiene
   // acceso (y no está atado a una sola área como Cocina/Panadería), así
-  // que aquí NO se restringe por área — solo se exige que, cuando llega
-  // un token (la llamada directa desde la SPA), la sesión sea realmente
-  // válida. Cuando no llega token (la llamada interna desde
-  // registrarProduccionApp, que ya exige su propio guard antes de
-  // llegar aquí) se deja pasar igual que antes.
-  if(token){
-    requerirSesionActivaApp_(token);
-  }
-  // Se llama SIN token a propósito: obtenerDetalleRequisicionRecetaApp
-  // solo filtra por área cuando recibe uno, y aquí se quiere mantener el
-  // acceso de Producción a cualquier área (ver comentario arriba).
-  const detalle = obtenerDetalleRequisicionRecetaApp(folio);
+  // que aquí NO se restringe por área — pero SÍ se exige siempre una
+  // sesión activa y válida (antes esto solo se exigía cuando llegaba
+  // token, dejando pasar sin ninguna validación a quien lo omitiera).
+  requerirSesionActivaApp_(token);
+  // Se llama con obtenerDetalleRequisicionRecetaApp_ (la versión interna)
+  // sin pasar token: así nunca filtra por área, manteniendo el acceso de
+  // Producción a cualquier área (ver comentario arriba) — la sesión ya
+  // quedó validada en la línea de arriba.
+  const detalle = obtenerDetalleRequisicionRecetaApp_(folio);
   if(detalle.estado !== "ENTREGADA"){
     throw new Error("La requisición " + folio + " todavía no tiene los insumos entregados — confírmala primero.");
   }
@@ -55,7 +52,7 @@ function registrarProduccionApp(datos, token){
     throw new Error("Indica la requisición de receta de origen.");
   }
 
-  const requisicion = obtenerRequisicionListaParaProduccionApp(folioRequisicion);
+  const requisicion = obtenerRequisicionListaParaProduccionApp(folioRequisicion, token);
 
   const nombreReceta = String((datos && datos.nombreReceta) || "").trim();
   const receta = requisicion.recetas.find(function(r){ return r.nombreReceta === nombreReceta; });
@@ -100,6 +97,12 @@ function registrarProduccionApp(datos, token){
 
   });
 
+  // Fase 7: obtenerLotesProximosACaducarApp ahora lee PRODUCCION vía la
+  // caché de 20s (ver Inteligencia.gs) — sin esto, un lote recién
+  // registrado no aparecería en el Dashboard hasta que la caché expirara
+  // sola. Mismo criterio que ya usa registrarEntradaInterna_ con KARDEX.
+  invalidarCacheHoja_("PRODUCCION");
+
   registrarEntradaInterna_(
     {
       codigo: codigoProducto, producto: nombreProducto, cantidad: cantidadProducida,
@@ -129,7 +132,9 @@ function registrarProduccionApp(datos, token){
  * ningún producto de MATRIZ tiene ese nombre, regresa null y el usuario
  * sigue pudiendo escanear/escribir el código a mano, como ya funcionaba.
  */
-function obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta){
+function obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta, token){
+
+  requerirSesionActivaApp_(token);
 
   const nombreNormalizado = normalizarTexto_(nombreReceta);
   if(!nombreNormalizado) return null;
@@ -152,7 +157,8 @@ function obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta){
 
 }
 
-function obtenerLotesProduccionApp(filtros){
+function obtenerLotesProduccionApp(filtros, token){
+  requerirSesionActivaApp_(token);
   const hoja = obtenerHojaProduccion_();
   if(hoja.getLastRow() < 2) return [];
 
@@ -193,6 +199,7 @@ function cerrarLoteProduccionApp(folioLote, token){
 
   hoja.getRange(fila, 12).setValue("AGOTADO"); // L = Estado
   hoja.getRange(fila, 11).setValue(0);         // K = Cantidad disponible
+  invalidarCacheHoja_("PRODUCCION");
 
   const usuario = obtenerNombreDesdeToken(token);
   registrarAuditoria(usuario, "PRODUCCION", "LOTE CERRADO", folioLote, "", "", 0, 0, "Marcado como AGOTADO");

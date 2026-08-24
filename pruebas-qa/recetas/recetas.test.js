@@ -24,7 +24,7 @@ prueba({
       nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL',
       ingredientes: [{ nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }],
     }, token);
-    const lista = entorno.invocar('obtenerRecetasApp');
+    const lista = entorno.invocar('obtenerRecetasApp', token);
     return {
       datos: '1 receta con 1 ingrediente',
       esperado: 'ok:true, aparece en obtenerRecetasApp',
@@ -69,7 +69,7 @@ prueba({
       nombre: 'SALSA X', rendimiento: '2 tandas', categoria: 'GENERAL',
       ingredientes: [{ nombre: 'HARINA DE TRIGO', cantidad: 1, udm: 'KG' }, { nombre: 'AZUCAR ESTANDAR', cantidad: 200, udm: 'G' }],
     }, token);
-    const detalle = entorno.invocar('obtenerDetalleRecetaApp', 'SALSA X');
+    const detalle = entorno.invocar('obtenerDetalleRecetaApp', 'SALSA X', token);
     return {
       datos: 'editar de 1 a 2 ingredientes, rendimiento de "1 tanda" a "2 tandas"',
       esperado: 'rendimiento="2 tandas", 2 ingredientes',
@@ -86,7 +86,7 @@ prueba({
     const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
     entorno.invocar('crearRecetaApp', { nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL', ingredientes: [{ nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }] }, token);
     entorno.invocar('cambiarEstadoRecetaApp', 'SALSA X', 'INACTIVA', token);
-    const lista = entorno.invocar('obtenerRecetasApp');
+    const lista = entorno.invocar('obtenerRecetasApp', token);
     return {
       datos: 'receta creada ACTIVA por defecto, luego se desactiva',
       esperado: 'estado=INACTIVA',

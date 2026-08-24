@@ -92,20 +92,23 @@ function bloqueAResumen_(b){
 
 // ---------------- FASE 1/3: catálogo, búsqueda y filtros ----------------
 
-function obtenerRecetasApp(){
+function obtenerRecetasApp(token){
+  requerirSesionActivaApp_(token);
   return obtenerBloquesRecetas_().map(bloqueAResumen_);
 }
 
-function buscarRecetasApp(texto){
+function buscarRecetasApp(texto, token){
+  requerirSesionActivaApp_(token);
   const busqueda = normalizarTexto_(texto);
-  if(!busqueda) return obtenerRecetasApp();
-  return obtenerRecetasApp().filter(r =>
+  if(!busqueda) return obtenerRecetasApp(token);
+  return obtenerRecetasApp(token).filter(r =>
     normalizarTexto_(r.nombre).indexOf(busqueda) !== -1 ||
     normalizarTexto_(r.codigo).indexOf(busqueda) !== -1
   );
 }
 
-function obtenerCategoriasRecetasApp(){
+function obtenerCategoriasRecetasApp(token){
+  requerirSesionActivaApp_(token);
   const categorias = {};
   obtenerBloquesRecetas_().forEach(b => { if(b.categoria) categorias[b.categoria] = true; });
   return Object.keys(categorias).sort();
@@ -113,7 +116,10 @@ function obtenerCategoriasRecetasApp(){
 
 // ---------------- FASE 2: detalle de una receta ----------------
 
-function obtenerDetalleRecetaApp(nombreReceta){
+// Versión interna sin guard propio — para composición desde otros
+// módulos que ya validaron su propia sesión (ver RequisicionesRecetas.gs).
+// La pública (abajo) es la única que debe llamarse desde el cliente.
+function obtenerDetalleRecetaApp_(nombreReceta){
 
   const bloque = obtenerBloquesRecetas_().find(b => b.nombre === nombreReceta);
   if(!bloque) throw new Error("No se encontró la receta " + nombreReceta);
@@ -129,12 +135,18 @@ function obtenerDetalleRecetaApp(nombreReceta){
 
 }
 
+function obtenerDetalleRecetaApp(nombreReceta, token){
+  requerirSesionActivaApp_(token);
+  return obtenerDetalleRecetaApp_(nombreReceta);
+}
+
 // ---------------- FASE 21: buscar producto para agregar como ingrediente ----------------
 // Reutiliza el catálogo de MATRIZ igual que Compras/Requisiciones — no
 // se duplica lógica, solo se envuelve para dar nombre claro al módulo.
 
-function buscarProductoParaRecetaApp(texto){
-  return buscarProductoCatalogoApp(texto);
+function buscarProductoParaRecetaApp(texto, token){
+  requerirSesionActivaApp_(token);
+  return buscarProductoCatalogoApp(texto, token);
 }
 
 // ---------------- Validación compartida (punto 23) ----------------

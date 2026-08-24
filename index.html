@@ -54,9 +54,40 @@
           var regla = reglas[r];
           if(regla.type !== CSSRule.MEDIA_RULE) continue;
           var texto = regla.media.mediaText;
-          var coincide = texto.match(/max-width:\s*(\d+)px/);
-          if(coincide && anchoReal <= parseInt(coincide[1], 10) && texto !== 'all'){
-            regla.media.mediaText = 'all';
+          if(texto === 'all' || texto === 'not all') continue; // ya se forzó antes en esta misma pasada
+
+          // OJO: forzar solo reglas max-width a "all" (como hacía antes esta
+          // función) rompe cualquier regla COMPUESTA que además tenga
+          // min-width — ej. "@media (min-width:769px) and (max-width:1024px)"
+          // (el ajuste de densidad de tablet) se volvía "all" sin más,
+          // perdiendo la condición de min-width, y esas reglas de tablet
+          // terminaban ganándole (por orden de cascada) a las reglas de
+          // mobile de más abajo en pantallas de celular reales. Peor aún:
+          // esta función NUNCA desactivaba "@media (min-width:769px)" (el
+          // bloque de escritorio completo, sidebar con hover incluido) —
+          // así que si el iframe de Google reporta un ancho de layout falso
+          // ≥769px (el bug que motivó todo este archivo), ESE bloque se
+          // queda activo para siempre en un celular real, sin que nada lo
+          // apague. Por eso el responsive de fases anteriores no se veía
+          // en producción aunque el CSS en sí estuviera bien: el problema
+          // nunca fueron las media queries, era que esta función solo sabía
+          // ENCENDER reglas, nunca APAGARLAS.
+          //
+          // Ahora se evalúan min-width Y max-width contra el ancho real del
+          // DISPOSITIVO (screen.width, el único dato confiable dentro del
+          // iframe) y se fuerza la regla a "all" o "not all" según
+          // corresponda — replicando lo que el navegador debería haber
+          // decidido solo si el iframe no le mintiera sobre el ancho.
+          var coincideMin = texto.match(/min-width:\s*(\d+)px/);
+          var coincideMax = texto.match(/max-width:\s*(\d+)px/);
+          if(!coincideMin && !coincideMax) continue; // no es una condición de ancho (ej. prefers-color-scheme) — se deja como está
+
+          var cumpleMin = !coincideMin || anchoReal >= parseInt(coincideMin[1], 10);
+          var cumpleMax = !coincideMax || anchoReal <= parseInt(coincideMax[1], 10);
+          var nuevoTexto = (cumpleMin && cumpleMax) ? 'all' : 'not all';
+
+          if(texto !== nuevoTexto){
+            regla.media.mediaText = nuevoTexto;
             tocoAlgo = true;
           }
         }
@@ -1010,7 +1041,15 @@ display:inline-block;
 .badgeEstado.PARCIAL,
 .badgeEstado.ABIERTO,
 .badgeEstado.ABIERTA,
+.badgeEstado.APROBADA_PARCIAL,
+.badgeEstado.SURTIDO_PARCIAL,
+.badgeEstado.RECIBIDA_PARCIAL,
 .badgeEstado.DIFERENCIA{ background:var(--color-warning-bg); color:var(--color-warning); }
+
+.badgeEstado.LISTA_DESPACHO,
+.badgeEstado.EN_TRANSITO{ background:var(--color-info-bg); color:var(--color-info); }
+
+.badgeEstado.CON_INCIDENCIA{ background:var(--color-danger-bg); color:var(--color-danger); }
 
 .tablaImportar{
 width:100%;
@@ -1286,6 +1325,22 @@ transition:box-shadow .2s ease;
 .panelesInicio3 .cardProducto{
 max-width:none;
 margin:0;
+/* Bug real de CSS Grid: un <canvas> (elemento reemplazado) dentro de una
+   celda 1fr no se encoge por debajo de su ancho intrínseco (300px nativo
+   de Chart.js antes de que su JS lo redimensione) a menos que la celda
+   tenga min-width:0 — sin esto, la tarjeta de la gráfica empujaba todo
+   el grid ~54px fuera del viewport en móvil (confirmado con Playwright:
+   Entradas vs. Salidas y Stock crítico del Dashboard). */
+min-width:0;
+}
+
+/* Cualquier <canvas> de Chart.js: nunca debe exceder el ancho de su
+   contenedor. Chart.js normalmente ya fija su propio ancho por JS, pero
+   antes de esa primera medición (o si el contenedor todavía no tiene su
+   ancho final, como dentro de un grid) el canvas puede quedarse con su
+   ancho nativo y desbordar horizontalmente la página en móvil. */
+canvas{
+max-width:100%;
 }
 
 .kpiCardNueva{
@@ -1537,6 +1592,39 @@ animation:modalScaleIn .18s ease;
 .modalEscanerCaja h3{
 color:var(--guinda);
 margin-top:0;
+}
+
+/* MODAL CONFIRMAR — reemplaza confirm() nativo, mismo look que los demás modales */
+
+.modalConfirmarCaja{
+text-align:left;
+width:380px;
+}
+
+.modalConfirmarCaja h3{
+color:var(--guinda);
+margin:0 0 8px;
+}
+
+.modalConfirmarCaja p{
+font-size:13.5px;
+color:var(--text-muted);
+white-space:pre-line;
+margin:0;
+}
+
+.modalConfirmarBotones{
+display:flex;
+gap:10px;
+margin-top:18px;
+}
+
+.modalConfirmarBotones .boton{
+flex:1;
+margin:0;
+padding:12px;
+font-size:14px;
+max-width:none;
 }
 
 /* MODAL LISTA PRODUCTOS (stock crítico) */
@@ -1797,6 +1885,87 @@ cursor:pointer;
 color:var(--color-primary);
 }
 
+/* FAB DE ACCIONES RÁPIDAS (Fase 5 — móvil operativo) — oculto por
+   defecto (mismo criterio que .navInferior arriba): solo se activa
+   dentro de @media (max-width:768px) más abajo, así que en escritorio
+   nunca existe visualmente pase lo que pase. */
+.fabAccionesMoviles{
+display:none;
+position:fixed;
+right:calc(16px + env(safe-area-inset-right));
+bottom:calc(20px + env(safe-area-inset-bottom));
+z-index:96;
+flex-direction:column;
+align-items:flex-end;
+gap:10px;
+}
+
+.fabBoton{
+width:56px;
+height:56px;
+border-radius:50%;
+border:none;
+background:var(--guinda);
+color:#fff;
+font-size:26px;
+line-height:1;
+box-shadow:var(--shadow-lg);
+cursor:pointer;
+display:flex;
+align-items:center;
+justify-content:center;
+transition:transform .18s ease;
+}
+
+.fabAccionesMoviles.abierto .fabBoton{
+transform:rotate(45deg);
+}
+
+.fabAccionesLista{
+display:flex;
+flex-direction:column;
+align-items:flex-end;
+gap:8px;
+opacity:0;
+pointer-events:none;
+transform:translateY(8px);
+transition:opacity .16s ease,transform .16s ease;
+}
+
+.fabAccionesMoviles.abierto .fabAccionesLista{
+opacity:1;
+pointer-events:auto;
+transform:translateY(0);
+}
+
+.fabAccionItem{
+display:flex;
+align-items:center;
+gap:8px;
+border:none;
+background:var(--bg-panel);
+color:var(--text);
+padding:9px 14px 9px 9px;
+border-radius:999px;
+box-shadow:var(--shadow-md,var(--shadow-lg));
+font-size:13px;
+font-weight:600;
+cursor:pointer;
+white-space:nowrap;
+}
+
+.fabAccionIcono{
+width:34px;
+height:34px;
+border-radius:50%;
+background:var(--bg);
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:16px;
+flex-shrink:0;
+}
+
 /* RESPONSIVE */
 
 @media (min-width:769px){
@@ -1894,19 +2063,49 @@ pointer-events:none;
 
 @media (max-width:768px){
 
+/* Riel de íconos siempre visible (mismo criterio que el sidebar
+   colapsado de escritorio, pero disparado por tap en vez de hover —
+   en touch no hay hover). Reemplaza el drawer que antes vivía oculto
+   por completo (left:-100%) y solo aparecía como panel ancho encima
+   de un overlay oscuro. */
 #sidebar{
+position:relative;
+left:auto;
+top:auto;
+height:auto;
+width:64px;
+flex-shrink:0;
+overflow-x:hidden;
+overflow-y:auto;
+transition:width .2s ease;
+padding:16px 10px;
+padding-left:calc(10px + env(safe-area-inset-left));
+padding-top:calc(16px + env(safe-area-inset-top));
+}
+
+#sidebar:not(.abierto) .textoMenu,
+#sidebar:not(.abierto) .flechaGrupo{
+opacity:0;
+}
+
+#sidebar:not(.abierto) .submenu{
+max-height:0 !important;
+}
+
+/* Tap en el hamburguesa expande el riel a un panel completo (con
+   overlay oscuro detrás, igual que antes) para ver las etiquetas y
+   los subgrupos; al navegar o tocar fuera vuelve al riel angosto. */
+#sidebar.abierto{
 position:fixed;
-left:-100%;
+left:0;
 top:0;
 height:100%;
 width:min(250px,80vw);
+z-index:150;
 box-shadow:var(--shadow-lg);
+padding:20px 14px;
 padding-left:calc(14px + env(safe-area-inset-left));
 padding-top:calc(20px + env(safe-area-inset-top));
-}
-
-#sidebar.abierto{
-left:0;
 }
 
 .hamburguesa{
@@ -1922,9 +2121,12 @@ display:flex;
 grid-template-columns:1fr;
 }
 
+/* 2 columnas (no 1) — tarjetas grandes y tocables, pero sin la lista
+   larga de 6 tarjetas apiladas a lo alto de toda la pantalla que
+   obligaba a scrollear de más antes de ver el resto del Dashboard. */
 .kpiGrid{
 grid-template-columns:repeat(2,1fr);
-gap:8px;
+gap:10px;
 }
 
 .indicadores{
@@ -1932,16 +2134,42 @@ grid-template-columns:repeat(3,1fr);
 gap:8px;
 }
 
+.gridFormulario{
+grid-template-columns:1fr;
+}
+
+/* Mapa de calor de racks: min-height:26px + aspect-ratio:1 (ver base) no
+   tiene techo — con muchas columnas en pantalla angosta podía forzar
+   overflow horizontal de toda la página. Se reduce el mínimo táctil en
+   mobile y, de respaldo, el contenedor scrollea internamente si aun así
+   no cabe, en vez de desbordar la página. */
+.heatmapGrid{
+overflow-x:auto;
+-webkit-overflow-scrolling:touch;
+}
+
+.heatmapCelda{
+min-height:18px;
+}
+
 .filaConEscaner{
 flex-direction:row;
 }
 
-.navInferior{
-display:flex;
-}
+/* .navInferior queda oculta (display:none de la regla base): con el
+   riel de íconos siempre visible, la barra inferior quedaba duplicando
+   accesos y tapando contenido — ver captura de referencia del usuario. */
 
 .contenedor{
-padding-bottom:calc(20px + 58px + env(safe-area-inset-bottom));
+padding-bottom:calc(90px + env(safe-area-inset-bottom));
+}
+
+/* FAB de acciones rápidas (Fase 5): el riel de íconos ya resuelve
+   NAVEGACIÓN entre pantallas — esto es distinto, un atajo para las
+   ACCIONES operativas de piso (buscar/escanear/recibir/surtir/contar)
+   sin tener que entrar primero a un módulo del menú. */
+.fabAccionesMoviles{
+display:flex;
 }
 
 /* MODALES: en escritorio se ven igual (caja centrada). En móvil, la
@@ -2025,10 +2253,14 @@ display:block;
 border:1px solid var(--border);
 border-radius:var(--radius-md);
 margin-bottom:6px;
-padding:0 12px;
+padding:0 14px;
 background:var(--bg-panel);
 box-shadow:var(--shadow-sm);
-font-size:12.5px;
+/* 14.5px, no 12.5px: en un teléfono real (no en el emulador) este es el
+   texto más repetido de toda la app — cada tabla del sistema se convierte
+   en estas tarjetas — así que es el que más obligaba a acercar la
+   pantalla para leerlo. */
+font-size:14.5px;
 }
 
 .tablaTop td, .tablaActividad td, .tablaImportar td{
@@ -2036,11 +2268,11 @@ display:flex;
 align-items:center;
 justify-content:space-between;
 gap:10px;
-padding:5px 0;
+padding:7px 0;
 border-bottom:1px solid var(--border);
 text-align:right;
 white-space:normal;
-line-height:1.25;
+line-height:1.3;
 }
 
 .tablaTop td:last-child, .tablaActividad td:last-child, .tablaImportar td:last-child{
@@ -2050,7 +2282,7 @@ border-bottom:none;
 .tablaTop td::before, .tablaActividad td::before, .tablaImportar td::before{
 content:attr(data-label);
 font-weight:700;
-font-size:10px;
+font-size:11.5px;
 text-transform:uppercase;
 letter-spacing:.3px;
 color:var(--text-muted);
@@ -2070,6 +2302,27 @@ padding:18px 0;
 
 .tablaTop td[colspan]::before, .tablaActividad td[colspan]::before, .tablaImportar td[colspan]::before{
 content:none;
+}
+
+/* Widget "¿Qué necesita atención?" (Dashboard y Centro de Tareas): mismo
+   criterio que arriba, solo en móvil — en escritorio se queda con el
+   tamaño original (inline, ver dibujarAccionesRequeridas). */
+.filaAccionRequerida{
+padding:12px 14px !important;
+}
+
+.etiquetaAccionRequerida{
+font-size:11.5px !important;
+}
+
+.tituloAccionRequerida{
+font-size:15px !important;
+margin-top:2px !important;
+}
+
+.detalleAccionRequerida{
+font-size:12.5px !important;
+margin-top:2px !important;
 }
 
 }
@@ -2153,8 +2406,12 @@ animation:fadeInUp .2s ease;
 
 /* TABLET (769px–1024px): el sidebar sigue en modo mini-colapsado (ver el
    media query de min-width:769px), aquí solo se ajusta la densidad de
-   contenido para pantallas más angostas que un laptop grande. */
-@media (max-width:1024px){
+   contenido para pantallas más angostas que un laptop grande.
+   Acotado con min-width:769px para no pisar (por orden de cascada) las
+   reglas de @media (max-width:768px) de más abajo — antes este bloque,
+   al no tener min-width, ganaba en ≤768px por aparecer después en el
+   archivo y dejaba el kpiGrid en 3 columnas en vez de 1. */
+@media (min-width:769px) and (max-width:1024px){
 
 .kpiGrid{
 grid-template-columns:repeat(3,1fr);
@@ -2231,11 +2488,6 @@ display:none;
 
 .chipUsuarioHeader .datosUsuario{
 display:none;
-}
-
-.kpiGrid{
-grid-template-columns:repeat(2,1fr);
-gap:8px;
 }
 
 .kpiCard{
@@ -2678,7 +2930,7 @@ function buscarGlobalHeader(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .busquedaGlobalHeaderApp(texto);
+      .busquedaGlobalHeaderApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -2723,6 +2975,11 @@ document.addEventListener("click", function(e){
     if(resultados) resultados.style.display = "none";
     if(anchoRealDispositivo() <= 480) buscador.classList.remove("expandido");
   }
+  const fab = document.getElementById("fabAccionesMoviles");
+  if(fab && fab.classList.contains("abierto") && !fab.contains(e.target)){
+    fab.classList.remove("abierto");
+    document.getElementById("fabBotonPrincipal").setAttribute("aria-expanded", "false");
+  }
 });
 
 document.addEventListener("keydown", function(e){
@@ -2733,9 +2990,9 @@ document.addEventListener("keydown", function(e){
   }
 });
 
-function cerrarSesionTAGERS(){
+async function cerrarSesionTAGERS(){
 
-  if(!confirm("¿Cerrar sesión?")) return;
+  if(!(await tgConfirmar("¿Cerrar sesión?"))) return;
 
   const token = obtenerTokenSesion();
 
@@ -2834,14 +3091,15 @@ function aplicarPermisosPorRol(rol){
   }
 })();
 
-function ejecutarMigracionExistencia(){
+async function ejecutarMigracionExistencia(){
 
-  if(!confirm(
+  if(!(await tgConfirmar(
     "Esto convierte la columna Existencia de MATRIZ de fórmula a valor fijo (deja los números tal cual están ahora, solo quita la fórmula).\n\n" +
-    "Solo debe correrse UNA vez, antes de empezar a usar Entradas/Salidas/Conteos/Inventario con la nueva lógica.\n\n¿Continuar?"
-  )) return;
+    "Solo debe correrse UNA vez, antes de empezar a usar Entradas/Salidas/Conteos/Inventario con la nueva lógica.\n\n¿Continuar?",
+    { peligroso: true }
+  ))) return;
 
-  if(!confirm("Confirma otra vez: ¿ya verificaste que la existencia actual en MATRIZ es correcta antes de congelarla?")) return;
+  if(!(await tgConfirmar("Confirma otra vez: ¿ya verificaste que la existencia actual en MATRIZ es correcta antes de congelarla?", { peligroso: true }))) return;
 
   google.script.run
     .withSuccessHandler(function(resultado){
@@ -2854,17 +3112,18 @@ function ejecutarMigracionExistencia(){
 
 }
 
-function ejecutarMigracionCostoUnitario(){
+async function ejecutarMigracionCostoUnitario(){
 
-  if(!confirm(
+  if(!(await tgConfirmar(
     "Esto cambia el significado de Costo Unitario en MATRIZ para los productos con Convertir=\"SI\":\n\n" +
     "Antes: precio de la presentación completa (ej. $300 la caja de 1000 pz)\n" +
     "Después: precio de UNA unidad real (ej. $0.30 por pz)\n\n" +
     "Se calcula dividiendo el Costo Unitario actual entre la Presentación de cada producto. Los productos con Convertir=\"NO\" no se tocan.\n\n" +
-    "Solo debe correrse UNA vez. ¿Continuar?"
-  )) return;
+    "Solo debe correrse UNA vez. ¿Continuar?",
+    { peligroso: true }
+  ))) return;
 
-  if(!confirm("Confirma otra vez: ¿ya revisaste que la Presentación esté bien capturada para todos tus productos con Convertir=\"SI\"? Si está mal, el precio por unidad saldría mal.")) return;
+  if(!(await tgConfirmar("Confirma otra vez: ¿ya revisaste que la Presentación esté bien capturada para todos tus productos con Convertir=\"SI\"? Si está mal, el precio por unidad saldría mal.", { peligroso: true }))) return;
 
   google.script.run
     .withSuccessHandler(function(resultado){
@@ -3034,7 +3293,7 @@ function dibujarTablaNuevaRequisicionReceta(){
 
 }
 
-function enviarNuevaRequisicionReceta(){
+async function enviarNuevaRequisicionReceta(){
 
   sincronizarCantidadesRequisicionReceta();
 
@@ -3046,7 +3305,7 @@ function enviarNuevaRequisicionReceta(){
     return;
   }
 
-  if(!confirm("¿Enviar esta requisición con " + items.length + " receta(s) a Almacén?")) return;
+  if(!(await tgConfirmar("¿Enviar esta requisición con " + items.length + " receta(s) a Almacén?"))) return;
 
   activarCargaBoton("btnEnviarRequisicionReceta", true);
 
@@ -3147,7 +3406,7 @@ function cargarSugeridosRequisicion(){
 
         })
         .withFailureHandler(function(){ cont.innerHTML = ""; })
-        .obtenerProductosSugeridosAreaApp(acceso.area);
+        .obtenerProductosSugeridosAreaApp(acceso.area, obtenerTokenSesion());
 
     })
     .withFailureHandler(function(){ cont.innerHTML = ""; })
@@ -3193,7 +3452,7 @@ function buscarProductoParaRequisicion(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRequisicionApp(texto);
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -3263,7 +3522,7 @@ function dibujarTablaNuevaRequisicion(){
 
 }
 
-function enviarNuevaRequisicion(){
+async function enviarNuevaRequisicion(){
 
   const observaciones = document.getElementById("observacionesRequisicion").value.trim();
   const fechaRequerida = document.getElementById("fechaRequeridaRequisicion").value || "";
@@ -3282,7 +3541,7 @@ function enviarNuevaRequisicion(){
     return;
   }
 
-  if(!confirm("¿Enviar esta requisición con " + items.length + " producto(s) a Almacén?")) return;
+  if(!(await tgConfirmar("¿Enviar esta requisición con " + items.length + " producto(s) a Almacén?"))) return;
 
   activarCargaBoton("btnEnviarRequisicion", true);
 
@@ -3330,6 +3589,7 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
               <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
               ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--color-primary)" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">${tgIcon("cajas",15)}</span>` : ""}
+              ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--terracota)" title="Cancelar requisición" onclick="cancelarRequisicionUI('${r.folio}', '${contenedorId}')">${tgIcon("x",15)}</span>` : ""}
               ${r.estado === "ENTREGADA" ? `<span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">${tgIcon("descargar",15)}</span>` : ""}
             </td>
           </tr>
@@ -3337,6 +3597,30 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
       </tbody>
     </table>
   `;
+
+}
+
+/**
+ * Cancela una requisición PENDIENTE que se creó por error (p. ej. dos
+ * veces la misma, o con datos equivocados) — solo visible para
+ * Almacén, solo mientras siga PENDIENTE. contenedorId decide qué
+ * pantalla recargar después (Requisiciones Pendientes o Preparación),
+ * según de dónde se haya hecho clic.
+ */
+async function cancelarRequisicionUI(folio, contenedorId){
+
+  const motivo = prompt("¿Por qué se cancela la requisición " + folio + "? (opcional)");
+  if(motivo === null) return; // el usuario le dio "Cancelar" al prompt, no seguir
+
+  if(!(await tgConfirmar("¿Cancelar definitivamente la requisición " + folio + "? No se puede deshacer.", { peligroso: true }))) return;
+
+  google.script.run
+    .withSuccessHandler(function(){
+      if(contenedorId === "listaParaPreparar") abrirPreparacionRequisicion();
+      else if(contenedorId === "listaRequisicionesPendientes") abrirRequisicionesPendientes();
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .cancelarRequisicionApp(folio, motivo || "", obtenerTokenSesion());
 
 }
 
@@ -3356,6 +3640,8 @@ function abrirRequisicionesSucursal(){
 
   const contenedor = document.querySelector(".contenedor");
   window.itemsRequisicionSucursal = [];
+  window.filtroReqSucGrupo = "todas";
+  window.textoReqSucBandeja = "";
 
   contenedor.innerHTML = `
 
@@ -3740,23 +4026,107 @@ function cargarListaRequisicionesSucursal(){
 
 }
 
+/**
+ * Grupos de la bandeja — agrupan los 14 estados del pipeline en categorías
+ * de negocio, calculadas 100% en el cliente sobre la lista ya cargada
+ * (no agrega ninguna llamada al backend). Cada tile de KPI es también
+ * el filtro: al hacer clic se recorta la tabla de abajo a ese grupo.
+ */
+const GRUPOS_REQ_SUC_BANDEJA = {
+  todas:      { label:"Todas",           icono:"documento",       tono:"guinda",    estados:null },
+  pendiente:  { label:"Pendientes",      icono:"reloj",           tono:"terracota", estados:["PENDIENTE"] },
+  proceso:    { label:"En preparación",  icono:"cajas",           tono:"guinda",    estados:["APROBADA","APROBADA_PARCIAL","SURTIDO_PARCIAL","LISTA_DESPACHO"] },
+  transito:   { label:"En tránsito",     icono:"camion",          tono:"guinda",    estados:["EN_TRANSITO"] },
+  porCerrar:  { label:"Por cerrar",      icono:"check",           tono:"oliva",     estados:["RECIBIDA","RECIBIDA_PARCIAL"] },
+  incidencia: { label:"Con incidencia",  icono:"alertaTriangulo", tono:"terracota", estados:["CON_INCIDENCIA"] },
+  cerrada:    { label:"Cerradas",        icono:"candado",         tono:"oliva",     estados:["CERRADA","ENTREGADA"] }
+};
+
 function dibujarTablaRequisicionesSucursal(lista){
 
   const cont = document.getElementById("listaRequisicionesSucursal");
   if(!cont) return;
 
-  if(!lista || !lista.length){
+  window.listaReqSucBandeja = lista || [];
+  if(!window.filtroReqSucGrupo) window.filtroReqSucGrupo = "todas";
+
+  if(!window.listaReqSucBandeja.length){
     cont.innerHTML = tgEmptyState("documento", "No hay requisiciones de sucursal todavía");
     return;
   }
 
   cont.innerHTML = `
+    <div id="kpisReqSucBandeja" class="kpiGrid" style="margin-bottom:14px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"></div>
+    <div style="margin-bottom:10px;max-width:280px">
+      <input id="buscarReqSucBandeja" placeholder="🔎 Folio o solicitante..." oninput="filtrarReqSucBandeja()" autocomplete="off" style="margin:0">
+    </div>
+    <div id="tablaReqSucBandeja"></div>
+  `;
+
+  const elBuscar = document.getElementById("buscarReqSucBandeja");
+  if(elBuscar) elBuscar.value = window.textoReqSucBandeja || "";
+
+  redibujarBandejaReqSuc();
+
+}
+
+function filtrarGrupoReqSucBandeja(grupo){
+  window.filtroReqSucGrupo = grupo;
+  redibujarBandejaReqSuc();
+}
+
+function filtrarReqSucBandeja(){
+  const elBuscar = document.getElementById("buscarReqSucBandeja");
+  window.textoReqSucBandeja = elBuscar ? elBuscar.value : "";
+  redibujarBandejaReqSuc();
+}
+
+function redibujarBandejaReqSuc(){
+
+  const lista = window.listaReqSucBandeja || [];
+  const grupoActivo = window.filtroReqSucGrupo || "todas";
+  const texto = (window.textoReqSucBandeja || "").trim().toLowerCase();
+
+  const kpiCont = document.getElementById("kpisReqSucBandeja");
+  if(kpiCont){
+    kpiCont.innerHTML = Object.keys(GRUPOS_REQ_SUC_BANDEJA).map(clave => {
+      const g = GRUPOS_REQ_SUC_BANDEJA[clave];
+      const cantidad = g.estados ? lista.filter(r => g.estados.includes(r.estado)).length : lista.length;
+      const activo = clave === grupoActivo;
+      return `
+        <div class="kpiCard tono-${g.tono}" style="cursor:pointer;${activo ? "outline:2px solid var(--" + g.tono + ");" : ""}" onclick="filtrarGrupoReqSucBandeja('${clave}')">
+          <div class="kpiIcono">${tgIcon(g.icono,18)}</div>
+          <div class="kpiLabel">${g.label}</div>
+          <div class="kpiValor">${cantidad}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  const grupo = GRUPOS_REQ_SUC_BANDEJA[grupoActivo];
+  let filtrada = grupo.estados ? lista.filter(r => grupo.estados.includes(r.estado)) : lista;
+  if(texto){
+    filtrada = filtrada.filter(r =>
+      String(r.folio).toLowerCase().includes(texto) ||
+      String(r.solicitante).toLowerCase().includes(texto)
+    );
+  }
+
+  const tablaCont = document.getElementById("tablaReqSucBandeja");
+  if(!tablaCont) return;
+
+  if(!filtrada.length){
+    tablaCont.innerHTML = tgEmptyState("documento", "Ninguna requisición coincide con este filtro");
+    return;
+  }
+
+  tablaCont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
         <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
       <tbody>
-        ${lista.map(r => `
+        ${filtrada.map(r => `
           <tr>
             <td><b>${r.folio}</b></td>
             <td>${r.sucursal}</td>
@@ -3786,7 +4156,10 @@ function verDetalleRequisicionSucursal(folio){
       google.script.run
         .withSuccessHandler(function(detalle){
 
-          const puedeEntregar = acceso.esTodasLasSucursales && detalle.estado === "PENDIENTE";
+          // "Entrega directa" (flujo de un paso, de siempre) sigue disponible
+          // en PENDIENTE tal cual funcionaba — abajo se agrega, aparte, el
+          // flujo nuevo de aprobación/reserva/tránsito para quien lo prefiera.
+          const puedeEntregarDirecto = acceso.esTodasLasSucursales && detalle.estado === "PENDIENTE";
 
           cont.innerHTML = `
             <div class="cardProducto">
@@ -3794,29 +4167,47 @@ function verDetalleRequisicionSucursal(folio){
               <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">
                 Solicitó: ${detalle.solicitante} — ${detalle.fecha}${detalle.fechaRequerida ? " — Requerida: " + detalle.fechaRequerida : ""} — ${dibujarBadgeEstadoRequisicion(detalle.estado)}
               </p>
-              <table class="tablaTop" style="font-size:13px">
-                <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia en ${detalle.sucursal}</th>${puedeEntregar ? '<th style="text-align:right">Entregar</th>' : '<th style="text-align:right">Entregado</th>'}</tr></thead>
+              <table class="tablaTop" style="font-size:12px">
+                <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia ${detalle.sucursal}</th><th style="text-align:right">Aprobado</th><th style="text-align:right">Surtido</th><th style="text-align:right">Enviado</th><th style="text-align:right">Recibido</th></tr></thead>
                 <tbody>
-                  ${detalle.items.map((it,i) => `
-                    <tr>
-                      <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}</span></td>
+                  ${detalle.items.map(it => `
+                    <tr style="${it.estadoLinea === 'RECHAZADA' ? 'opacity:.55' : ''}">
+                      <td>${it.producto}<br><span style="font-size:10px;color:var(--text-muted)">${it.codigo}${it.estadoLinea === 'RECHAZADA' ? ' · rechazada: ' + it.motivoRechazo : ''}</span></td>
                       <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
                       <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
-                      <td style="text-align:right">${
-                        puedeEntregar
-                          ? `<input type="number" id="entregarReqSuc${i}" value="${it.entregarSugerido}" min="0" max="${it.existencia}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">`
-                          : (it.entregado || 0) + " " + (it.unidad||"")
-                      }</td>
+                      <td style="text-align:right">${it.aprobado || "—"}</td>
+                      <td style="text-align:right">${it.surtido || "—"}</td>
+                      <td style="text-align:right">${it.enviado || "—"}</td>
+                      <td style="text-align:right">${it.recibido || "—"}</td>
                     </tr>
                   `).join("")}
                 </tbody>
               </table>
+              ${puedeEntregarDirecto ? `
+                <details style="margin-top:14px">
+                  <summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted)">Entrega directa (sin pasar por aprobación)</summary>
+                  <table class="tablaTop" style="font-size:13px;margin-top:8px">
+                    <thead><tr><th>Producto</th><th style="text-align:right">Entregar</th></tr></thead>
+                    <tbody>
+                      ${detalle.items.map((it,i) => `
+                        <tr><td>${it.producto}</td><td style="text-align:right"><input type="number" id="entregarReqSuc${i}" value="${it.entregarSugerido}" min="0" max="${it.existencia}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px"></td></tr>
+                      `).join("")}
+                    </tbody>
+                  </table>
+                  <div class="boton" id="btnConfirmarEntregaSucursal" style="margin-top:10px" onclick="confirmarEntregaRequisicionSucursalUI('${detalle.folio}')">${tgIcon("check",17)} Confirmar entrega directa</div>
+                </details>
+              ` : ""}
               <div id="mensajeDetalleRequisicionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
-              ${puedeEntregar ? `<div class="boton" id="btnConfirmarEntregaSucursal" style="margin-top:16px" onclick="confirmarEntregaRequisicionSucursalUI('${detalle.folio}')">${tgIcon("check",17)} Confirmar entrega</div>` : ""}
+              <div id="accionesPipelineReqSuc" style="margin-top:14px"></div>
+              <details style="margin-top:14px" ontoggle="if(this.open) cargarHistorialReqSuc('${detalle.folio}')">
+                <summary style="cursor:pointer;font-size:12.5px;color:var(--text-muted)">${tgIcon("reloj",13)} Ver historial</summary>
+                <div id="historialReqSuc" style="margin-top:10px">Cargando…</div>
+              </details>
             </div>
           `;
 
           window.detalleRequisicionSucursalActual = detalle;
+          dibujarAccionesPipelineReqSuc(detalle, acceso);
 
         })
         .withFailureHandler(function(e){ cont.innerHTML = `<div class="cardProducto">⚠️ ${e.message}</div>`; })
@@ -3828,7 +4219,336 @@ function verDetalleRequisicionSucursal(folio){
 
 }
 
-function confirmarEntregaRequisicionSucursalUI(folio){
+/** Timeline de HISTORIAL_REQUISICIONES — se carga solo al abrir el <details>, no en cada render del detalle. */
+function cargarHistorialReqSuc(folio){
+
+  const cont = document.getElementById("historialReqSuc");
+  if(!cont) return;
+
+  google.script.run
+    .withSuccessHandler(function(historial){
+
+      if(!historial || !historial.length){
+        cont.innerHTML = tgEmptyState("reloj", "Sin movimientos registrados todavía");
+        return;
+      }
+
+      cont.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${historial.map(h => `
+            <div style="display:flex;gap:10px;border-left:2px solid var(--border);padding-left:12px">
+              <div style="flex:1">
+                <div style="font-size:12.5px;font-weight:700">${h.accion}</div>
+                <div style="font-size:11.5px;color:var(--text-muted)">${h.fecha} — ${h.usuario}</div>
+                ${h.descripcion ? `<div style="font-size:12px;margin-top:2px">${h.descripcion}</div>` : ""}
+                ${h.estadoAnterior && h.estadoNuevo && h.estadoAnterior !== h.estadoNuevo ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${h.estadoAnterior} → ${h.estadoNuevo}</div>` : ""}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerHistorialRequisicionSucursalApp(folio, obtenerTokenSesion());
+
+}
+
+/**
+ * Pipeline nuevo (Plano de Abastecimiento) — aprobar/rechazar → surtir
+ * → despachar → recibir → resolver incidencias → cerrar. Aparte del
+ * flujo de "entrega directa" de arriba, que sigue igual. Cada bloque
+ * de acciones solo se muestra si el estado actual y el acceso del
+ * usuario lo permiten — el backend vuelve a validar todo, esto es
+ * solo para no ofrecer botones que de todos modos se rechazarían.
+ */
+function dibujarAccionesPipelineReqSuc(detalle, acceso){
+
+  const cont = document.getElementById("accionesPipelineReqSuc");
+  if(!cont) return;
+
+  if(!acceso.esTodasLasSucursales){
+    if(detalle.estado === "EN_TRANSITO" || detalle.estado === "RECIBIDA_PARCIAL"){
+      cargarTransferenciaReqSuc(detalle.folio);
+    } else {
+      cont.innerHTML = "";
+    }
+    return;
+  }
+
+  const lineasPendientes = detalle.items.filter(it => it.estadoLinea !== "RECHAZADA" && it.estadoLinea !== "APROBADA" && it.estadoLinea !== "APROBADA_PARCIAL");
+  const lineasAprobadas = detalle.items.filter(it => it.aprobado > 0);
+
+  const estadosCancelables = ["PENDIENTE","APROBADA","APROBADA_PARCIAL","SURTIDO_PARCIAL","LISTA_DESPACHO"];
+  const botonCancelar = estadosCancelables.indexOf(detalle.estado) !== -1
+    ? `<div class="boton secundario" style="margin-top:10px" onclick="cancelarRequisicionSucursalUI('${detalle.folio}')">${tgIcon("x",15)} Cancelar requisición</div>`
+    : "";
+
+  if((detalle.estado === "PENDIENTE" || detalle.estado === "APROBADA_PARCIAL") && lineasPendientes.length){
+    cont.innerHTML = dibujarFormularioAprobacionReqSuc(lineasPendientes) + botonCancelar;
+    return;
+  }
+
+  if(["APROBADA","APROBADA_PARCIAL","SURTIDO_PARCIAL"].indexOf(detalle.estado) !== -1 && lineasAprobadas.length){
+    cont.innerHTML = dibujarFormularioSurtidoReqSuc(lineasAprobadas) + botonCancelar;
+    return;
+  }
+
+  if(detalle.estado === "LISTA_DESPACHO"){
+    cont.innerHTML = `<div class="boton success" onclick="despacharRequisicionSucursalUI('${detalle.folio}')">${tgIcon("camion",17)} Despachar (crear transferencia)</div>` + botonCancelar;
+    return;
+  }
+
+  if(detalle.estado === "EN_TRANSITO" || detalle.estado === "RECIBIDA_PARCIAL"){
+    cargarTransferenciaReqSuc(detalle.folio);
+    return;
+  }
+
+  if(detalle.estado === "CON_INCIDENCIA"){
+    cargarIncidenciasReqSuc(detalle.folio);
+    return;
+  }
+
+  if(detalle.estado === "RECIBIDA"){
+    cont.innerHTML = `<div class="boton success" onclick="cerrarRequisicionSucursalUI('${detalle.folio}')">${tgIcon("checkCirculo",17)} Cerrar requisición</div>`;
+    return;
+  }
+
+  cont.innerHTML = "";
+
+}
+
+function dibujarFormularioAprobacionReqSuc(lineas){
+  return `
+    <h4 style="margin:14px 0 8px">Aprobar / rechazar</h4>
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia CEDIS</th><th style="text-align:right">Aprobar</th><th></th></tr></thead>
+      <tbody>
+        ${lineas.map((it,i) => `
+          <tr>
+            <td>${it.producto}</td>
+            <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
+            <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+            <td style="text-align:right"><input type="number" id="aprobarLinea${i}" data-codigo="${it.codigo}" value="${it.solicitado}" min="0" max="${it.solicitado}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px"></td>
+            <td><span style="cursor:pointer;color:var(--terracota);font-size:12px;white-space:nowrap" onclick="rechazarLineaReqSucUI('${it.codigo}')">Rechazar</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div class="boton success" style="margin-top:10px" onclick="aprobarLineasReqSucUI()">${tgIcon("check",17)} Aprobar</div>
+  `;
+}
+
+function aprobarLineasReqSucUI(){
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+  const aprobaciones = [];
+  document.querySelectorAll('[id^="aprobarLinea"]').forEach(input => {
+    const cantidad = Number(input.value) || 0;
+    if(cantidad > 0) aprobaciones.push({ codigo: input.dataset.codigo, cantidadAprobada: cantidad });
+  });
+  if(!aprobaciones.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad a aprobar", "error");
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ " + res.lineasAprobadas + " línea(s) aprobadas — estado: " + res.estado, "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .aprobarLineaRequisicionSucursalApp(detalle.folio, aprobaciones, obtenerTokenSesion());
+}
+
+function rechazarLineaReqSucUI(codigo){
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+  const motivo = prompt("¿Por qué se rechaza este producto?");
+  if(!motivo) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Producto rechazado", "ok");
+      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 600);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .rechazarLineaRequisicionSucursalApp(detalle.folio, codigo, motivo, obtenerTokenSesion());
+}
+
+function dibujarFormularioSurtidoReqSuc(lineas){
+  return `
+    <h4 style="margin:14px 0 8px">Registrar surtido</h4>
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Aprobado</th><th style="text-align:right">Existencia CEDIS</th><th style="text-align:right">Surtir</th></tr></thead>
+      <tbody>
+        ${lineas.map((it,i) => `
+          <tr>
+            <td>${it.producto}</td>
+            <td style="text-align:right">${it.aprobado} ${it.unidad||""}</td>
+            <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+            <td style="text-align:right"><input type="number" id="surtirLinea${i}" data-codigo="${it.codigo}" value="${Math.min(it.aprobado, it.existencia)}" min="0" max="${it.aprobado}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px"></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div class="boton success" style="margin-top:10px" onclick="surtirReqSucUI()">${tgIcon("cajas",17)} Registrar surtido</div>
+  `;
+}
+
+function surtirReqSucUI(){
+  const detalle = window.detalleRequisicionSucursalActual;
+  if(!detalle) return;
+  const surtido = [];
+  document.querySelectorAll('[id^="surtirLinea"]').forEach(input => {
+    const cantidad = Number(input.value) || 0;
+    if(cantidad > 0) surtido.push({ codigo: input.dataset.codigo, cantidadSurtida: cantidad });
+  });
+  if(!surtido.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad surtida", "error");
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Surtido registrado — estado: " + res.estado, "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .surtirRequisicionSucursalApp(detalle.folio, surtido, obtenerTokenSesion());
+}
+
+async function despacharRequisicionSucursalUI(folio){
+  if(!(await tgConfirmar("¿Despachar " + folio + "? Esto crea la transferencia y descuenta la existencia real de CEDIS."))) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Transferencia " + res.folioTransferencia + " creada — en tránsito", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .despacharRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+function cargarTransferenciaReqSuc(folio){
+  const cont = document.getElementById("accionesPipelineReqSuc");
+  if(!cont) return;
+  cont.innerHTML = "Cargando transferencia…";
+  google.script.run
+    .withSuccessHandler(function(transf){
+      if(!transf){ cont.innerHTML = ""; return; }
+      window.transferenciaReqSucActual = transf;
+      cont.innerHTML = `
+        <h4 style="margin:14px 0 8px">Transferencia ${transf.folioTransferencia} — ${transf.sucursalOrigen} → ${transf.sucursalDestino}</h4>
+        <table class="tablaTop" style="font-size:13px">
+          <thead><tr><th>Producto</th><th style="text-align:right">Enviado</th><th style="text-align:right">Recibir</th></tr></thead>
+          <tbody>
+            ${transf.items.map((it,i) => `
+              <tr>
+                <td>${it.producto}</td>
+                <td style="text-align:right">${it.enviado} ${it.unidad||""}</td>
+                <td style="text-align:right">${
+                  it.recibido !== "" ? it.recibido + " " + (it.unidad||"") + " ✓"
+                  : `<input type="number" id="recibirLinea${i}" data-codigo="${it.codigo}" value="${it.enviado}" min="0" max="${it.enviado}" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">`
+                }</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <div class="boton success" style="margin-top:10px" onclick="recibirTransferenciaReqSucUI('${folio}')">${tgIcon("check",17)} Confirmar recepción</div>
+      `;
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerTransferenciaPorRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+async function recibirTransferenciaReqSucUI(folio){
+  const transf = window.transferenciaReqSucActual;
+  if(!transf) return;
+  const recepciones = [];
+  document.querySelectorAll('[id^="recibirLinea"]').forEach(input => {
+    const cantidad = Number(input.value) || 0;
+    if(cantidad > 0) recepciones.push({ codigo: input.dataset.codigo, cantidadRecibida: cantidad });
+  });
+  if(!recepciones.length){
+    mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Captura al menos una cantidad recibida", "error");
+    return;
+  }
+  if(!(await tgConfirmar("¿Confirmar la recepción? Esto aumenta tu existencia con lo capturado."))) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal",
+        res.incidencias.length ? "⚠️ Recibido con " + res.incidencias.length + " incidencia(s) por diferencia" : "✅ Recepción confirmada", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 1200);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .recibirTransferenciaSucursalApp(transf.folioTransferencia, recepciones, obtenerTokenSesion());
+}
+
+function cargarIncidenciasReqSuc(folio){
+  const cont = document.getElementById("accionesPipelineReqSuc");
+  if(!cont) return;
+  cont.innerHTML = "Cargando incidencias…";
+  google.script.run
+    .withSuccessHandler(function(transf){
+      if(!transf || !transf.incidencias.length){ cont.innerHTML = ""; return; }
+      cont.innerHTML = `
+        <h4 style="margin:14px 0 8px">Incidencias</h4>
+        ${transf.incidencias.map(inc => `
+          <div class="cardProducto" style="margin:0 0 10px;border-left:3px solid var(--terracota)">
+            <b>${inc.producto}</b> (${inc.codigo}) — ${inc.tipo}<br>
+            <span style="font-size:12.5px;color:var(--text-muted)">Enviado ${inc.cantidadEnviada}, recibido ${inc.cantidadRecibida}, diferencia ${inc.diferencia}</span><br>
+            ${inc.estado === "RESUELTA"
+              ? `<span style="font-size:12.5px;color:var(--oliva)">✓ Resuelta: ${inc.resolucion}</span>`
+              : `<div class="boton secundario" style="margin-top:8px;width:auto;padding:8px 14px" onclick="resolverIncidenciaReqSucUI('${inc.folioIncidencia}', '${folio}')">Resolver</div>`}
+          </div>
+        `).join("")}
+      `;
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
+    .obtenerTransferenciaPorRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+function resolverIncidenciaReqSucUI(folioIncidencia, folio){
+  const resolucion = prompt("¿Cómo se resolvió esta incidencia?");
+  if(!resolucion) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Incidencia resuelta", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .resolverIncidenciaRequisicionApp(folioIncidencia, resolucion, obtenerTokenSesion());
+}
+
+async function cerrarRequisicionSucursalUI(folio){
+  if(!(await tgConfirmar("¿Cerrar la requisición " + folio + "?"))) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Requisición cerrada", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .cerrarRequisicionSucursalApp(folio, obtenerTokenSesion());
+}
+
+async function cancelarRequisicionSucursalUI(folio){
+  const motivo = prompt("¿Por qué se cancela la requisición " + folio + "? (opcional)");
+  if(motivo === null) return;
+  if(!(await tgConfirmar("¿Cancelar definitivamente " + folio + "? Esto libera cualquier reserva y no se puede deshacer.", { peligroso: true }))) return;
+  google.script.run
+    .withSuccessHandler(function(){
+      mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Requisición cancelada", "ok");
+      cargarListaRequisicionesSucursal();
+      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
+    .cancelarRequisicionSucursalApp(folio, motivo || "", obtenerTokenSesion());
+}
+
+async function confirmarEntregaRequisicionSucursalUI(folio){
 
   const detalle = window.detalleRequisicionSucursalActual;
   if(!detalle) return;
@@ -3843,7 +4563,7 @@ function confirmarEntregaRequisicionSucursalUI(folio){
     return;
   }
 
-  if(!confirm("¿Confirmar la entrega de " + folio + "? Esto descuenta la existencia de la sucursal y no se puede deshacer.")) return;
+  if(!(await tgConfirmar("¿Confirmar la entrega de " + folio + "? Esto descuenta la existencia de la sucursal y no se puede deshacer.", { peligroso: true }))) return;
 
   activarCargaBoton("btnConfirmarEntregaSucursal", true);
 
@@ -4022,7 +4742,7 @@ function buscarProductoParaTransferenciaSucursal(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRequisicionApp(texto);
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -4041,7 +4761,7 @@ function seleccionarProductoTransferenciaSucursal(producto){
 
 }
 
-function confirmarTransferenciaSucursal(){
+async function confirmarTransferenciaSucursal(){
 
   const producto = window.productoTransferenciaSucursal;
   const sucursalOrigen = document.getElementById("sucursalOrigenTransferencia").value.trim();
@@ -4061,7 +4781,7 @@ function confirmarTransferenciaSucursal(){
     return;
   }
 
-  if(!confirm(`¿Transferir ${cantidad} ${producto.udm||""} de ${producto.producto} de ${sucursalOrigen} a ${sucursalDestino}? No se puede deshacer.`)) return;
+  if(!(await tgConfirmar(`¿Transferir ${cantidad} ${producto.udm||""} de ${producto.producto} de ${sucursalOrigen} a ${sucursalDestino}? No se puede deshacer.`, { peligroso: true }))) return;
 
   activarCargaBoton("btnConfirmarTransferenciaSucursal", true);
 
@@ -4217,7 +4937,7 @@ function verDetalleRequisicionSegunTipo(folio){
       }
     })
     .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
-    .obtenerTipoRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -4329,7 +5049,7 @@ function cargarPreparacionRequisicion(folio){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerTipoRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -4394,7 +5114,7 @@ function cargarPreparacionRequisicionReceta_(folio){
 
 }
 
-function confirmarEntregaRequisicionReceta(){
+async function confirmarEntregaRequisicionReceta(){
 
   const datos = window.preparacionRecetaActual;
   if(!datos) return;
@@ -4414,7 +5134,7 @@ function confirmarEntregaRequisicionReceta(){
     return;
   }
 
-  if(!confirm("¿Confirmar la entrega de insumos para " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.")) return;
+  if(!(await tgConfirmar("¿Confirmar la entrega de insumos para " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.", { peligroso: true }))) return;
 
   activarCargaBoton("btnConfirmarEntregaReceta", true);
 
@@ -4442,6 +5162,7 @@ function cargarPreparacionRequisicionProducto_(folio){
     .withSuccessHandler(function(datos){
 
       window.preparacionActual = datos;
+      window.preparacionExtras = [];
 
       cont.innerHTML = `
         <div class="cardProducto">
@@ -4466,6 +5187,15 @@ function cargarPreparacionRequisicionProducto_(folio){
             </tbody>
           </table>
 
+          <div style="margin-top:18px">
+            <label>Agregar producto extra <span style="font-weight:400;color:var(--text-muted)">(se les entregó pero no lo pidieron)</span></label>
+            <div style="position:relative;max-width:440px">
+              <input id="buscarExtraPreparacion" placeholder="🔎 Buscar producto, código..." oninput="buscarProductoExtraPreparacion()" autocomplete="off">
+              <div id="resultadosExtraPreparacion" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:240px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+            </div>
+            <div id="tablaExtrasPreparacion" style="margin-top:10px"></div>
+          </div>
+
           <div id="mensajePreparacion" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
 
           <div class="boton success" id="btnConfirmarEntrega" style="margin-top:14px" onclick="confirmarEntregaRequisicion()">${tgIcon("checkCirculo",17)} Confirmar Entrega</div>
@@ -4480,7 +5210,110 @@ function cargarPreparacionRequisicionProducto_(folio){
 
 }
 
-function confirmarEntregaRequisicion(){
+let temporizadorBuscarExtraPreparacion = null;
+
+function buscarProductoExtraPreparacion(){
+
+  clearTimeout(temporizadorBuscarExtraPreparacion);
+
+  const texto = document.getElementById("buscarExtraPreparacion").value.trim();
+  const cont = document.getElementById("resultadosExtraPreparacion");
+
+  if(texto.length < 2){
+    cont.innerHTML = ""; cont.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarExtraPreparacion = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onclick='agregarProductoExtraPreparacion(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            <b>${p.producto}</b> <span style="font-size:11px;color:var(--text-muted)">${p.codigo}</span><br>
+            <span style="font-size:11px;color:var(--text-muted)">Existencia: ${p.existencia} ${p.udm||""}</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+
+      })
+      .withFailureHandler(function(){ cont.innerHTML = ""; cont.style.display = "none"; })
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
+
+  }, 250);
+
+}
+
+function agregarProductoExtraPreparacion(producto){
+
+  document.getElementById("resultadosExtraPreparacion").style.display = "none";
+  document.getElementById("buscarExtraPreparacion").value = "";
+
+  window.preparacionExtras = window.preparacionExtras || [];
+
+  const yaSolicitado = (window.preparacionActual.items||[]).some(it => it.codigo === producto.codigo);
+  const yaAgregado = window.preparacionExtras.some(it => it.codigo === producto.codigo);
+
+  if(yaSolicitado){
+    mostrarMensajeTemporal("mensajePreparacion", "Ese producto ya está en lo solicitado, ajusta la cantidad ahí arriba", "error");
+    return;
+  }
+  if(yaAgregado){
+    mostrarMensajeTemporal("mensajePreparacion", "Ya agregaste ese producto como extra", "error");
+    return;
+  }
+
+  window.preparacionExtras.push({
+    codigo: producto.codigo, producto: producto.producto, unidad: producto.udm, existencia: producto.existencia, cantidad: 0
+  });
+
+  dibujarTablaExtrasPreparacion();
+
+}
+
+function dibujarTablaExtrasPreparacion(){
+
+  const cont = document.getElementById("tablaExtrasPreparacion");
+  if(!cont) return;
+
+  const lista = window.preparacionExtras || [];
+
+  if(!lista.length){ cont.innerHTML = ""; return; }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto extra</th><th style="text-align:right">Existencia</th><th style="text-align:right">Entregar</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((it,i) => `
+          <tr style="background:rgba(92,107,42,.07)">
+            <td>${it.producto}<br><span style="font-size:10.5px;color:var(--oliva)">${it.codigo} · extra</span></td>
+            <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
+            <td style="text-align:right">
+              <input type="number" id="entregarExtra${i}" value="${it.cantidad}" min="0" max="${it.existencia}"
+                style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+            </td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoExtraPreparacion(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function quitarProductoExtraPreparacion(i){
+  window.preparacionExtras.splice(i, 1);
+  dibujarTablaExtrasPreparacion();
+}
+
+async function confirmarEntregaRequisicion(){
 
   const datos = window.preparacionActual;
   if(!datos) return;
@@ -4490,12 +5323,19 @@ function confirmarEntregaRequisicion(){
     return { codigo: it.codigo, cantidadEntregada: input ? Number(input.value) || 0 : 0 };
   }).filter(e => e.cantidadEntregada > 0);
 
-  if(!entregas.length){
+  const extras = (window.preparacionExtras || []).map((it,i) => {
+    const input = document.getElementById("entregarExtra"+i);
+    return { codigo: it.codigo, cantidadEntregada: input ? Number(input.value) || 0 : 0 };
+  }).filter(e => e.cantidadEntregada > 0);
+
+  const todasLasEntregas = entregas.concat(extras);
+
+  if(!todasLasEntregas.length){
     mostrarMensajeTemporal("mensajePreparacion", "Captura al menos una cantidad a entregar", "error");
     return;
   }
 
-  if(!confirm("¿Confirmar la entrega de " + datos.folio + "? Esto descuenta la existencia y no se puede deshacer.")) return;
+  if(!(await tgConfirmar("¿Confirmar la entrega de " + datos.folio + (extras.length ? " (incluye " + extras.length + " producto(s) extra)" : "") + "? Esto descuenta la existencia y no se puede deshacer.", { peligroso: true }))) return;
 
   activarCargaBoton("btnConfirmarEntrega", true);
 
@@ -4509,7 +5349,7 @@ function confirmarEntregaRequisicion(){
       activarCargaBoton("btnConfirmarEntrega", false);
       mostrarMensajeTemporal("mensajePreparacion", "⚠️ " + e.message, "error");
     })
-    .confirmarEntregaRequisicionApp(datos.folio, entregas, obtenerTokenSesion());
+    .confirmarEntregaRequisicionApp(datos.folio, todasLasEntregas, obtenerTokenSesion());
 
 }
 
@@ -4533,7 +5373,7 @@ function descargarPDFRequisicion(folio){
 
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerTipoRequisicionApp(folio);
+    .obtenerTipoRequisicionApp(folio, obtenerTokenSesion());
 
 }
 
@@ -4651,7 +5491,7 @@ function cargarCategoriasRecetas(){
       sel.innerHTML = `<option value="">Todas</option>` + categorias.map(c => `<option value="${c}">${c}</option>`).join("");
     })
     .withFailureHandler(function(){})
-    .obtenerCategoriasRecetasApp();
+    .obtenerCategoriasRecetasApp(obtenerTokenSesion());
 }
 
 function cargarListaRecetas(){
@@ -4663,7 +5503,7 @@ function cargarListaRecetas(){
     .withFailureHandler(function(e){
       document.getElementById("listaRecetas").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerRecetasApp();
+    .obtenerRecetasApp(obtenerTokenSesion());
 }
 
 function filtrarListaRecetas(){
@@ -4763,7 +5603,7 @@ function abrirDetalleReceta(nombre){
     .withFailureHandler(function(e){
       cont.innerHTML = "⚠️ " + e.message;
     })
-    .obtenerDetalleRecetaApp(nombre);
+    .obtenerDetalleRecetaApp(nombre, obtenerTokenSesion());
 
 }
 
@@ -4773,10 +5613,10 @@ function formatearCantidadJS(valor){
   return num.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
-function cambiarEstadoRecetaDesdeApp(nombre, nuevoEstado){
+async function cambiarEstadoRecetaDesdeApp(nombre, nuevoEstado){
 
   const accion = nuevoEstado === "INACTIVA" ? "inactivar" : "activar";
-  if(!confirm("¿Seguro que quieres " + accion + " la receta \"" + nombre + "\"?")) return;
+  if(!(await tgConfirmar("¿Seguro que quieres " + accion + " la receta \"" + nombre + "\"?"))) return;
 
   google.script.run
     .withSuccessHandler(function(){
@@ -4850,7 +5690,7 @@ function abrirFormularioReceta(nombreExistente){
       if(dl) dl.innerHTML = categorias.map(c => `<option value="${c}">`).join("");
     })
     .withFailureHandler(function(){})
-    .obtenerCategoriasRecetasApp();
+    .obtenerCategoriasRecetasApp(obtenerTokenSesion());
 
   if(nombreExistente){
     google.script.run
@@ -4864,7 +5704,7 @@ function abrirFormularioReceta(nombreExistente){
       .withFailureHandler(function(e){
         mostrarMensajeTemporal("mensajeFormReceta", "⚠️ " + e.message, "error");
       })
-      .obtenerDetalleRecetaApp(nombreExistente);
+      .obtenerDetalleRecetaApp(nombreExistente, obtenerTokenSesion());
   } else {
     dibujarTablaIngredientesReceta();
   }
@@ -4909,7 +5749,7 @@ function buscarIngredienteParaReceta(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoParaRecetaApp(texto);
+      .buscarProductoParaRecetaApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -4941,8 +5781,8 @@ function agregarIngredienteAReceta(producto){
 
 }
 
-function quitarIngredienteReceta(indice){
-  if(!confirm("¿Eliminar este ingrediente de la receta?")) return;
+async function quitarIngredienteReceta(indice){
+  if(!(await tgConfirmar("¿Eliminar este ingrediente de la receta?"))) return;
   sincronizarIngredientesRecetaDesdeInputs();
   window.recetaFormIngredientes.splice(indice, 1);
   dibujarTablaIngredientesReceta();
@@ -5069,6 +5909,62 @@ function cerrarSidebarMovilSiAplica(){
     document.getElementById("overlaySidebar").classList.remove("mostrar");
   }
 }
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 5: Mobile operativo (acciones de piso)
+// El FAB solo abre/cierra una lista de atajos — cada atajo llama
+// exactamente a la misma función que ya usa el menú de escritorio para
+// esa pantalla (abrirEntradas, abrirSalidas, abrirCapturarConteo) o al
+// mismo flujo de escaneo (abrirEscaner) y búsqueda (buscadorGlobalHeader)
+// que ya existen. Ninguna lógica de negocio nueva.
+// ===============================
+
+function toggleFabAccionesMoviles(){
+  const cont = document.getElementById("fabAccionesMoviles");
+  const abriendo = !cont.classList.contains("abierto");
+  cont.classList.toggle("abierto", abriendo);
+  document.getElementById("fabBotonPrincipal").setAttribute("aria-expanded", abriendo ? "true" : "false");
+}
+
+function ejecutarAccionRapidaMovil_(tipo){
+
+  document.getElementById("fabAccionesMoviles").classList.remove("abierto");
+  document.getElementById("fabBotonPrincipal").setAttribute("aria-expanded", "false");
+
+  if(tipo === "buscar"){
+    const cont = document.getElementById("buscadorHeaderContenedor");
+    if(cont) cont.classList.add("expandido");
+    const input = document.getElementById("buscadorGlobalHeader");
+    if(input){
+      input.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => input.focus(), 80);
+    }
+  } else if(tipo === "escanear"){
+    abrirEscaner("entradaEscaneoRapidoMovil");
+  } else if(tipo === "recibir"){
+    abrirEntradas();
+  } else if(tipo === "surtir"){
+    abrirSalidas();
+  } else if(tipo === "contar"){
+    abrirCapturarConteo();
+  }
+
+}
+
+// El escaneo rápido del FAB no llena un formulario — abre directamente
+// la ficha del producto escaneado (mismo modal #modalDetalle que ya usa
+// el resto del sistema), porque desde el FAB no hay ningún formulario
+// abierto todavía al momento de escanear.
+document.addEventListener("DOMContentLoaded", function(){
+  const entradaRapida = document.getElementById("entradaEscaneoRapidoMovil");
+  if(entradaRapida){
+    entradaRapida.addEventListener("change", function(){
+      const codigo = this.value;
+      this.value = "";
+      if(codigo) abrirDetalleProducto(codigo);
+    });
+  }
+});
 
 // Fija el sidebar expandido en escritorio (independiente del hover), se recuerda entre sesiones.
 function toggleAnclarSidebar(){
@@ -5277,7 +6173,7 @@ function buscarProductoTerminadoProduccion(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeProduccion", "⚠️ " + e.message, "error");
     })
-    .buscarProductoApp(codigo);
+    .buscarProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -5319,7 +6215,7 @@ function autocompletarProductoTerminadoProduccion(){
       // sigue pudiendo escanear/escribir el código a mano, igual que antes.
       document.getElementById("codigoProduccion").focus();
     })
-    .obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta);
+    .obtenerProductoTerminadoPorNombreRecetaApp(nombreReceta, obtenerTokenSesion());
 
 }
 
@@ -5421,7 +6317,7 @@ function filtrarLotesProduccion(){
     .withFailureHandler(function(e){
       document.getElementById("tablaLotesProduccion").innerHTML = `<tr><td colspan="7">${tgEmptyState("alertaTriangulo", e.message)}</td></tr>`;
     })
-    .obtenerLotesProduccionApp(filtros);
+    .obtenerLotesProduccionApp(filtros, obtenerTokenSesion());
 
 }
 
@@ -5451,9 +6347,9 @@ function dibujarLotesProduccion(lista){
 
 }
 
-function cerrarLoteDesdeApp(folio){
+async function cerrarLoteDesdeApp(folio){
 
-  if(!confirm("¿Cerrar el lote " + folio + "? Quedará marcado como AGOTADO y su cantidad disponible en 0. No se puede deshacer.")){
+  if(!(await tgConfirmar("¿Cerrar el lote " + folio + "? Quedará marcado como AGOTADO y su cantidad disponible en 0. No se puede deshacer.", { peligroso: true }))){
     return;
   }
 
@@ -5530,7 +6426,7 @@ function abrirCentroReabastecimiento(){
     .withFailureHandler(function(e){
       document.getElementById("listaProveedoresReabasto").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
-    .obtenerProveedoresReabastecimientoApp();
+    .obtenerProveedoresReabastecimientoApp(obtenerTokenSesion());
 
 }
 
@@ -5646,7 +6542,7 @@ function cargarReabastecimiento(proveedor){
     document.getElementById("resumenReabasto").innerText = "⚠️ " + e.message;
   })
 
-  .obtenerProductosPorProveedorApp(proveedor);
+  .obtenerProductosPorProveedorApp(proveedor, obtenerTokenSesion());
 
 }
 
@@ -5800,7 +6696,7 @@ function buscarProductoParaAgregar(){
         resultados.innerHTML = "⚠️ " + e.message;
         resultados.style.display = "block";
       })
-      .buscarProductoCatalogoApp(texto);
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -5840,7 +6736,7 @@ function agregarProductoManualAReabasto(producto){
 
 }
 
-function generarOrdenDesdeReabasto(){
+async function generarOrdenDesdeReabasto(){
 
   const proveedor = window.proveedorReabastoActual;
   const observaciones = document.getElementById("observacionesOC").value.trim();
@@ -5896,7 +6792,7 @@ function generarOrdenDesdeReabasto(){
     return;
   }
 
-  if(!confirm("¿Generar orden de compra a " + proveedor + " con " + items.length + " producto(s)?")){
+  if(!(await tgConfirmar("¿Generar orden de compra a " + proveedor + " con " + items.length + " producto(s)?"))){
     return;
   }
 
@@ -5990,7 +6886,7 @@ function buscarSugerenciasAnalisisCompras(){
 
       })
       .withFailureHandler(function(){ cont.style.display = "none"; })
-      .buscarProductoCatalogoApp(texto);
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -6104,7 +7000,7 @@ function consultarAnalisisCompras(){
     .withFailureHandler(function(e){
       cont.innerHTML = "<div class='cardProducto'>⚠️ " + e.message + "</div>";
     })
-    .obtenerAnalisisProductoComprasApp(texto);
+    .obtenerAnalisisProductoComprasApp(texto, obtenerTokenSesion());
 
 }
 
@@ -6178,7 +7074,7 @@ function generarProyeccionCompras(){
     .withFailureHandler(function(e){
       cont.innerHTML = "⚠️ " + e.message;
     })
-    .generarProyeccionConsumoApp(texto, incremento);
+    .generarProyeccionConsumoApp(texto, incremento, obtenerTokenSesion());
 
 }
 
@@ -6294,7 +7190,7 @@ function cargarAnalisisCostos(){
       const kpisCont = document.getElementById("kpisAnalisisCostos");
       if(kpisCont) kpisCont.innerHTML = "⚠️ " + e.message;
     })
-    .obtenerAnalisisCostosApp(dias);
+    .obtenerAnalisisCostosApp(dias, obtenerTokenSesion());
 
 }
 
@@ -6332,7 +7228,7 @@ function abrirListaOrdenesCompra(idBoton, titulo, conAcciones){
     document.getElementById("listaOrdenesCompra").innerHTML = tgEmptyState("alertaTriangulo", e.message);
   })
 
-  .obtenerOrdenesCompraApp();
+  .obtenerOrdenesCompraApp(obtenerTokenSesion());
 
 }
 
@@ -6364,7 +7260,10 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
               <span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
               <span style="cursor:pointer;color:var(--text-muted)" title="Imprimir" onclick="imprimirOC('${o.oc}')">${tgIcon("imprimir",15)}</span>
             </td>
-            ${conAcciones ? `<td>${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}</td>` : ""}
+            ${conAcciones ? `<td style="white-space:nowrap;display:flex;gap:6px">
+              ${o.estado==="PENDIENTE" ? `<button class="boton secundario" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="abrirEditarOC('${o.oc}')">${tgIcon("editar",14)} Editar</button>` : ""}
+              ${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}
+            </td>` : ""}
           </tr>
         `).join("")}
       </tbody>
@@ -6392,7 +7291,7 @@ function verPDFOrdenCompra(oc){
       if(ventana) ventana.close();
       alert("⚠️ " + e.message);
     })
-    .obtenerPDFOrdenCompraApp(oc);
+    .obtenerPDFOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -6415,7 +7314,7 @@ function descargarPDFOrdenCompra(oc){
       if(ventana) ventana.close();
       alert("⚠️ " + e.message);
     })
-    .obtenerPDFOrdenCompraApp(oc);
+    .obtenerPDFOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -6452,7 +7351,7 @@ function imprimirOC(oc){
     alert("⚠️ " + e.message);
   })
 
-  .obtenerPDFOrdenCompraApp(oc);
+  .obtenerPDFOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -6500,13 +7399,13 @@ function verDetalleOC(oc){
 
   .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
 
-  .obtenerDetalleOCApp(oc);
+  .obtenerDetalleOCApp(oc, obtenerTokenSesion());
 
 }
 
-function cancelarOC(oc){
+async function cancelarOC(oc){
 
-  if(!confirm("¿Cancelar la orden " + oc + "? No se puede deshacer.")) return;
+  if(!(await tgConfirmar("¿Cancelar la orden " + oc + "? No se puede deshacer.", { peligroso: true }))) return;
 
   google.script.run
 
@@ -6517,6 +7416,261 @@ function cancelarOC(oc){
   .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
 
   .cancelarOrdenCompraApp(oc, obtenerTokenSesion());
+
+}
+
+/**
+ * Edición de una OC — solo mientras sigue PENDIENTE (mismo criterio que
+ * ya valida editarOrdenCompraApp en el backend, aquí solo se evita
+ * ofrecer el botón cuando de todos modos se rechazaría). Reemplaza
+ * proveedor/observaciones/productos por completo, igual que si se
+ * volviera a generar la orden — por eso solo se permite en PENDIENTE,
+ * donde ninguna línea tiene nada recibido todavía.
+ */
+function abrirEditarOC(oc){
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">Cargando…</div></div>`;
+
+  google.script.run
+
+  .withSuccessHandler(function(datos){
+
+    if(!datos){ contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ No se encontró la orden ${oc}</div></div>`; return; }
+
+    if(datos.estado !== "PENDIENTE"){
+      contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ Esta orden ya está ${datos.estado} — solo se puede editar mientras sigue PENDIENTE.</div></div>`;
+      return;
+    }
+
+    window.ocEditando = datos.oc;
+    window.ocEditItems = datos.items.map(it => ({
+      codigo: it.codigo, producto: it.producto, udm: it.udm,
+      cantidad: it.cantidad, precio: it.precio,
+      presentacion: it.presentacion || 0, piezasOrdenadas: it.piezasOrdenadas || 0
+    }));
+
+    contenedor.innerHTML = `
+      <div class="vista-animada">
+
+        <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("editar",20)} Editar ${datos.oc}</h2>
+        <p style="color:var(--text-muted);font-size:13px;margin-top:-8px">Solo se puede editar mientras la orden sigue PENDIENTE — todavía sin recepciones registradas.</p>
+
+        <div class="cardProducto">
+          <div class="gridFormulario">
+            <div class="campo">
+              <label>Proveedor</label>
+              <input id="editarOcProveedor" value="${String(datos.proveedor).replace(/"/g,"&quot;")}">
+            </div>
+            <div class="campo">
+              <label>Observaciones (opcional)</label>
+              <input id="editarOcObservaciones" value="${String(datos.observaciones||"").replace(/"/g,"&quot;")}">
+            </div>
+          </div>
+        </div>
+
+        <div class="cardProducto">
+          <h3 style="margin:0 0 10px">Agregar producto</h3>
+          <div style="position:relative;max-width:500px">
+            <input id="buscarProductoEditarOC" placeholder="🔎 Buscar producto, código..." oninput="buscarProductoParaEditarOC()" autocomplete="off">
+            <div id="resultadosBuscarProductoEditarOC" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+          </div>
+        </div>
+
+        <div class="cardProducto">
+          <h3 style="margin:0 0 10px">Productos</h3>
+          <div id="tablaEditarOC"></div>
+        </div>
+
+        <div class="cardProducto">
+          <div id="mensajeEditarOC" style="display:none;margin-bottom:12px;font-size:13.5px;font-weight:600"></div>
+          <div class="boton" id="btnGuardarEdicionOC" onclick="guardarEdicionOC()">${tgIcon("guardar",17)} Guardar cambios</div>
+        </div>
+
+      </div>
+    `;
+
+    dibujarTablaEditarOC();
+
+  })
+
+  .withFailureHandler(function(e){ contenedor.innerHTML = `<div class="vista-animada"><div class="cardProducto">⚠️ ${e.message}</div></div>`; })
+
+  .obtenerDetalleOCApp(oc, obtenerTokenSesion());
+
+}
+
+function dibujarTablaEditarOC(){
+
+  const cont = document.getElementById("tablaEditarOC");
+  if(!cont) return;
+
+  const lista = window.ocEditItems || [];
+
+  if(!lista.length){
+    cont.innerHTML = tgEmptyState("recibo", "Sin productos — agrega al menos uno arriba");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right" title="Tamaño de una presentación/paquete, en la misma UDM del producto — opcional, solo para que el PDF muestre &quot;N pz (tamaño)&quot; en vez de la cantidad suelta">Presentación</th><th style="text-align:right">Precio</th><th style="text-align:right">Importe</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((p,i) => `
+          <tr>
+            <td>${p.producto}<br><span style="font-size:10px;color:var(--text-muted)">${p.codigo}</span></td>
+            <td style="text-align:right"><input type="number" id="editarOcCant${i}" value="${p.cantidad}" min="0" step="any" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
+            <td style="text-align:right"><input type="number" id="editarOcPresentacion${i}" value="${p.presentacion || ""}" min="0" step="any" placeholder="—" style="width:80px;max-width:80px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
+            <td style="text-align:right"><input type="number" id="editarOcPrecio${i}" value="${p.precio}" min="0" step="any" style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" oninput="sincronizarEditarOcDesdeInputs()"></td>
+            <td style="text-align:right" id="editarOcImporte${i}">$${((Number(p.cantidad)||0)*(Number(p.precio)||0)).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoEditarOC(${i})">✕</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div style="text-align:right;margin-top:10px;font-weight:700;font-size:14px" id="editarOcTotal">Total: $${lista.reduce((s,p)=>s+(Number(p.cantidad)||0)*(Number(p.precio)||0),0).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+  `;
+
+}
+
+/** Actualiza cantidad/precio en memoria y refresca solo importes/total —
+ * evita rehacer la tabla completa en cada tecleo, que le quitaría el
+ * foco al input mientras el usuario está escribiendo. */
+function sincronizarEditarOcDesdeInputs(){
+
+  const lista = window.ocEditItems || [];
+  let total = 0;
+
+  lista.forEach((p,i) => {
+    const cantInput = document.getElementById("editarOcCant"+i);
+    const presInput = document.getElementById("editarOcPresentacion"+i);
+    const precioInput = document.getElementById("editarOcPrecio"+i);
+    if(cantInput) p.cantidad = Number(cantInput.value) || 0;
+    if(presInput) p.presentacion = Number(presInput.value) || 0;
+    if(precioInput) p.precio = Number(precioInput.value) || 0;
+
+    // "Piezas" (cuántas presentaciones son) se deriva de Cantidad ÷
+    // Presentación — el PDF solo muestra la columna Presentación cuando
+    // AMBOS valores son > 0 (ver construirHtmlOrdenCompra_), así que no
+    // basta con capturar el tamaño del paquete si no se recalcula esto.
+    p.piezasOrdenadas = p.presentacion > 0 ? Math.round((p.cantidad / p.presentacion) * 1000) / 1000 : 0;
+
+    const importe = p.cantidad * p.precio;
+    total += importe;
+    const celdaImporte = document.getElementById("editarOcImporte"+i);
+    if(celdaImporte) celdaImporte.textContent = "$" + importe.toLocaleString("es-MX",{minimumFractionDigits:2});
+  });
+
+  const totalEl = document.getElementById("editarOcTotal");
+  if(totalEl) totalEl.textContent = "Total: $" + total.toLocaleString("es-MX",{minimumFractionDigits:2});
+
+}
+
+function quitarProductoEditarOC(indice){
+  sincronizarEditarOcDesdeInputs();
+  window.ocEditItems.splice(indice, 1);
+  dibujarTablaEditarOC();
+}
+
+let temporizadorBuscarProductoEditarOC = null;
+
+function buscarProductoParaEditarOC(){
+
+  clearTimeout(temporizadorBuscarProductoEditarOC);
+
+  const texto = document.getElementById("buscarProductoEditarOC").value.trim();
+  const resultados = document.getElementById("resultadosBuscarProductoEditarOC");
+
+  if(texto.length < 2){
+    resultados.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoEditarOC = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          resultados.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          resultados.style.display = "block";
+          return;
+        }
+
+        resultados.innerHTML = lista.map(p=>`
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarProductoAEditarOC(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        resultados.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        resultados.innerHTML = "⚠️ " + e.message;
+        resultados.style.display = "block";
+      })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+
+  }, 300);
+
+}
+
+function agregarProductoAEditarOC(producto){
+
+  window.ocEditItems = window.ocEditItems || [];
+
+  const yaExiste = window.ocEditItems.some(p=>p.codigo === producto.codigo);
+
+  if(yaExiste){
+    mostrarMensajeTemporal("mensajeEditarOC", "Ese producto ya está en la orden", "error");
+  } else {
+    window.ocEditItems.push({
+      codigo: producto.codigo, producto: producto.producto, udm: producto.udm,
+      cantidad: 1, precio: producto.precio || 0, presentacion: 0, piezasOrdenadas: 0
+    });
+    dibujarTablaEditarOC();
+  }
+
+  document.getElementById("buscarProductoEditarOC").value = "";
+  document.getElementById("resultadosBuscarProductoEditarOC").innerHTML = "";
+  document.getElementById("resultadosBuscarProductoEditarOC").style.display = "none";
+
+}
+
+function guardarEdicionOC(){
+
+  sincronizarEditarOcDesdeInputs();
+
+  const proveedor = document.getElementById("editarOcProveedor").value.trim();
+  const observaciones = document.getElementById("editarOcObservaciones").value.trim();
+  const items = (window.ocEditItems || []).filter(p => (Number(p.cantidad)||0) > 0);
+
+  if(!proveedor){
+    mostrarMensajeTemporal("mensajeEditarOC", "Captura el proveedor", "error");
+    return;
+  }
+
+  if(!items.length){
+    mostrarMensajeTemporal("mensajeEditarOC", "Agrega al menos un producto con cantidad mayor a cero", "error");
+    return;
+  }
+
+  activarCargaBoton("btnGuardarEdicionOC", true);
+
+  google.script.run
+
+  .withSuccessHandler(function(resultado){
+    mostrarMensajeTemporal("mensajeEditarOC", "✅ Orden actualizada — Total: $" + resultado.total.toLocaleString("es-MX",{minimumFractionDigits:2}), "ok");
+    setTimeout(abrirOrdenesCompra, 1400);
+  })
+
+  .withFailureHandler(function(e){
+    mostrarMensajeTemporal("mensajeEditarOC", "⚠️ " + e.message, "error");
+    activarCargaBoton("btnGuardarEdicionOC", false);
+  })
+
+  .editarOrdenCompraApp(window.ocEditando, proveedor, observaciones, items, obtenerTokenSesion());
 
 }
 
@@ -6587,7 +7741,7 @@ function cargarOCPendientesSelect(){
 
   .withFailureHandler(function(e){ console.error(e.message); })
 
-  .obtenerOrdenesCompraApp();
+  .obtenerOrdenesCompraApp(obtenerTokenSesion());
 
 }
 
@@ -6700,7 +7854,7 @@ function buscarOCParaRecepcion(){
     mostrarMensajeTemporal("mensajeRecepcion", "⚠️ " + e.message, "error");
   })
 
-  .obtenerDetalleOCApp(oc);
+  .obtenerDetalleOCApp(oc, obtenerTokenSesion());
 
 }
 
@@ -6721,7 +7875,7 @@ function actualizarPreviewPrecioFactura(indice){
 
 }
 
-function confirmarRecepcion(){
+async function confirmarRecepcion(){
 
   const datos = window.ocActualRecepcion;
   if(!datos) return;
@@ -6770,7 +7924,7 @@ function confirmarRecepcion(){
     return;
   }
 
-  if(!confirm("¿Registrar la recepción de " + recepciones.length + " producto(s) de la orden " + datos.oc + "?")){
+  if(!(await tgConfirmar("¿Registrar la recepción de " + recepciones.length + " producto(s) de la orden " + datos.oc + "?"))){
     return;
   }
 
@@ -6828,9 +7982,9 @@ function abrirGenerarInventarioMensual(){
 
 }
 
-function ejecutarGenerarInventarioMensual(){
+async function ejecutarGenerarInventarioMensual(){
 
-  if(!confirm("¿Generar un nuevo inventario mensual? Se copiará la existencia teórica de todos los productos con ubicación.")) return;
+  if(!(await tgConfirmar("¿Generar un nuevo inventario mensual? Se copiará la existencia teórica de todos los productos con ubicación."))) return;
 
   activarCargaBoton("btnGenerarInventarioMensualAccion", true);
 
@@ -6922,7 +8076,7 @@ function cargarFoliosAbiertosInventarioMensual(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
     })
-    .obtenerFoliosInventarioAbiertosApp();
+    .obtenerFoliosInventarioAbiertosApp(obtenerTokenSesion());
 
 }
 
@@ -6944,7 +8098,7 @@ function cargarAvanceInventarioMensual(){
       cont.innerText = avance.contados + " de " + avance.total + " contados (" + avance.porcentaje + "%)";
     })
     .withFailureHandler(function(){ cont.innerText = ""; })
-    .obtenerAvanceInventarioMensualApp(window.folioInventarioMensualActual);
+    .obtenerAvanceInventarioMensualApp(window.folioInventarioMensualActual, obtenerTokenSesion());
 
 }
 
@@ -6974,7 +8128,7 @@ function buscarCodigoParaInventarioMensual(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
     })
-    .buscarCodigoInventarioMensualApp(codigo, window.folioInventarioMensualActual);
+    .buscarCodigoInventarioMensualApp(codigo, window.folioInventarioMensualActual, obtenerTokenSesion());
 
 }
 
@@ -7016,7 +8170,7 @@ function buscarNombreParaInventarioMensual(){
         cont.innerHTML = "⚠️ " + e.message;
         cont.style.display = "block";
       })
-      .buscarProductoPorNombreInventarioMensualApp(texto, window.folioInventarioMensualActual);
+      .buscarProductoPorNombreInventarioMensualApp(texto, window.folioInventarioMensualActual, obtenerTokenSesion());
 
   }, 300);
 
@@ -7048,7 +8202,7 @@ function cargarSiguientePendienteInventarioMensual(){
     .withFailureHandler(function(e){
       mostrarMensajeTemporal("mensajeInventarioMensual", "⚠️ " + e.message, "error");
     })
-    .obtenerSiguientePendienteInventarioMensualApp(window.folioInventarioMensualActual);
+    .obtenerSiguientePendienteInventarioMensualApp(window.folioInventarioMensualActual, obtenerTokenSesion());
 
 }
 
@@ -7158,7 +8312,7 @@ function abrirRevisarDiferenciasMensual(){
       cargarDiferenciasInventarioMensual();
     })
     .withFailureHandler(function(e){ alert(e.message); })
-    .obtenerFoliosInventarioAbiertosApp();
+    .obtenerFoliosInventarioAbiertosApp(obtenerTokenSesion());
 
 }
 
@@ -7179,7 +8333,7 @@ function cargarDiferenciasInventarioMensual(){
       pintarDiferenciasInventarioMensual();
     })
     .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; })
-    .obtenerDiscrepanciasInventarioMensualApp(folio);
+    .obtenerDiscrepanciasInventarioMensualApp(folio, obtenerTokenSesion());
 
 }
 
@@ -7229,7 +8383,7 @@ function pintarDiferenciasInventarioMensual(){
 
 }
 
-function aprobarTodasDiferenciasInventarioMensual(){
+async function aprobarTodasDiferenciasInventarioMensual(){
 
   const lista = (window.diferenciasFiltradasActuales || []).filter(d => d.estado !== "APROBADO");
 
@@ -7238,7 +8392,7 @@ function aprobarTodasDiferenciasInventarioMensual(){
     return;
   }
 
-  if(!confirm("¿Aprobar las " + lista.length + " diferencia(s) que se muestran actualmente?")) return;
+  if(!(await tgConfirmar("¿Aprobar las " + lista.length + " diferencia(s) que se muestran actualmente?"))) return;
 
   google.script.run
     .withSuccessHandler(function(resultado){
@@ -7323,11 +8477,11 @@ function abrirCerrarInventarioMensual(){
       sel.innerHTML = folios.map(f=>`<option value="${f}">${f}</option>`).join("");
     })
     .withFailureHandler(function(e){ alert(e.message); })
-    .obtenerFoliosInventarioAbiertosApp();
+    .obtenerFoliosInventarioAbiertosApp(obtenerTokenSesion());
 
 }
 
-function cerrarInventarioMensualDesdeApp(){
+async function cerrarInventarioMensualDesdeApp(){
 
   const folio = document.getElementById("folioCerrarInventarioMensual").value;
   const supervisor = document.getElementById("supervisorCierreInventario").value.trim();
@@ -7337,7 +8491,7 @@ function cerrarInventarioMensualDesdeApp(){
     return;
   }
 
-  if(!confirm("¿Cerrar el inventario " + folio + "? Esta acción actualiza MATRIZ y no se puede deshacer.")) return;
+  if(!(await tgConfirmar("¿Cerrar el inventario " + folio + "? Esta acción actualiza MATRIZ y no se puede deshacer.", { peligroso: true }))) return;
 
   activarCargaBoton("btnCerrarInventarioAccion", true);
 
@@ -7437,7 +8591,7 @@ function abrirHistorialInventarioMensual(){
     .withFailureHandler(function(e){
       document.getElementById("listaHistorialInventarios").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
-    .obtenerHistorialInventariosApp();
+    .obtenerHistorialInventariosApp(obtenerTokenSesion());
 
 }
 
@@ -7473,7 +8627,7 @@ function verDetalleInventarioMensual(folio){
     .withFailureHandler(function(e){
       document.getElementById("modalListaBody").innerHTML = "⚠️ " + e.message;
     })
-    .obtenerDetalleInventarioApp(folio);
+    .obtenerDetalleInventarioApp(folio, obtenerTokenSesion());
 
 }
 
@@ -7488,7 +8642,7 @@ function verPDFInventarioMensual(folio){
       ventana.location.href = res.verUrl;
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerPDFInventarioMensualApp(folio);
+    .obtenerPDFInventarioMensualApp(folio, obtenerTokenSesion());
 
 }
 
@@ -7503,7 +8657,7 @@ function descargarPDFCompletoInventarioMensual(folio){
       ventana.location.href = res.descargarUrl;
     })
     .withFailureHandler(function(e){ if(ventana) ventana.close(); alert("⚠️ " + e.message); })
-    .obtenerPDFInventarioMensualCompletoApp(folio);
+    .obtenerPDFInventarioMensualCompletoApp(folio, obtenerTokenSesion());
 
 }
 
@@ -7528,7 +8682,7 @@ function exportarExcelInventarioMensual(folio){
 
     })
     .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
-    .obtenerDetalleInventarioApp(folio);
+    .obtenerDetalleInventarioApp(folio, obtenerTokenSesion());
 
 }
 
@@ -7604,7 +8758,7 @@ function abrirDashboardInventarioMensual(){
     .withFailureHandler(function(e){
       document.getElementById("kpisDashboardInventario").innerHTML = tgEmptyState("alertaTriangulo", e.message);
     })
-    .obtenerDashboardInventarioMensualApp();
+    .obtenerDashboardInventarioMensualApp(obtenerTokenSesion());
 
 }
 
@@ -7816,7 +8970,7 @@ function abrirDetalleProducto(codigo, estado, claveNotif){
     .withFailureHandler(function(error){
       document.getElementById("detalleCargando").innerText = "Error: " + error.message;
     })
-    .obtenerDetalleProductoApp(codigo);
+    .obtenerDetalleProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -7854,7 +9008,7 @@ function cargarHistorialComprasProducto(codigo){
     .withFailureHandler(function(e){
       cont.innerText = "⚠️ " + e.message;
     })
-    .obtenerHistorialComprasProductoApp(codigo);
+    .obtenerHistorialComprasProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -8070,6 +9224,8 @@ function volverInicio(){
 
   <div id="panelConteosProgramados" style="display:none;margin-bottom:20px"></div>
 
+  <div id="accionesRequeridas" style="margin-bottom:20px"></div>
+
   <div class="kpiGrid">
     <div class="kpiCard tono-guinda">
       <div class="kpiIcono">${tgIcon("paquete",18)}</div>
@@ -8083,25 +9239,25 @@ function volverInicio(){
       <div class="kpiValor" id="kpiUbicaciones"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">con producto asignado</div>
     </div>
-    <div class="kpiCard tono-terracota">
+    <div class="kpiCard tono-terracota" style="cursor:pointer" onclick="abrirModalListaStock('bajo')" title="Ver productos bajo mínimo">
       <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
       <div class="kpiLabel">Bajo mínimo</div>
       <div class="kpiValor" id="kpiBajo"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requieren reorden</div>
     </div>
-    <div class="kpiCard tono-guinda">
+    <div class="kpiCard tono-guinda" style="cursor:pointer" onclick="abrirModalListaStock('agotado')" title="Ver productos agotados">
       <div class="kpiIcono">${tgIcon("xCirculo",18)}</div>
       <div class="kpiLabel">Agotados</div>
       <div class="kpiValor" id="kpiAgotados"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requiere atención</div>
     </div>
-    <div class="kpiCard tono-oliva">
+    <div class="kpiCard tono-oliva" style="cursor:pointer" onclick="abrirRevisarDiscrepancias()" title="Ir a Revisar discrepancias">
       <div class="kpiIcono">${tgIcon("documento",18)}</div>
       <div class="kpiLabel">Discrepancias</div>
       <div class="kpiValor" id="kpiDiscrepancias"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">pendientes de aprobar</div>
     </div>
-    <div class="kpiCard tono-terracota">
+    <div class="kpiCard tono-terracota" style="cursor:pointer" onclick="abrirCapturarConteo()" title="Ir a Capturar conteo">
       <div class="kpiIcono">${tgIcon("refrescar",18)}</div>
       <div class="kpiLabel">Conteos abiertos</div>
       <div class="kpiValor" id="kpiConteos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
@@ -8156,6 +9312,10 @@ function volverInicio(){
     <div class="nota" id="valorInventarioNota"></div>
   </div>
 
+  <div id="inteligenciaInventario" style="margin-bottom:20px"></div>
+
+  <div id="kpisOperativos" style="margin-bottom:20px"></div>
+
   <div class="panelesInicio3">
 
     <div class="cardProducto">
@@ -8204,6 +9364,230 @@ function volverInicio(){
   actualizarNotificaciones();
   cargarConteosProgramadosHoy();
   cargarResumenExtraInicio();
+  cargarAccionesRequeridas();
+  cargarInteligenciaInventario();
+  cargarKpisOperativos();
+
+}
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 1: "¿Qué necesita atención?" (Inteligencia.gs)
+// Mismo bloque de datos sirve de sección prioritaria del Dashboard y de
+// Centro de Tareas — es la misma pregunta ("¿qué hago hoy?") en una sola
+// lista ordenada por severidad, no dos listas separadas con la misma info.
+// ===============================
+
+const RUTAS_ACCIONES_REQUERIDAS_ = {
+  "inventario-agotado": function(){ abrirModalListaStock("agotado"); },
+  "inventario-bajo": function(){ abrirModalListaStock("bajo"); },
+  "discrepancias": abrirRevisarDiscrepancias,
+  "conteos": abrirCapturarConteo,
+  "requisiciones-pendientes": abrirRequisicionesPendientes,
+  "requisiciones-sucursal": abrirRequisicionesSucursal,
+  "ordenes-compra": abrirOrdenesCompra,
+  "lotes-produccion": abrirLotesProduccion,
+  "lotes-entrada": abrirModalCaducidadesCompra
+};
+
+function irAAccionRequerida(vista){
+  const fn = RUTAS_ACCIONES_REQUERIDAS_[vista];
+  if(fn) fn();
+}
+
+function cargarAccionesRequeridas(){
+
+  google.script.run
+    .withSuccessHandler(dibujarAccionesRequeridas)
+    .withFailureHandler(function(e){ console.error("Acciones requeridas: " + e.message); })
+    .obtenerAccionesRequeridasApp(obtenerTokenSesion());
+
+}
+
+function dibujarAccionesRequeridas(datos){
+
+  const cont = document.getElementById("accionesRequeridas");
+  if(!cont || !datos) return;
+
+  const todas = []
+    .concat((datos.urgente||[]).map(a => Object.assign({ severidad:"urgente" }, a)))
+    .concat((datos.atencion||[]).map(a => Object.assign({ severidad:"atencion" }, a)))
+    .concat((datos.revisar||[]).map(a => Object.assign({ severidad:"revisar" }, a)));
+
+  if(!todas.length){
+    cont.innerHTML = `
+      <div class="cardProducto" style="border-left:4px solid var(--oliva);display:flex;align-items:center;gap:10px">
+        ${tgIcon("checkCirculo",20)}
+        <div>
+          <div style="font-weight:700">Todo en orden</div>
+          <div style="font-size:12.5px;color:var(--text-muted)">No hay pendientes que requieran tu atención ahora mismo.</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const estilos = {
+    urgente:  { color:"var(--guinda)",        etiqueta:"🔴 URGENTE" },
+    atencion: { color:"var(--terracota)",     etiqueta:"🟠 ATENCIÓN" },
+    revisar:  { color:"var(--color-warning)", etiqueta:"🟡 REVISAR" }
+  };
+
+  cont.innerHTML = `
+    <div class="cardProducto" style="border-left:4px solid var(--guinda)">
+      <h3 style="margin:0 0 12px;display:flex;align-items:center;gap:8px">${tgIcon("alertaCirculo",18)} ¿Qué necesita atención?</h3>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${todas.map(a => {
+          const e = estilos[a.severidad];
+          return `
+            <div class="filaAccionRequerida" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:var(--bg);cursor:pointer" onclick="irAAccionRequerida('${a.accion.vista}')">
+              <div style="min-width:0">
+                <div class="etiquetaAccionRequerida" style="font-size:10.5px;font-weight:700;letter-spacing:.03em;color:${e.color}">${e.etiqueta}</div>
+                <div class="tituloAccionRequerida" style="font-weight:600;font-size:13.5px;margin-top:1px">${a.titulo}</div>
+                <div class="detalleAccionRequerida" style="font-size:11.5px;color:var(--text-muted);margin-top:1px">${a.detalle}</div>
+              </div>
+              <span style="color:var(--text-muted);flex-shrink:0">${tgIcon("chevronDerecha",16)}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+
+}
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 2: Inteligencia de Inventario (cobertura/consumo)
+// Sección separada de "¿Qué necesita atención?" (Fase 1) a propósito: esa
+// lista ya cubre agotado/bajo-mínimo por el criterio de Mínimo capturado
+// en MATRIZ. Esta es una señal DISTINTA — cuántos días de cobertura da el
+// consumo real (KARDEX) — y mezclarla ahí confundiría dos criterios de
+// alerta distintos con la misma tarjeta. Alcance: solo MATRIZ/S01 (ver
+// Inteligencia.gs) — no aplica a otras sucursales todavía.
+// ===============================
+
+const TG_COBERTURA_ESTILOS_ = {
+  critico: { color:"var(--guinda)",        icono:"xCirculo",        etiqueta:"🔴 Crítico",  nota:"menos de 3 días de cobertura" },
+  riesgo:  { color:"var(--terracota)",     icono:"alertaTriangulo", etiqueta:"🟠 Riesgo",   nota:"menos de 7 días de cobertura" },
+  normal:  { color:"var(--oliva)",         icono:"checkCirculo",    etiqueta:"🟢 Normal",   nota:"cobertura saludable" },
+  exceso:  { color:"var(--color-info,#2A5C8C)", icono:"cajas",      etiqueta:"🔵 Exceso",   nota:"45 días de cobertura o más — revisar" }
+};
+
+function cargarInteligenciaInventario(){
+
+  google.script.run
+    .withSuccessHandler(dibujarInteligenciaInventario)
+    .withFailureHandler(function(e){ console.error("Inteligencia de inventario: " + e.message); })
+    .obtenerResumenCoberturaApp(obtenerTokenSesion(), {});
+
+}
+
+function dibujarInteligenciaInventario(resumen){
+
+  const cont = document.getElementById("inteligenciaInventario");
+  if(!cont || !resumen) return;
+
+  const claves = ["critico", "riesgo", "normal", "exceso"];
+
+  cont.innerHTML = `
+    <div class="cardProducto">
+      <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:8px">${tgIcon("grafica",18)} Inteligencia de Inventario</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Cobertura por consumo real (últimos 30 días) — clasificación por días restantes, no solo por mínimo/máximo.</p>
+      <div class="kpiGrid" style="margin:0">
+        ${claves.map(k => {
+          const e = TG_COBERTURA_ESTILOS_[k];
+          const b = resumen[k] || { cantidad:0, valor:0 };
+          return `
+            <div class="kpiCard" style="cursor:pointer;border-left:4px solid ${e.color}" onclick="abrirModalCobertura('${k}')" title="Ver detalle">
+              <div class="kpiIcono" style="color:${e.color}">${tgIcon(e.icono,18)}</div>
+              <div class="kpiLabel">${e.etiqueta}</div>
+              <div class="kpiValor">${b.cantidad}</div>
+              <div class="kpiNota">${e.nota}${b.cantidad ? " — $" + b.valor.toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2}) : ""}</div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+
+}
+
+// ===============================
+// TAGERS WMS 2.0 — Fase 4: KPIs operativos (KpisOperativos.gs)
+// Solo Admin/Almacén (igual que el backend) — si el usuario no tiene
+// acceso, la llamada falla y la sección simplemente no se dibuja, sin
+// mostrar un error (mismo criterio que el resto de tarjetas entre
+// módulos de Acciones Requeridas). Cada valor puede venir null cuando no
+// hay datos suficientes en la ventana — se muestra "Sin datos
+// suficientes", nunca un 0%/100% inventado.
+// ===============================
+
+function cargarKpisOperativos(){
+
+  google.script.run
+    .withSuccessHandler(dibujarKpisOperativos)
+    .withFailureHandler(function(){ /* sin acceso o sin datos — la sección se queda vacía */ })
+    .obtenerKpisOperativosApp(obtenerTokenSesion(), {});
+
+}
+
+function formatearKpiPorcentaje_(valor){
+  return valor === null || valor === undefined ? "Sin datos suficientes" : valor + "%";
+}
+
+function dibujarKpisOperativos(datos){
+
+  const cont = document.getElementById("kpisOperativos");
+  if(!cont || !datos) return;
+
+  const tarjetas = [
+    {
+      icono: "checkCirculo", titulo: "Exactitud de inventario",
+      valor: formatearKpiPorcentaje_(datos.exactitudInventario.exactitudPorcentaje),
+      nota: datos.exactitudInventario.totalContados + " conteo(s) cerrado(s) en " + datos.exactitudInventario.diasHistorial + " días"
+    },
+    {
+      icono: "camion", titulo: "Fill rate — Requisiciones de Área",
+      valor: formatearKpiPorcentaje_(datos.fillRateArea.fillRatePorcentaje),
+      nota: datos.fillRateArea.folios + " folio(s) entregado(s)" + (datos.fillRateArea.folioCompletosPorcentaje === null ? "" : " — " + datos.fillRateArea.folioCompletosPorcentaje + "% completos")
+    },
+    {
+      icono: "camion", titulo: "Fill rate — Requisiciones de Sucursal",
+      valor: formatearKpiPorcentaje_(datos.fillRateSucursal.fillRatePorcentaje),
+      nota: datos.fillRateSucursal.folios + " folio(s)" + (datos.fillRateSucursal.folioCompletosPorcentaje === null ? "" : " — " + datos.fillRateSucursal.folioCompletosPorcentaje + "% completos")
+    },
+    {
+      icono: "recibo", titulo: "Recepciones completas de compras",
+      valor: formatearKpiPorcentaje_(datos.recepcionesCompras.completasPorcentaje),
+      nota: datos.recepcionesCompras.ordenesConRecepcion + " OC con recepción" + (datos.recepcionesCompras.enUnaSolaRecepcionPorcentaje === null ? "" : " — " + datos.recepcionesCompras.enUnaSolaRecepcionPorcentaje + "% en una sola vez")
+    },
+    {
+      icono: "reloj", titulo: "Tiempo de surtido — Área",
+      valor: datos.tiempoSurtidoArea.diasPromedio === null ? "Sin datos suficientes" : datos.tiempoSurtidoArea.diasPromedio + " días",
+      nota: datos.tiempoSurtidoArea.foliosEvaluados + " folio(s) evaluado(s)"
+    },
+    {
+      icono: "reloj", titulo: "Tiempo de surtido — Sucursal",
+      valor: datos.tiempoSurtidoSucursal.diasPromedio === null ? "Sin datos suficientes" : datos.tiempoSurtidoSucursal.diasPromedio + " días",
+      nota: datos.tiempoSurtidoSucursal.foliosEvaluados + " folio(s) evaluado(s)"
+    }
+  ];
+
+  cont.innerHTML = `
+    <div class="cardProducto">
+      <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:8px">${tgIcon("balanza",18)} KPIs Operativos</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">Últimos ${datos.exactitudInventario.diasHistorial} días — un KPI en "Sin datos suficientes" significa que no hubo actividad para calcularlo en ese periodo, no que sea 0%.</p>
+      <div class="kpiGrid" style="margin:0">
+        ${tarjetas.map(t => `
+          <div class="kpiCard">
+            <div class="kpiIcono">${tgIcon(t.icono,18)}</div>
+            <div class="kpiLabel">${t.titulo}</div>
+            <div class="kpiValor" style="font-size:${t.valor === 'Sin datos suficientes' ? '13px' : ''}">${t.valor}</div>
+            <div class="kpiNota">${t.nota}</div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
 
 }
 
@@ -8222,7 +9606,7 @@ function cargarResumenInicio(){
     console.error(e.message);
   })
 
-  .obtenerResumenInicioApp();
+  .obtenerResumenInicioApp(obtenerTokenSesion());
 
 }
 
@@ -8239,7 +9623,7 @@ function cargarResumenExtraInicio(){
   google.script.run
     .withSuccessHandler(dibujarResumenExtraInicio)
     .withFailureHandler(function(e){ console.error(e.message); })
-    .obtenerResumenExtraDashboardApp();
+    .obtenerResumenExtraDashboardApp(obtenerTokenSesion());
 
 }
 
@@ -8298,6 +9682,36 @@ function tgEmptyState(icono, texto){
   </div>`;
 }
 
+/**
+ * Reemplazo del confirm() nativo del navegador, mismo modal para toda la
+ * app. Devuelve una Promise<boolean> — el llamador debe ser async y usar
+ * await, igual que se usaba "if(!confirm(msg)) return;":
+ *   if(!(await tgConfirmar(msg))) return;
+ * opciones: { titulo, textoConfirmar, textoCancelar, peligroso }
+ */
+function tgConfirmar(mensaje, opciones){
+  opciones = opciones || {};
+  return new Promise(function(resolve){
+    const modal = document.getElementById("modalConfirmar");
+    document.getElementById("modalConfirmarTitulo").textContent = opciones.titulo || "Confirmar";
+    document.getElementById("modalConfirmarMensaje").textContent = mensaje;
+    const btnConfirmar = document.getElementById("modalConfirmarBtnConfirmar");
+    const btnCancelar = document.getElementById("modalConfirmarBtnCancelar");
+    btnConfirmar.textContent = opciones.textoConfirmar || "Confirmar";
+    btnCancelar.textContent = opciones.textoCancelar || "Cancelar";
+    btnConfirmar.className = "boton" + (opciones.peligroso ? " danger" : "");
+    function cerrar(resultado){
+      modal.classList.remove("mostrar");
+      btnConfirmar.onclick = null;
+      btnCancelar.onclick = null;
+      resolve(resultado);
+    }
+    btnConfirmar.onclick = function(){ cerrar(true); };
+    btnCancelar.onclick = function(){ cerrar(false); };
+    modal.classList.add("mostrar");
+  });
+}
+
 function pintarTablaTop(idTabla, lista, campoCantidad, mensajeVacio){
 
   const tbody = document.getElementById(idTabla);
@@ -8322,7 +9736,7 @@ function cargarConteosProgramadosHoy(){
   google.script.run
     .withSuccessHandler(dibujarConteosProgramadosHoy)
     .withFailureHandler(function(e){ console.error(e.message); })
-    .obtenerConteosProgramadosHoyApp();
+    .obtenerConteosProgramadosHoyApp(obtenerTokenSesion());
 
 }
 
@@ -8372,7 +9786,7 @@ function dibujarConteosProgramadosHoy(lista){
 
 }
 
-function generarConteosProgramadosHoy(){
+async function generarConteosProgramadosHoy(){
 
   const lista = window.conteosProgramadosHoy || [];
 
@@ -8380,7 +9794,7 @@ function generarConteosProgramadosHoy(){
 
   const racks = lista.map(c => c.rack);
 
-  if(!confirm("¿Generar el conteo cíclico de hoy para: " + racks.join(", ") + "?")){
+  if(!(await tgConfirmar("¿Generar el conteo cíclico de hoy para: " + racks.join(", ") + "?"))){
     return;
   }
 
@@ -8552,6 +9966,7 @@ function dibujarChartStockCritico(datos){
 // ===============================
 
 let modalListaDatosCompletos = [];
+let modalListaModoActual = "stock";
 
 function abrirModalListaStock(tipo){
 
@@ -8566,6 +9981,7 @@ function abrirModalListaStock(tipo){
     return;
   }
 
+  modalListaModoActual = "stock";
   buscarInput.value = "";
   document.querySelector("#modalLista .modalListaBuscar").style.display = "block";
 
@@ -8588,28 +10004,39 @@ function abrirModalListaStock(tipo){
     <div class="modalListaVacio" id="modalListaVacio" style="display:none;">Sin productos en esta categoría 🎉</div>
   `;
 
-  if(tipo === "critico"){
-    titulo.innerText = "🔴 Agotado / bajo mínimo";
-    subtitulo.innerText = "Cargando...";
-  } else {
-    titulo.innerText = "🟢 Stock óptimo";
-    subtitulo.innerText = "Cargando...";
-  }
+  const titulos = {
+    critico: "🔴 Agotado / bajo mínimo",
+    optimo: "🟢 Stock óptimo",
+    bajo: "🟠 Bajo mínimo",
+    agotado: "🔴 Agotados"
+  };
+  titulo.innerText = titulos[tipo] || titulos.critico;
+  subtitulo.innerText = "Cargando...";
 
   document.getElementById("modalListaTbody").innerHTML = "";
   document.getElementById("modalListaVacio").style.display = "none";
   document.getElementById("modalLista").classList.add("mostrar");
 
+  // "bajo" y "agotado" son un drill-down de las tarjetas del Dashboard
+  // (Fase 1, TAGERS Intelligence) — obtenerProductosPorEstadoStock solo
+  // conoce "critico"/"optimo" (agotado+bajo juntos), así que se pide
+  // "critico" igual y se separa en el cliente por el campo estado que ya
+  // trae cada producto, sin tocar el contrato del backend.
+  const tipoBackend = (tipo === "bajo" || tipo === "agotado") ? "critico" : tipo;
+
   google.script.run
     .withSuccessHandler(function(lista){
-      modalListaDatosCompletos = lista || [];
-      subtitulo.innerText = modalListaDatosCompletos.length + " producto(s) — solo productos con ubicación asignada";
+      let filtrada = lista || [];
+      if(tipo === "bajo") filtrada = filtrada.filter(p => p.estado === "Bajo");
+      if(tipo === "agotado") filtrada = filtrada.filter(p => p.estado === "Agotado");
+      modalListaDatosCompletos = filtrada;
+      subtitulo.innerText = filtrada.length + " producto(s) — solo productos con ubicación asignada";
       pintarModalLista(modalListaDatosCompletos);
     })
     .withFailureHandler(function(error){
       subtitulo.innerText = "Error al cargar: " + error.message;
     })
-    .obtenerProductosPorEstadoStock(tipo);
+    .obtenerProductosPorEstadoStock(tipoBackend);
 
   }catch(err){
     alert("⚠️ Error al abrir el modal: " + err.message);
@@ -8654,9 +10081,11 @@ function pintarModalLista(lista){
 function filtrarModalLista(){
 
   const texto = document.getElementById("modalListaBuscarInput").value.toUpperCase().trim();
+  const pintaresPorModo = { cobertura: pintarModalCobertura, "caducidad-compra": pintarModalCaducidadesCompra };
+  const pintar = pintaresPorModo[modalListaModoActual] || pintarModalLista;
 
   if(!texto){
-    pintarModalLista(modalListaDatosCompletos);
+    pintar(modalListaDatosCompletos);
     return;
   }
 
@@ -8665,12 +10094,195 @@ function filtrarModalLista(){
     String(p.codigo).toUpperCase().includes(texto)
   );
 
-  pintarModalLista(filtrados);
+  pintar(filtrados);
 
 }
 
 function cerrarModalLista(){
   document.getElementById("modalLista").classList.remove("mostrar");
+}
+
+/**
+ * Drill-down de una tarjeta de Inteligencia de Inventario — reutiliza el
+ * mismo modal #modalLista que abrirModalListaStock (mismo patrón: pedir
+ * una vez, filtrar en cliente por clasificación, sin duplicar la
+ * consulta al backend por cada tarjeta).
+ */
+function abrirModalCobertura(clasificacion){
+
+  try{
+
+  const titulo = document.getElementById("modalListaTitulo");
+  const subtitulo = document.getElementById("modalListaSubtitulo");
+  const buscarInput = document.getElementById("modalListaBuscarInput");
+
+  if(!titulo || !subtitulo || !buscarInput){
+    alert("No se encontraron los elementos del modal. Recarga con Ctrl+Shift+R o prueba en incógnito.");
+    return;
+  }
+
+  modalListaModoActual = "cobertura";
+  buscarInput.value = "";
+  document.querySelector("#modalLista .modalListaBuscar").style.display = "block";
+
+  document.getElementById("modalListaBody").innerHTML = `
+    <table class="tablaActividad">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Código</th>
+          <th>Existencia</th>
+          <th>Consumo prom./día</th>
+          <th>Días de cobertura</th>
+          <th>Valor</th>
+        </tr>
+      </thead>
+      <tbody id="modalListaTbody"></tbody>
+    </table>
+    <div class="modalListaVacio" id="modalListaVacio" style="display:none;">Sin productos en esta clasificación 🎉</div>
+  `;
+
+  const e = TG_COBERTURA_ESTILOS_[clasificacion] || TG_COBERTURA_ESTILOS_.normal;
+  titulo.innerText = e.etiqueta;
+  subtitulo.innerText = "Cargando...";
+
+  document.getElementById("modalListaTbody").innerHTML = "";
+  document.getElementById("modalListaVacio").style.display = "none";
+  document.getElementById("modalLista").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      const filtrada = (lista || []).filter(p => p.clasificacion === clasificacion);
+      modalListaDatosCompletos = filtrada;
+      subtitulo.innerText = filtrada.length + " producto(s) — cobertura sobre consumo de los últimos 30 días";
+      pintarModalCobertura(modalListaDatosCompletos);
+    })
+    .withFailureHandler(function(error){
+      subtitulo.innerText = "Error al cargar: " + error.message;
+    })
+    .obtenerCoberturaInventarioApp(obtenerTokenSesion(), {});
+
+  }catch(err){
+    alert("⚠️ Error al abrir el modal: " + err.message);
+  }
+
+}
+
+function pintarModalCobertura(lista){
+
+  const tbody = document.getElementById("modalListaTbody");
+  const vacio = document.getElementById("modalListaVacio");
+
+  if(!lista || !lista.length){
+    tbody.innerHTML = "";
+    vacio.style.display = "block";
+    return;
+  }
+
+  vacio.style.display = "none";
+
+  tbody.innerHTML = lista.map(p => `
+    <tr onclick="abrirDetalleProducto('${p.codigo}')" style="cursor:pointer">
+      <td>${p.producto}</td>
+      <td>${p.codigo}</td>
+      <td>${p.existencia}</td>
+      <td>${p.consumoPromedioDiario}</td>
+      <td>${p.diasCobertura === null ? "—" : p.diasCobertura}</td>
+      <td>$${Number(p.valorInventario).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>
+  `).join("");
+
+}
+
+/**
+ * Drill-down de la tarjeta "caducidades-compra" (Fase 3, FEFO.gs) —
+ * mismo patrón de #modalLista que abrirModalCobertura. La cantidad es una
+ * ESTIMACIÓN (reparto FEFO contra la existencia actual, no un dato exacto
+ * por lote) — el subtítulo lo deja explícito para no presentarlo como si
+ * fuera tan preciso como los lotes de producción.
+ */
+function abrirModalCaducidadesCompra(){
+
+  try{
+
+  const titulo = document.getElementById("modalListaTitulo");
+  const subtitulo = document.getElementById("modalListaSubtitulo");
+  const buscarInput = document.getElementById("modalListaBuscarInput");
+
+  if(!titulo || !subtitulo || !buscarInput){
+    alert("No se encontraron los elementos del modal. Recarga con Ctrl+Shift+R o prueba en incógnito.");
+    return;
+  }
+
+  modalListaModoActual = "caducidad-compra";
+  buscarInput.value = "";
+  document.querySelector("#modalLista .modalListaBuscar").style.display = "block";
+
+  document.getElementById("modalListaBody").innerHTML = `
+    <table class="tablaActividad">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Código</th>
+          <th>Lote</th>
+          <th>Caducidad</th>
+          <th>Días</th>
+          <th>Cantidad estimada</th>
+        </tr>
+      </thead>
+      <tbody id="modalListaTbody"></tbody>
+    </table>
+    <div class="modalListaVacio" id="modalListaVacio" style="display:none;">Sin lotes de compra próximos a caducar 🎉</div>
+  `;
+
+  titulo.innerText = "🟡 Caducidades de compra (estimado)";
+  subtitulo.innerText = "Cargando...";
+
+  document.getElementById("modalListaTbody").innerHTML = "";
+  document.getElementById("modalListaVacio").style.display = "none";
+  document.getElementById("modalLista").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      modalListaDatosCompletos = lista || [];
+      subtitulo.innerText = modalListaDatosCompletos.length + " lote(s) — estimación FEFO, no es la fecha exacta de cada unidad en existencia";
+      pintarModalCaducidadesCompra(modalListaDatosCompletos);
+    })
+    .withFailureHandler(function(error){
+      subtitulo.innerText = "Error al cargar: " + error.message;
+    })
+    .obtenerLotesEntradaProximosACaducarApp(obtenerTokenSesion(), 7);
+
+  }catch(err){
+    alert("⚠️ Error al abrir el modal: " + err.message);
+  }
+
+}
+
+function pintarModalCaducidadesCompra(lista){
+
+  const tbody = document.getElementById("modalListaTbody");
+  const vacio = document.getElementById("modalListaVacio");
+
+  if(!lista || !lista.length){
+    tbody.innerHTML = "";
+    vacio.style.display = "block";
+    return;
+  }
+
+  vacio.style.display = "none";
+
+  tbody.innerHTML = lista.map(l => `
+    <tr onclick="abrirDetalleProducto('${l.codigo}')" style="cursor:pointer">
+      <td>${l.producto}</td>
+      <td>${l.codigo}</td>
+      <td>${l.lote}</td>
+      <td>${l.caducidad}</td>
+      <td style="color:${l.diasRestantes < 0 ? 'var(--guinda)' : 'inherit'}">${l.diasRestantes}</td>
+      <td>${l.cantidadEstimada}</td>
+    </tr>
+  `).join("");
+
 }
 
 function dibujarHeatmapRacks(mapa){
@@ -8910,7 +10522,7 @@ function buscarProductoEntrada(){
 
   })
 
-  .buscarProductoApp(codigo);
+  .buscarProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -9023,7 +10635,7 @@ function buscarProductoSalida(){
     mostrarMensajeTemporal("mensajeSalida", "⚠️ "+error.message, "error");
   })
 
-  .buscarProductoApp(codigo);
+  .buscarProductoApp(codigo, obtenerTokenSesion());
 
 }
 
@@ -9185,7 +10797,7 @@ function procesarPDFImportacion(archivo){
         }
 
       })
-      .analizarPDFRequerimientoApp(base64Puro, importacionArchivoNombre);
+      .analizarPDFRequerimientoApp(base64Puro, importacionArchivoNombre, obtenerTokenSesion());
 
   };
 
@@ -9280,7 +10892,7 @@ function procesarExcelImportacion(archivo){
         .withFailureHandler(function(error){
           resumen.innerText = "Error al buscar coincidencias: " + error.message;
         })
-        .analizarImportacionSalidasApp(items);
+        .analizarImportacionSalidasApp(items, obtenerTokenSesion());
 
     }catch(err){
       resumen.innerText = "No se pudo leer el archivo: " + err.message;
@@ -9404,11 +11016,11 @@ function asignarCodigoManual(indice){
     .withFailureHandler(function(error){
       alert("Error: " + error.message);
     })
-    .recalcularFilaImportacionManualApp(codigo, r.cantidadPedida);
+    .recalcularFilaImportacionManualApp(codigo, r.cantidadPedida, obtenerTokenSesion());
 
 }
 
-function registrarImportacionSalidas(){
+async function registrarImportacionSalidas(){
 
   const filas = [];
 
@@ -9432,7 +11044,7 @@ function registrarImportacionSalidas(){
 
   const resumenConfirmacion = filas.map(f => "- " + f.producto + ": " + f.cantidad + " " + f.udm).join("\n");
 
-  if(!confirm("¿Registrar " + filas.length + " salida(s)? Esto descuenta existencia de inmediato:\n\n" + resumenConfirmacion)){
+  if(!(await tgConfirmar("¿Registrar " + filas.length + " salida(s)? Esto descuenta existencia de inmediato:\n\n" + resumenConfirmacion, { peligroso: true }))){
     return;
   }
 
@@ -9486,7 +11098,7 @@ function abrirAjustesInventario(){
 
   .withFailureHandler(function(e){ alert(e.message); })
 
-  .obtenerAjustesInventarioApp(100);
+  .obtenerAjustesInventarioApp(100, obtenerTokenSesion());
 
 }
 
@@ -9562,7 +11174,7 @@ function abrirGenerarConteo(){
 
   .withFailureHandler(function(e){ alert(e.message); })
 
-  .obtenerRacksConteoApp();
+  .obtenerRacksConteoApp(obtenerTokenSesion());
 
 }
 
@@ -9895,7 +11507,7 @@ function ejecutarRevisionDiscrepancias(){
 
   .withFailureHandler(function(e){ activarCargaBoton("btnBuscarDiscrepancias", false); alert("ERROR: "+e.message); })
 
-  .revisarDiscrepanciasApp();
+  .revisarDiscrepanciasApp(obtenerTokenSesion());
 
 }
 
@@ -10035,7 +11647,7 @@ function rechazarDiscrepanciaDesdeApp(fila){
 
 }
 
-function aprobarTodasLasDiscrepancias(){
+async function aprobarTodasLasDiscrepancias(){
 
   const lista = window.discrepanciasPendientes || [];
 
@@ -10047,7 +11659,7 @@ function aprobarTodasLasDiscrepancias(){
     comentario: document.getElementById("comentario-"+d.fila).value
   }));
 
-  if(!confirm("¿Aprobar las " + items.length + " discrepancia(s) mostradas, con el Motivo/Comentario que capturaste en cada tarjeta?")){
+  if(!(await tgConfirmar("¿Aprobar las " + items.length + " discrepancia(s) mostradas, con el Motivo/Comentario que capturaste en cada tarjeta?"))){
     return;
   }
 
@@ -10128,7 +11740,7 @@ function abrirCerrarConteo(){
 
 }
 
-function cerrarConteoDesdeApp(){
+async function cerrarConteoDesdeApp(){
 
   const folio=document.getElementById("folioCerrarConteo").value;
 
@@ -10137,7 +11749,7 @@ function cerrarConteoDesdeApp(){
     return;
   }
 
-  if(!confirm("¿Cerrar el conteo " + folio + "? Esta acción actualiza la existencia y no se puede deshacer.")){
+  if(!(await tgConfirmar("¿Cerrar el conteo " + folio + "? Esta acción actualiza la existencia y no se puede deshacer.", { peligroso: true }))){
     return;
   }
 
@@ -10220,7 +11832,7 @@ function ejecutarBusquedaUbicacion(){
 
   .withFailureHandler(function(e){ activarCargaBoton("btnBuscarUbicacion", false); alert(e.message); })
 
-  .buscarUbicacionApp(termino);
+  .buscarUbicacionApp(termino, obtenerTokenSesion());
 
 }
 
@@ -10368,7 +11980,7 @@ function cargarReporteEjecutivo(){
   google.script.run
     .withSuccessHandler(dibujarReporteEjecutivo)
     .withFailureHandler(function(e){ console.error(e.message); alert("⚠️ " + e.message); })
-    .obtenerReporteEjecutivoApp();
+    .obtenerReporteEjecutivoApp(obtenerTokenSesion());
 
 }
 
@@ -10978,6 +12590,23 @@ function aplicarFiltros(){
 
 <div class="contenedor"></div>
 
+<!-- Fase 5 — Mobile operativo: acciones de piso de primera clase
+     (buscar/escanear/recibir/surtir/contar), reutilizando exactamente
+     los mismos flujos que ya usa el menú de escritorio — nunca lógica
+     nueva, solo un atajo. Solo se ve en móvil (ver CSS .fabAccionesMoviles). -->
+<div class="fabAccionesMoviles" id="fabAccionesMoviles">
+  <div class="fabAccionesLista" id="fabAccionesLista">
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('contar')"><span class="fabAccionIcono">🧮</span>Contar</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('surtir')"><span class="fabAccionIcono">📤</span>Surtir</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('recibir')"><span class="fabAccionIcono">📥</span>Recibir</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('escanear')"><span class="fabAccionIcono">📷</span>Escanear</button>
+    <button class="fabAccionItem" onclick="ejecutarAccionRapidaMovil_('buscar')"><span class="fabAccionIcono">🔍</span>Buscar</button>
+  </div>
+  <button class="fabBoton" id="fabBotonPrincipal" onclick="toggleFabAccionesMoviles()" aria-label="Acciones rápidas" aria-expanded="false">+</button>
+</div>
+
+<input type="hidden" id="entradaEscaneoRapidoMovil">
+
 <nav class="navInferior" id="navInferior">
 <button class="navInferiorBtn" data-permiso-id="btnInicio" onclick="volverInicio()"><span class="navInferiorIcono" id="navInfIconoInicio"></span><span>Inicio</span></button>
 <button class="navInferiorBtn" data-permiso-id="btnInventarioLista" onclick="abrirInventario()"><span class="navInferiorIcono" id="navInfIconoInventario"></span><span>Inventario</span></button>
@@ -10995,6 +12624,23 @@ function aplicarFiltros(){
 <div id="lectorQr" style="width:280px;"></div>
 
 <div class="boton" onclick="cerrarEscaner()">Cerrar</div>
+
+</div>
+
+</div>
+
+
+<div class="modalEscaner" id="modalConfirmar">
+
+<div class="modalEscanerCaja modalConfirmarCaja">
+
+<h3 id="modalConfirmarTitulo">Confirmar</h3>
+<p id="modalConfirmarMensaje"></p>
+
+<div class="modalConfirmarBotones">
+  <div class="boton secundario" id="modalConfirmarBtnCancelar">Cancelar</div>
+  <div class="boton" id="modalConfirmarBtnConfirmar">Confirmar</div>
+</div>
 
 </div>
 
@@ -11116,6 +12762,31 @@ window.addEventListener("load", function(){
   });
 
 });
+
+/**
+ * El riel de íconos del sidebar en móvil depende de dos cosas que corren
+ * async y pueden llegar tarde dentro del iframe de script.google.com: que
+ * forzarResponsiveSiHaceFalta() ya haya "activado" el @media (max-width:768px)
+ * (ver el fix al inicio del <head>) y que aplicarIconosSidebar() ya haya
+ * reemplazado los <span class="icono"> vacíos por el SVG. Si cualquiera de
+ * las dos corre después del primer paint sin que el navegador repinte solo,
+ * el riel se ve en blanco hasta que el usuario toca algo (mismo bug de
+ * repintado que ya se documenta arriba). Se reintentan ambas en la misma
+ * cadencia que ya usa el fix de viewport, y también al volver de segundo
+ * plano (pageshow cubre el caso común en Chrome Android de reanudar desde
+ * el caché de retroceso con el DOM ya construido pero sin repintar).
+ */
+function asegurarRenderizadoMovilSidebar(){
+  if(window.tgForzarResponsive) window.tgForzarResponsive();
+  if(typeof aplicarIconosSidebar === "function") aplicarIconosSidebar();
+}
+window.addEventListener("load", function(){
+  setTimeout(asegurarRenderizadoMovilSidebar, 150);
+  setTimeout(asegurarRenderizadoMovilSidebar, 600);
+  setTimeout(asegurarRenderizadoMovilSidebar, 1500);
+  setTimeout(asegurarRenderizadoMovilSidebar, 3000);
+});
+window.addEventListener("pageshow", asegurarRenderizadoMovilSidebar);
 
 </script>
 

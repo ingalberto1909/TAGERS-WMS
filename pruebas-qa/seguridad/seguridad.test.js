@@ -244,3 +244,137 @@ prueba({
     };
   },
 });
+
+/*
+ * TAGERS WMS 2.0 — Fase 6 (Seguridad y auditoría).
+ *
+ * Con access:ANYONE en appsscript.json, CUALQUIERA que abra la URL puede
+ * llamar cualquier función de nivel superior vía google.script.run desde
+ * la consola del navegador, sin pasar nunca por el login propio de
+ * TAGERS — no importa qué botón del frontend "normalmente" la dispare.
+ * Una auditoría encontró ~55 funciones de lectura (y un par de
+ * escritura) que no llamaban requerirSesionActivaApp_ ni recibían
+ * siquiera un token — exponían órdenes de compra, costos, proveedores,
+ * reportes ejecutivos, inventario mensual, etc. a cualquier visitante
+ * anónimo. Esta prueba cubre una muestra representativa de cada archivo
+ * tocado en esa corrección — no las ~55 una por una, pero sí al menos
+ * una de cada módulo — para dejar constancia empírica del cierre.
+ */
+const FUNCIONES_CORREGIDAS_FASE6_ = [
+  // AnalisisCompras.gs
+  { nombre: 'obtenerAnalisisProductoComprasApp', args: ['harina'] },
+  { nombre: 'generarProyeccionConsumoApp', args: ['harina', 10] },
+  // Recetas.gs
+  { nombre: 'obtenerRecetasApp', args: [] },
+  { nombre: 'obtenerDetalleRecetaApp', args: ['X'] },
+  // RequisicionesRecetas.gs
+  { nombre: 'obtenerTipoRequisicionApp', args: ['F-1'] },
+  { nombre: 'obtenerPDFRequisicionRecetaApp', args: ['F-1'] },
+  // Produccion.gs
+  { nombre: 'obtenerLotesProduccionApp', args: [{}] },
+  { nombre: 'obtenerProductoTerminadoPorNombreRecetaApp', args: ['X'] },
+  // 📁 App.gs.gs — catálogo/búsqueda
+  { nombre: 'buscarProductoApp', args: ['COD-001'] },
+  { nombre: 'obtenerDetalleProductoApp', args: ['COD-001'] },
+  { nombre: 'busquedaGlobalHeaderApp', args: ['harina'] },
+  { nombre: 'buscarProductoCatalogoApp', args: ['harina'] },
+  // 📁 App.gs.gs — dashboard/reportes
+  { nombre: 'obtenerResumenInicioApp', args: [] },
+  { nombre: 'obtenerResumenExtraDashboardApp', args: [] },
+  { nombre: 'obtenerReporteEjecutivoApp', args: [] },
+  { nombre: 'obtenerValorInventarioApp', args: [] },
+  // 📁 App.gs.gs — compras
+  { nombre: 'obtenerOrdenesCompraApp', args: [] },
+  { nombre: 'obtenerDetalleOCApp', args: ['OC-1'] },
+  { nombre: 'obtenerAnalisisCostosApp', args: [30] },
+  { nombre: 'obtenerHistorialComprasProductoApp', args: ['COD-001'] },
+  { nombre: 'obtenerProveedoresReabastecimientoApp', args: [] },
+  // 📁 App.gs.gs — inventario mensual
+  { nombre: 'obtenerFoliosInventarioAbiertosApp', args: [] },
+  { nombre: 'obtenerHistorialInventariosApp', args: [] },
+  { nombre: 'obtenerDetalleInventarioApp', args: ['FIM-1'] },
+  { nombre: 'obtenerDashboardInventarioMensualApp', args: [] },
+  // 📁 App.gs.gs — requisiciones de área
+  { nombre: 'buscarProductoParaRequisicionApp', args: ['harina'] },
+  { nombre: 'obtenerProductosSugeridosAreaApp', args: ['Cocina'] },
+];
+
+prueba({
+  id: 'SEG-016', grupo: 'seguridad', nombre: 'Fase 6 — muestra representativa de las funciones antes desprotegidas ahora exige sesión', metodo: 'EMPÍRICO',
+  objetivo: 'Cada función listada (una por archivo tocado en la corrección) debe rechazar una llamada sin token válido — antes de esta fase ninguna lo hacía',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const sinBloquear = [];
+
+    FUNCIONES_CORREGIDAS_FASE6_.forEach(({ nombre, args }) => {
+      let bloqueado = false;
+      try {
+        entorno.invocar(nombre, ...args, undefined);
+      } catch (e) {
+        bloqueado = /sesión/i.test(e.message);
+      }
+      if (!bloqueado) sinBloquear.push(nombre);
+    });
+
+    return {
+      datos: FUNCIONES_CORREGIDAS_FASE6_.length + ' funciones probadas sin token, una por cada archivo tocado',
+      esperado: 'las ' + FUNCIONES_CORREGIDAS_FASE6_.length + ' rechazan la llamada con el mensaje de sesión inválida',
+      obtenido: sinBloquear.length ? 'NO bloquearon: ' + sinBloquear.join(', ') : 'todas bloquearon correctamente',
+      pasa: sinBloquear.length === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-017', grupo: 'seguridad', nombre: 'crearRequisicionRecetaApp y crearRequisicionApp (escritura) también exigen sesión', metodo: 'EMPÍRICO',
+  objetivo: 'Las dos funciones de creación de requisición recibían token pero nunca lo validaban — deben rechazar ahora un token inválido antes de escribir nada',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    let bloqueada1 = false, bloqueada2 = false;
+    try { entorno.invocar('crearRequisicionRecetaApp', '', [{ codigoReceta: 'REC-0001', cantidadSolicitada: 1 }], 'token-invalido'); }
+    catch (e) { bloqueada1 = /sesión/i.test(e.message); }
+    try { entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 5 }], 'token-invalido'); }
+    catch (e) { bloqueada2 = /sesión/i.test(e.message); }
+    return {
+      datos: 'token inventado en ambas',
+      esperado: 'ambas rechazadas, ninguna fila nueva en REQUISICIONES',
+      obtenido: `crearRequisicionRecetaApp=${bloqueada1}, crearRequisicionApp=${bloqueada2}, filasReq=${entorno.leerHoja('REQUISICIONES').length - 1}`,
+      pasa: bloqueada1 && bloqueada2 && entorno.leerHoja('REQUISICIONES').length === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-018', grupo: 'seguridad', nombre: 'obtenerDetalleRequisicionRecetaApp (pública) exige sesión aunque el token se omita', metodo: 'EMPÍRICO',
+  objetivo: 'Antes, esta función solo filtraba por área SI llegaba token, pero nunca exigía que llegara uno — omitirlo bypaseaba el filtro de área por completo. La versión pública ahora exige sesión siempre; la interna (_) sigue sin token para Producción',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 5 }], token);
+    let bloqueado = false;
+    try { entorno.invocar('obtenerDetalleRequisicionRecetaApp', req.folio, undefined); }
+    catch (e) { bloqueado = /sesión/i.test(e.message); }
+    return {
+      datos: 'llamada pública sin ningún token',
+      esperado: 'bloqueada — ya no basta con omitir el token para saltarse el filtro de área',
+      obtenido: bloqueado ? 'bloqueada' : 'PERMITIDO SIN SESIÓN',
+      pasa: bloqueado,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-019', grupo: 'seguridad', nombre: 'obtenerAccesoRequisicionesApp y obtenerAccesoSucursalApp exigen sesión aunque se llamen directo', metodo: 'EMPÍRICO',
+  objetivo: 'Ambos resolutores de acceso se llaman siempre desde el cliente con un token ya validado por quien los envuelve, pero nunca revisaban nada por su cuenta — un token inválido pasado directo a ellos regresaba un descriptor vacío en vez de rechazar la llamada',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    let bloqueada1 = false, bloqueada2 = false;
+    try { entorno.invocar('obtenerAccesoRequisicionesApp', 'token-invalido'); } catch (e) { bloqueada1 = /sesión/i.test(e.message); }
+    try { entorno.invocar('obtenerAccesoSucursalApp', 'token-invalido'); } catch (e) { bloqueada2 = /sesión/i.test(e.message); }
+    return {
+      datos: 'token inventado en ambos resolutores',
+      esperado: 'ambos rechazan la llamada, ninguno regresa un descriptor vacío en silencio',
+      obtenido: `obtenerAccesoRequisicionesApp=${bloqueada1}, obtenerAccesoSucursalApp=${bloqueada2}`,
+      pasa: bloqueada1 && bloqueada2,
+    };
+  },
+});

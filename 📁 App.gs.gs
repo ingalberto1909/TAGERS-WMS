@@ -354,7 +354,8 @@ function obtenerKardex(limite) {
   return movimientos;
 }
 
-function buscarUbicacionApp(termino){
+function buscarUbicacionApp(termino, token){
+  requerirSesionActivaApp_(token);
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getDataRange().getValues();
   datos.shift();
@@ -625,7 +626,9 @@ function buscarCoincidenciaProducto_(nombreBuscado, catalogoNormalizado){
  * un respaldo en IMPORTAR_SALIDAS para quien quiera revisarlo
  * directamente en Sheets.
  */
-function analizarImportacionSalidasApp(items){
+function analizarImportacionSalidasApp(items, token){
+
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
@@ -807,7 +810,9 @@ function registrarSalidasImportadasApp(filas, token, nombreArchivo){
  * IMPORTANTE: requiere el servicio avanzado "Drive API" activado en el
  * proyecto (Servicios -> + -> Drive API).
  */
-function extraerTextoPDFApp(base64PDF, nombreArchivo){
+function extraerTextoPDFApp(base64PDF, nombreArchivo, token){
+
+  requerirSesionActivaApp_(token);
 
   const bytes = Utilities.base64Decode(base64PDF);
   const blob = Utilities.newBlob(bytes, "application/pdf", nombreArchivo || "requerimiento.pdf");
@@ -888,9 +893,11 @@ function extraerItemsDesdeTextoPDF_(texto){
  * extraer items -> reusar analizarImportacionSalidasApp (EL MISMO motor
  * de coincidencias que usa la importación por Excel).
  */
-function analizarPDFRequerimientoApp(base64PDF, nombreArchivo){
+function analizarPDFRequerimientoApp(base64PDF, nombreArchivo, token){
 
-  const texto = extraerTextoPDFApp(base64PDF, nombreArchivo);
+  requerirSesionActivaApp_(token);
+
+  const texto = extraerTextoPDFApp(base64PDF, nombreArchivo, token);
   const items = extraerItemsDesdeTextoPDF_(texto);
 
   if(!items.length){
@@ -903,7 +910,7 @@ function analizarPDFRequerimientoApp(base64PDF, nombreArchivo){
     );
   }
 
-  return analizarImportacionSalidasApp(items);
+  return analizarImportacionSalidasApp(items, token);
 }
 
 function obtenerResumenDashboard(){
@@ -952,7 +959,8 @@ function obtenerResumenDashboard(){
   };
 }
 
-function buscarProductoApp(codigo){
+function buscarProductoApp(codigo, token){
+  requerirSesionActivaApp_(token);
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getDataRange().getValues();
 
@@ -979,9 +987,11 @@ function buscarProductoApp(codigo){
  * columna Presentación de MATRIZ (columna T) del producto ya
  * identificado, nunca de un número suelto tomado del documento.
  */
-function recalcularFilaImportacionManualApp(codigo, cantidadPedida){
+function recalcularFilaImportacionManualApp(codigo, cantidadPedida, token){
 
-  const producto = buscarProductoApp(codigo);
+  requerirSesionActivaApp_(token);
+
+  const producto = buscarProductoApp(codigo, token);
   if(!producto) return null;
 
   const cantidad = Number(cantidadPedida) || 0;
@@ -1049,7 +1059,9 @@ function obtenerProductosBajoMinimo(){
  * al hacer clic en una alerta de inventario: existencia, mínimo, máximo,
  * punto de reorden y fecha del último ingreso (última ENTRADA en KARDEX).
  */
-function obtenerDetalleProductoApp(codigo){
+function obtenerDetalleProductoApp(codigo, token){
+
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const datos = obtenerFilasHojaCacheadas_("MATRIZ");
@@ -1283,7 +1295,8 @@ function obtenerDashboardMovil(){
 /**
  * NUEVO: historial de AUDITORIA_AJUSTES para la vista "Ajustes de inventario".
  */
-function obtenerAjustesInventarioApp(limite){
+function obtenerAjustesInventarioApp(limite, token){
+  requerirSesionActivaApp_(token);
   const hoja = SpreadsheetApp.getActive().getSheetByName("AUDITORIA_AJUSTES");
   if(!hoja) return [];
 
@@ -1312,7 +1325,8 @@ function obtenerAjustesInventarioApp(limite){
  * tu script de la hoja usan SpreadsheetApp.getUi() (eso truena en la app web).
  * Reusan la misma lógica pero regresan datos en vez de mostrar alerts.
  */
-function obtenerRacksConteoApp(){
+function obtenerRacksConteoApp(token){
+  requerirSesionActivaApp_(token);
   return obtenerRacksConteo();
 }
 
@@ -1384,7 +1398,9 @@ function generarConteoRacksApp(racks, token){
  * (SEMANAL/QUINCENAL/MENSUAL) ya pasó suficiente tiempo desde la última
  * generación (columna G) — o nunca se ha generado.
  */
-function obtenerConteosProgramadosHoyApp(){
+function obtenerConteosProgramadosHoyApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("PROGRAMACION_CONTEOS");
@@ -1469,7 +1485,8 @@ function marcarConteoProgramadoGeneradoApp(filas, token){
   return { ok: true };
 }
 
-function revisarDiscrepanciasApp(){
+function revisarDiscrepanciasApp(token){
+  requerirSesionActivaApp_(token);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
   const diferencias = ss.getSheetByName("DISCREPANCIAS");
@@ -1636,21 +1653,29 @@ function cerrarConteoFolioApp(folio, token){
  * NUEVO: cuenta discrepancias pendientes y conteos cíclicos abiertos,
  * para las tarjetas KPI del dashboard de Inicio.
  */
+/**
+ * Fase 7 (rendimiento): antes esta función leía DISCREPANCIAS y
+ * CONTROL_CONTEOS directo de la hoja (getRange().getValues()), sin pasar
+ * por obtenerFilasHojaCacheadas_ — la única lectura del Dashboard que no
+ * usaba la caché de 20s. Como esta función se llama DOS VECES en cada
+ * carga del Dashboard (una vez dentro de obtenerResumenInicioApp, otra
+ * dentro de obtenerNotificacionesApp — dos viajes RPC separados que el
+ * frontend dispara juntos), esas dos hojas se leían completas dos veces
+ * seguidas sin ninguna razón. Ahora comparte la misma caché que ya usa
+ * el resto del Dashboard.
+ */
 function obtenerContadoresControl(){
-  const ss = SpreadsheetApp.getActive();
   let discrepancias = 0;
   let conteosAbiertos = 0;
 
-  const hojaDiscrepancias = ss.getSheetByName("DISCREPANCIAS");
-  if(hojaDiscrepancias && hojaDiscrepancias.getLastRow() > 1){
-    const datos = hojaDiscrepancias.getRange(2,10,hojaDiscrepancias.getLastRow()-1,1).getValues();
-    discrepancias = datos.filter(d=>d[0]=="PENDIENTE").length;
+  const datosDiscrepancias = obtenerFilasHojaCacheadas_("DISCREPANCIAS");
+  if(datosDiscrepancias.length > 1){
+    discrepancias = datosDiscrepancias.slice(1).filter(d=>d[9]=="PENDIENTE").length;
   }
 
-  const hojaControl = ss.getSheetByName("CONTROL_CONTEOS");
-  if(hojaControl && hojaControl.getLastRow() > 1){
-    const datos = hojaControl.getRange(2,8,hojaControl.getLastRow()-1,1).getValues();
-    conteosAbiertos = datos.filter(e=>e[0] != "CERRADO").length;
+  const datosControl = obtenerFilasHojaCacheadas_("CONTROL_CONTEOS");
+  if(datosControl.length > 1){
+    conteosAbiertos = datosControl.slice(1).filter(e=>e[7] != "CERRADO").length;
   }
 
   return { discrepancias: discrepancias, conteosAbiertos: conteosAbiertos };
@@ -1797,7 +1822,9 @@ function obtenerMapaCalorRacks(){
  * Top 10 productos con más ENTRADAS, más SALIDAS, y de mayor ROTACIÓN
  * (entradas+salidas) durante el mes en curso, leyendo KARDEX.
  */
-function obtenerTopMovimientosMesApp(){
+function obtenerTopMovimientosMesApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const kardex = ss.getSheetByName("KARDEX");
@@ -1872,7 +1899,9 @@ function obtenerTopMovimientosMesApp(){
  * Valor monetario total del inventario: existencia x costo unitario
  * (MATRIZ columna R). Solo cuenta productos con existencia y costo > 0.
  */
-function obtenerValorInventarioApp(){
+function obtenerValorInventarioApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const matriz = ss.getSheetByName("MATRIZ");
@@ -1916,7 +1945,8 @@ function obtenerValorInventarioApp(){
  * Top 10 más urgentes de "bajo mínimo" (reusa obtenerProductosBajoMinimo,
  * solo ordena por qué tan lejos están del mínimo y recorta a 10).
  */
-function obtenerTopBajoMinimoApp(){
+function obtenerTopBajoMinimoApp(token){
+  requerirSesionActivaApp_(token);
   return obtenerProductosBajoMinimo()
     .slice()
     .sort((a,b)=> (a.existencia - a.minimo) - (b.existencia - b.minimo))
@@ -1927,16 +1957,18 @@ function obtenerTopBajoMinimoApp(){
  * Un solo endpoint para las 5 tarjetas nuevas del dashboard: top entradas,
  * top salidas, top rotación, top bajo mínimo y valor de inventario.
  */
-function obtenerResumenExtraDashboardApp(){
+function obtenerResumenExtraDashboardApp(token){
 
-  const movimientos = obtenerTopMovimientosMesApp();
+  requerirSesionActivaApp_(token);
+
+  const movimientos = obtenerTopMovimientosMesApp(token);
 
   return {
     topEntradas: movimientos.entradas,
     topSalidas: movimientos.salidas,
     topRotacion: movimientos.rotacion,
-    bajoMinimo: obtenerTopBajoMinimoApp(),
-    valorInventario: obtenerValorInventarioApp()
+    bajoMinimo: obtenerTopBajoMinimoApp(token),
+    valorInventario: obtenerValorInventarioApp(token)
   };
 
 }
@@ -1998,7 +2030,9 @@ function obtenerValorInventarioAgrupadoApp_(indiceColumna){
  * movida (kg/pz/etc., sumando la columna Entrada o Salida de KARDEX)
  * por mes, no un conteo de productos distintos.
  */
-function obtenerTendenciaMensualApp(){
+function obtenerTendenciaMensualApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const kardex = SpreadsheetApp.getActive().getSheetByName("KARDEX");
   if(!kardex || kardex.getLastRow() < 2){
@@ -2041,14 +2075,15 @@ function obtenerTendenciaMensualApp(){
 /**
  * Un solo viaje al servidor para toda la pantalla de Reportes.
  */
-function obtenerReporteEjecutivoApp(){
+function obtenerReporteEjecutivoApp(token){
+  requerirSesionActivaApp_(token);
   return {
-    valorInventario: obtenerValorInventarioApp(),
+    valorInventario: obtenerValorInventarioApp(token),
     valorPorCategoria: obtenerValorInventarioAgrupadoApp_(2),
     valorPorProveedor: obtenerValorInventarioAgrupadoApp_(16),
-    tendenciaMensual: obtenerTendenciaMensualApp(),
+    tendenciaMensual: obtenerTendenciaMensualApp(token),
     contadores: obtenerContadoresControl(),
-    topBajoMinimo: obtenerTopBajoMinimoApp()
+    topBajoMinimo: obtenerTopBajoMinimoApp(token)
   };
 }
 
@@ -2057,7 +2092,9 @@ function obtenerReporteEjecutivoApp(){
  * Inicio (KPIs, gráfica 7 días, mapa de calor, actividad reciente).
  */
 
-function obtenerResumenInicioApp(){
+function obtenerResumenInicioApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const dashboard = obtenerDashboardMovil();
   const semana = obtenerEntradasSalidas7dias();
@@ -2225,7 +2262,9 @@ function obtenerCostoUnitarioReal_(costoUnitario, convertir, presentacion){
  * productos que están ahí — así "A01" muestra qué hay en ese rack, y
  * "LYCONTT" muestra qué le compras a ese proveedor, sin entrar a otro módulo.
  */
-function busquedaGlobalHeaderApp(texto){
+function busquedaGlobalHeaderApp(texto, token){
+
+  requerirSesionActivaApp_(token);
 
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return { productos: [], racks: [], proveedores: [] };
@@ -2279,7 +2318,9 @@ function busquedaGlobalHeaderApp(texto){
 
 }
 
-function buscarProductoCatalogoApp(texto){
+function buscarProductoCatalogoApp(texto, token){
+
+  requerirSesionActivaApp_(token);
 
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return [];
@@ -2318,7 +2359,9 @@ function buscarProductoCatalogoApp(texto){
 
 }
 
-function obtenerProveedoresReabastecimientoApp(){
+function obtenerProveedoresReabastecimientoApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 18).getValues(); // A..R
@@ -2353,7 +2396,9 @@ function obtenerProveedoresReabastecimientoApp(){
  * estén o no bajo mínimo — para poder agregarlos manualmente a la orden.
  * "sugerido" = punto medio entre Mínimo y Máximo, no el Máximo completo.
  */
-function obtenerProductosPorProveedorApp(proveedor){
+function obtenerProductosPorProveedorApp(proveedor, token){
+
+  requerirSesionActivaApp_(token);
 
   const proveedorBuscado = normalizarProveedor_(proveedor);
 
@@ -2392,6 +2437,32 @@ function obtenerProductosPorProveedorApp(proveedor){
       };
     })
     .sort((a,b)=> (a.existencia - a.minimo) - (b.existencia - b.minimo));
+
+}
+
+/**
+ * Si la Presentación capturada en una línea de OC (al generar o al
+ * editar) es distinta a la que ya tiene ese producto en MATRIZ (columna
+ * T), actualiza MATRIZ con el nuevo valor — mismo criterio que ya usa
+ * procesarCambioPrecioProducto_ para el precio (columna R) al recibir:
+ * sin lock propio (escritura de un solo valor, catálogo no crítico como
+ * la existencia) y sin tocar nada si la línea no trae presentación
+ * capturada, para nunca borrar por accidente una que ya existía.
+ */
+function sincronizarPresentacionMatriz_(codigo, presentacion){
+
+  const nueva = Number(presentacion) || 0;
+  if(nueva <= 0) return;
+
+  const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
+  if(filaMatriz === -1) return;
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const actual = Number(hoja.getRange(filaMatriz, 20).getValue()) || 0; // columna T
+
+  if(nueva === actual) return;
+
+  hoja.getRange(filaMatriz, 20).setValue(nueva);
 
 }
 
@@ -2503,6 +2574,8 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
 
   detalle.getRange(detalle.getLastRow()+1, 1, filasDetalle.length, 10).setValues(filasDetalle);
 
+  items.forEach(item => sincronizarPresentacionMatriz_(item.codigo, item.presentacion));
+
   registrarAuditoria(
     usuario, "COMPRAS", "ORDEN GENERADA", folioOC, "", "",
     0, total, "Orden de compra a " + proveedor + " — " + filasDetalle.length + " producto(s)"
@@ -2515,10 +2588,138 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
 }
 
 /**
+ * Edita una Orden de Compra que sigue PENDIENTE — únicamente mientras no
+ * se le haya recibido nada (PARCIAL/RECIBIDA/CANCELADA quedan fuera, con
+ * el mismo criterio que ya usa cancelarOrdenCompraApp). El folio, la
+ * fecha de creación y el usuario que la generó no cambian; proveedor,
+ * observaciones y productos se reemplazan por completo — se borran las
+ * filas de DETALLE_OC de esa OC y se vuelven a escribir, igual que al
+ * generarla la primera vez. Como solo se permite en PENDIENTE, "Recibido"
+ * siempre es 0 en todas las líneas, así que no hay nada que preservar.
+ */
+function editarOrdenCompraApp(oc, proveedor, observaciones, items, token){
+
+  requerirAccesoAlmacenApp_(token);
+
+  oc = String(oc||"").trim().toUpperCase();
+  proveedor = String(proveedor||"").trim();
+
+  if(!proveedor){
+    throw new Error("Captura el proveedor de la orden.");
+  }
+
+  if(!items || !items.length){
+    throw new Error("Selecciona al menos un producto para comprar.");
+  }
+
+  const ss = SpreadsheetApp.getActive();
+  const ordenes = ss.getSheetByName("ORDENES_COMPRA");
+  const detalle = ss.getSheetByName("DETALLE_OC");
+
+  if(!ordenes || !detalle){
+    throw new Error("No existen las hojas ORDENES_COMPRA y/o DETALLE_OC.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  let total, filasDetalle;
+
+  conBloqueoApp_(function(){
+
+    const datosOrdenes = ordenes.getRange(2, 1, ordenes.getLastRow()-1, 7).getValues();
+    let filaOrden = -1;
+
+    for(let i=0;i<datosOrdenes.length;i++){
+      if(String(datosOrdenes[i][0]||"").trim().toUpperCase() === oc){
+        filaOrden = i + 2;
+        const estadoActual = String(datosOrdenes[i][4]||"").toUpperCase();
+        if(estadoActual !== "PENDIENTE"){
+          throw new Error("Solo se puede editar una orden mientras sigue PENDIENTE (esta ya está " + estadoActual + ").");
+        }
+        break;
+      }
+    }
+
+    if(filaOrden === -1){
+      throw new Error("No se encontró la orden " + oc);
+    }
+
+    total = 0;
+    filasDetalle = [];
+
+    items.forEach(item=>{
+      const cantidad = Number(item.cantidad) || 0;
+      if(cantidad <= 0) return;
+
+      const precio = Number(item.precio) || 0;
+      const presentacion = Number(item.presentacion) || 0;
+      const piezasOrdenadas = Number(item.piezasOrdenadas) || 0;
+
+      const importe = calcularValorInventario_(cantidad, precio, presentacion > 0 ? "SI" : "NO", presentacion);
+      total += importe;
+
+      filasDetalle.push([
+        oc,
+        item.codigo,
+        item.producto,
+        cantidad,
+        item.udm || "",
+        precio,
+        importe,
+        0, // Recibido — siempre 0, editar solo se permite en PENDIENTE
+        presentacion || "",
+        piezasOrdenadas || ""
+      ]);
+    });
+
+    if(!filasDetalle.length){
+      throw new Error("Ninguna cantidad capturada es mayor a cero.");
+    }
+
+    total = Math.round(total * 100) / 100;
+
+    ordenes.getRange(filaOrden, 3).setValue(proveedor);
+    ordenes.getRange(filaOrden, 6).setValue(total);
+    ordenes.getRange(filaOrden, 7).setValue(observaciones || "");
+
+    if(detalle.getRange(1, 9).getValue() === ""){
+      detalle.getRange(1, 9, 1, 2).setValues([["Presentación", "Piezas"]]);
+      detalle.getRange(1, 9, 1, 2).setFontWeight("bold");
+    }
+
+    if(detalle.getLastRow() > 1){
+      const anchoDetalle = Math.min(detalle.getLastColumn(), 10);
+      const datosDetalle = detalle.getRange(2, 1, detalle.getLastRow()-1, anchoDetalle).getValues();
+      for(let i = datosDetalle.length - 1; i >= 0; i--){
+        if(String(datosDetalle[i][0]||"").trim().toUpperCase() === oc){
+          detalle.deleteRows(i + 2, 1);
+        }
+      }
+    }
+
+    detalle.getRange(detalle.getLastRow()+1, 1, filasDetalle.length, 10).setValues(filasDetalle);
+
+  });
+
+  items.forEach(item => sincronizarPresentacionMatriz_(item.codigo, item.presentacion));
+
+  registrarAuditoria(
+    usuario, "COMPRAS", "ORDEN EDITADA", oc, "", "",
+    0, total, "Orden editada — proveedor: " + proveedor + " — " + filasDetalle.length + " producto(s)"
+  );
+
+  generarYGuardarPDFOrdenCompra_(oc);
+
+  return { folio: oc, total: total, productos: filasDetalle.length };
+
+}
+
+/**
  * Lista todas las Órdenes de Compra (para "Órdenes de Compra" e
  * "Historial de Compras" — misma fuente, la vista decide qué mostrar).
  */
-function obtenerOrdenesCompraApp(){
+function obtenerOrdenesCompraApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp.getActive().getSheetByName("ORDENES_COMPRA");
 
@@ -2542,7 +2743,11 @@ function obtenerOrdenesCompraApp(){
  * Detalle de una OC específica (para Recepción de Mercancía y para ver
  * el desglose desde Órdenes de Compra / Historial).
  */
-function obtenerDetalleOCApp(oc){
+// Versión interna sin guard propio — usada por generarYGuardarPDFOrdenCompra_,
+// que se llama tanto desde la pública de abajo como desde funciones que
+// escriben una OC (generar/editar/recibir) y ya validaron su propio token
+// antes de llegar aquí.
+function obtenerDetalleOCApp_(oc){
 
   oc = String(oc||"").trim().toUpperCase();
 
@@ -2601,6 +2806,11 @@ function obtenerDetalleOCApp(oc){
   encabezado.items = items;
   return encabezado;
 
+}
+
+function obtenerDetalleOCApp(oc, token){
+  requerirSesionActivaApp_(token);
+  return obtenerDetalleOCApp_(oc);
 }
 
 /**
@@ -3048,7 +3258,7 @@ text-align:center;
  */
 function generarYGuardarPDFOrdenCompra_(oc){
 
-  const datos = obtenerDetalleOCApp(oc);
+  const datos = obtenerDetalleOCApp_(oc);
 
   if(!datos){
     throw new Error("No se encontró la orden " + oc + " para generar el PDF.");
@@ -3082,7 +3292,9 @@ function generarYGuardarPDFOrdenCompra_(oc){
  * las URL del PDF ya guardado en Drive. Si por algún motivo no existe
  * (orden creada antes de este cambio), lo genera al vuelo.
  */
-function obtenerPDFOrdenCompraApp(oc){
+function obtenerPDFOrdenCompraApp(oc, token){
+
+  requerirSesionActivaApp_(token);
 
   // Siempre se regenera al vuelo (no se reutiliza el archivo guardado):
   // así Ver/Descargar/Imprimir jamás muestran una versión vieja del diseño
@@ -3191,7 +3403,11 @@ function obtenerHojaExistenciasSucursal_(){
   let hoja = ss.getSheetByName("EXISTENCIAS_SUCURSAL");
   if(!hoja){
     hoja = ss.insertSheet("EXISTENCIAS_SUCURSAL");
-    hoja.appendRow(["Código", "Sucursal", "Existencia"]);
+    // Columna D "Reservado" — libro de reservas de TODAS las sucursales,
+    // incluida S01 (cuya Existencia física sigue viviendo en MATRIZ; para
+    // S01 esta hoja solo guarda la reserva, nunca la existencia). Ver
+    // resolverAjusteExistencia_ más abajo.
+    hoja.appendRow(["Código", "Sucursal", "Existencia", "Reservado"]);
   }
   return hoja;
 }
@@ -3226,16 +3442,21 @@ function obtenerExistenciaSucursal_(codigo, sucursal){
     throw new Error('"TODAS" no es una sucursal física — usa obtenerExistenciaConsolidadaApp para una vista agregada.');
   }
 
-  const hoja = obtenerHojaExistenciasSucursal_();
-  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
-
-  if(fila !== -1){
-    return Number(hoja.getRange(fila, 3).getValue()) || 0;
-  }
+  // S01 SIEMPRE se lee de MATRIZ, incluso si ya tiene una fila en
+  // EXISTENCIAS_SUCURSAL — desde el mecanismo de reservas (Plano de
+  // Abastecimiento), esa fila puede existir solo para guardar Reservado,
+  // con Existencia en blanco a propósito (ver ajustarReservaEnHojaSucursal_).
+  // Leer esa columna ahí para S01 daría 0 en vez del valor real.
   if(sucursal === SUCURSAL_DEFAULT_){
     const filaMatriz = buscarFilaMatrizPorCodigo_(codigo);
     if(filaMatriz === -1) return 0;
     return Number(SpreadsheetApp.getActive().getSheetByName("MATRIZ").getRange(filaMatriz, 11).getValue()) || 0;
+  }
+
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  if(fila !== -1){
+    return Number(hoja.getRange(fila, 3).getValue()) || 0;
   }
   return 0;
 }
@@ -3269,6 +3490,66 @@ function obtenerExistenciaConsolidadaApp(codigo, token){
 }
 
 /**
+ * LECTURA de la reserva (columna D de EXISTENCIAS_SUCURSAL) — vive ahí
+ * para TODAS las sucursales, incluida S01 (cuya Existencia física sigue
+ * en MATRIZ; para S01 esta hoja solo guarda la reserva). 0 si no hay
+ * fila todavía. "TODAS" no tiene reserva propia.
+ */
+function obtenerReservaSucursal_(codigo, sucursal){
+  sucursal = normalizarSucursal_(sucursal);
+  if(sucursal === SUCURSAL_TODAS_){
+    throw new Error('"TODAS" no es una sucursal física — no tiene reserva propia.');
+  }
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  if(fila === -1) return 0;
+  return Number(hoja.getRange(fila, 4).getValue()) || 0;
+}
+
+/**
+ * Existencia, reserva y disponible (calculado, nunca guardado) de un
+ * producto en una sucursal — para las pantallas de aprobación/surtido
+ * del nuevo flujo de Requisiciones por Sucursal.
+ */
+function obtenerDisponibleSucursalApp(codigo, sucursal, token){
+  requerirSesionActivaApp_(token);
+  sucursal = normalizarSucursal_(sucursal);
+  const existencia = obtenerExistenciaSucursal_(codigo, sucursal);
+  const reservado = obtenerReservaSucursal_(codigo, sucursal);
+  return {
+    codigo: String(codigo||"").trim(), sucursal: sucursal,
+    existencia: existencia, reservado: reservado,
+    disponible: Math.round((existencia - reservado) * 1000) / 1000
+  };
+}
+
+/**
+ * Ajusta SOLO la columna Reservado de EXISTENCIAS_SUCURSAL — usada por
+ * resolverAjusteExistencia_ para las dos ramas (S01 y no-S01), ya que la
+ * reserva vive ahí sin importar de qué sucursal se trate. No toca
+ * Existencia; si la fila no existe todavía la crea (Existencia="" para
+ * S01 — ese número no se usa ahí, vive en MATRIZ — o 0 para las demás).
+ */
+function ajustarReservaEnHojaSucursal_(codigo, sucursal, deltaReserva, validarReserva){
+  const hoja = obtenerHojaExistenciasSucursal_();
+  const fila = buscarFilaExistenciaSucursal_(hoja, codigo, sucursal);
+  const anterior = fila !== -1 ? (Number(hoja.getRange(fila, 4).getValue()) || 0) : 0;
+  const nueva = Math.round((anterior + deltaReserva) * 1000) / 1000;
+
+  if(validarReserva && nueva < 0){
+    throw new Error("No hay esa cantidad reservada para liberar en " + sucursal + ". Reservado actual: " + anterior);
+  }
+
+  if(fila === -1){
+    hoja.appendRow([codigo, sucursal, sucursal === SUCURSAL_DEFAULT_ ? "" : 0, nueva]);
+  } else {
+    hoja.getRange(fila, 4).setValue(nueva);
+  }
+
+  return { anterior: anterior, nueva: nueva };
+}
+
+/**
  * NÚCLEO ÚNICO DE ESCRITURA — la única función de todo el proyecto que
  * decide "MATRIZ o EXISTENCIAS_SUCURSAL" y hace el
  * leer-validar-calcular-escribir real. Todos los escritores públicos de
@@ -3292,11 +3573,19 @@ function obtenerExistenciaConsolidadaApp(codigo, token){
  * @param {boolean} [opciones.lanzarSiNoExiste]  Default true. Si false, regresa null en vez de lanzar
  *        cuando el código no existe en MATRIZ (solo aplica a S01 — en EXISTENCIAS_SUCURSAL
  *        la fila se crea sola, "no existe" no es un caso de error ahí).
- * @return {{anterior:number, nueva:number}|null}
+ * @param {number}  [opciones.deltaReserva]      NUEVO (Fase 4, pipeline de Requisiciones por
+ *        Sucursal) — cuánto sumar/restar a Reservado (EXISTENCIAS_SUCURSAL), en la MISMA
+ *        lectura-escritura atómica. 0/omitido = comportamiento idéntico a antes de esto existir.
+ * @param {boolean} [opciones.validarReserva]    Si true, lanza error si Reservado quedaría negativo.
+ * @param {boolean} [opciones.validarDisponible] Si true, lanza error si Reservado quedaría por
+ *        encima de la Existencia (nunca se puede reservar más de lo que físicamente hay).
+ * @return {{anterior:number, nueva:number, reservaAnterior:number, reservaNueva:number}|null}
+ *        reservaAnterior/reservaNueva solo vienen cuando se pidió deltaReserva !== 0.
  */
 function resolverAjusteExistencia_(codigo, sucursal, opciones){
 
   opciones = opciones || {};
+  const deltaReserva = Math.round((Number(opciones.deltaReserva) || 0) * 1000) / 1000;
 
   if(sucursal === SUCURSAL_TODAS_){
     throw new Error('"TODAS" no es una sucursal física — no se puede ajustar existencia ahí. Úsala solo para consultar/agrupar.');
@@ -3307,6 +3596,8 @@ function resolverAjusteExistencia_(codigo, sucursal, opciones){
       ? Math.round((Number(opciones.nuevaExistencia) || 0) * 1000) / 1000
       : Math.round((anterior + (Number(opciones.delta) || 0)) * 1000) / 1000;
   };
+
+  let resultado;
 
   if(sucursal === SUCURSAL_DEFAULT_){
 
@@ -3327,8 +3618,9 @@ function resolverAjusteExistencia_(codigo, sucursal, opciones){
 
     celda.setValue(nueva);
     invalidarCacheHoja_("MATRIZ");
-    return { anterior: anterior, nueva: nueva };
-  }
+    resultado = { anterior: anterior, nueva: nueva };
+
+  } else {
 
   // Cualquier sucursal que no sea S01 -> EXISTENCIAS_SUCURSAL. Una fila
   // que todavía no existe arranca en 0 (nunca hereda de MATRIZ: MATRIZ
@@ -3343,13 +3635,37 @@ function resolverAjusteExistencia_(codigo, sucursal, opciones){
   }
 
   if(fila === -1){
-    hoja.appendRow([codigo, sucursal, nueva]);
+    hoja.appendRow([codigo, sucursal, nueva, 0]);
   } else {
     hoja.getRange(fila, 3).setValue(nueva);
   }
 
   invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
-  return { anterior: anterior, nueva: nueva };
+  resultado = { anterior: anterior, nueva: nueva };
+
+  }
+
+  if(deltaReserva !== 0){
+
+    // validarDisponible: la reserva NUNCA puede superar la existencia real
+    // — se comprueba ANTES de escribir (lectura+validación+escritura es un
+    // solo paso, dentro del mismo lock que ya sostiene a quien llama), así
+    // dos aprobaciones simultáneas del mismo producto no pueden sobre-reservar.
+    if(opciones.validarDisponible){
+      const reservaActual = obtenerReservaSucursal_(codigo, sucursal);
+      const reservaProspectiva = Math.round((reservaActual + deltaReserva) * 1000) / 1000;
+      if((resultado.nueva - reservaProspectiva) < 0){
+        throw new Error("Existencia insuficiente para reservar en " + sucursal + ". Disponible: " + Math.round((resultado.nueva - reservaActual) * 1000) / 1000);
+      }
+    }
+
+    const resReserva = ajustarReservaEnHojaSucursal_(codigo, sucursal, deltaReserva, opciones.validarReserva);
+    resultado.reservaAnterior = resReserva.anterior;
+    resultado.reservaNueva = resReserva.nueva;
+    invalidarCacheHoja_("EXISTENCIAS_SUCURSAL");
+  }
+
+  return resultado;
 
 }
 
@@ -3605,7 +3921,9 @@ function congelarFormulasExistenciaMatrizApp(token){
  * ejecutar congelarFormulasExistenciaMatrizApp() por primera vez, para
  * saber exactamente cuántas filas van a cambiar.
  */
-function verificarConsistenciaExistenciaApp(){
+function verificarConsistenciaExistenciaApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(matriz.getLastRow() < 2) return { productosConFormula: [], total: 0 };
@@ -3682,7 +4000,9 @@ function procesarCambioPrecioProducto_(codigo, producto, proveedor, precioFactur
  * KPIs para el módulo "Análisis de Costos". periodoDias: cuántos días
  * hacia atrás considerar (por defecto 30).
  */
-function obtenerAnalisisCostosApp(periodoDias){
+function obtenerAnalisisCostosApp(periodoDias, token){
+
+  requerirSesionActivaApp_(token);
 
   const dias = Number(periodoDias) || 30;
   const desde = new Date();
@@ -3812,7 +4132,9 @@ function obtenerAnalisisCostosApp(periodoDias){
  * si un producto se compró una vez con otro proveedor distinto al de
  * MATRIZ, ese historial lo refleja correctamente.
  */
-function obtenerHistorialComprasProductoApp(codigo){
+function obtenerHistorialComprasProductoApp(codigo, token){
+
+  requerirSesionActivaApp_(token);
 
   const detalle = SpreadsheetApp.getActive().getSheetByName("DETALLE_OC");
   const ordenes = SpreadsheetApp.getActive().getSheetByName("ORDENES_COMPRA");
@@ -3967,7 +4289,8 @@ function generarInventarioMensualApp(token){
 
 }
 
-function obtenerFoliosInventarioAbiertosApp(){
+function obtenerFoliosInventarioAbiertosApp(token){
+  requerirSesionActivaApp_(token);
   const control = obtenerHojaControlInventario_();
   if(control.getLastRow() < 2) return [];
   const datos = control.getRange(2,1,control.getLastRow()-1,7).getValues();
@@ -3980,7 +4303,9 @@ function obtenerFoliosInventarioAbiertosApp(){
 
 // ---------------- FASE 4: Captura ----------------
 
-function buscarCodigoInventarioMensualApp(codigo, folio){
+function buscarCodigoInventarioMensualApp(codigo, folio, token){
+
+  requerirSesionActivaApp_(token);
 
   const hoja = obtenerHojaInventarioMensual_();
   if(hoja.getLastRow() < 2) return null;
@@ -4001,7 +4326,9 @@ function buscarCodigoInventarioMensualApp(codigo, folio){
 
 }
 
-function buscarProductoPorNombreInventarioMensualApp(texto, folio){
+function buscarProductoPorNombreInventarioMensualApp(texto, folio, token){
+
+  requerirSesionActivaApp_(token);
 
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return [];
@@ -4034,7 +4361,9 @@ function buscarProductoPorNombreInventarioMensualApp(texto, folio){
 
 }
 
-function obtenerSiguientePendienteInventarioMensualApp(folio){
+function obtenerSiguientePendienteInventarioMensualApp(folio, token){
+
+  requerirSesionActivaApp_(token);
 
   const hoja = obtenerHojaInventarioMensual_();
   if(hoja.getLastRow() < 2) return null;
@@ -4117,7 +4446,9 @@ function actualizarAvanceControlInventario_(folio){
 
 }
 
-function obtenerAvanceInventarioMensualApp(folio){
+function obtenerAvanceInventarioMensualApp(folio, token){
+
+  requerirSesionActivaApp_(token);
 
   const hoja = obtenerHojaInventarioMensual_();
   if(hoja.getLastRow() < 2) return { total:0, contados:0, pendientes:0, porcentaje:0 };
@@ -4140,7 +4471,9 @@ function obtenerAvanceInventarioMensualApp(folio){
 
 // ---------------- FASE 5: Discrepancias ----------------
 
-function obtenerDiscrepanciasInventarioMensualApp(folio){
+function obtenerDiscrepanciasInventarioMensualApp(folio, token){
+
+  requerirSesionActivaApp_(token);
 
   const hoja = obtenerHojaInventarioMensual_();
   if(hoja.getLastRow() < 2) return [];
@@ -4397,7 +4730,9 @@ function cerrarInventarioMensualApp(folio, supervisor, token){
 
 // ---------------- FASE 7: Historial ----------------
 
-function obtenerHistorialInventariosApp(){
+function obtenerHistorialInventariosApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const historial = obtenerHojaHistorialInventario_();
   const control = obtenerHojaControlInventario_();
@@ -4428,7 +4763,11 @@ function obtenerHistorialInventariosApp(){
 
 }
 
-function obtenerDetalleInventarioApp(folio){
+// Versión interna sin guard propio — usada por los generadores de PDF
+// (construirHtmlInventarioMensual_/Completo_), que ya son de por sí
+// funciones internas sin token. La pública (abajo) es la única que debe
+// llamarse desde el cliente.
+function obtenerDetalleInventarioApp_(folio){
 
   const hoja = obtenerHojaInventarioMensual_();
   if(hoja.getLastRow() < 2) return [];
@@ -4442,9 +4781,16 @@ function obtenerDetalleInventarioApp(folio){
 
 }
 
+function obtenerDetalleInventarioApp(folio, token){
+  requerirSesionActivaApp_(token);
+  return obtenerDetalleInventarioApp_(folio);
+}
+
 // ---------------- FASE 8: Dashboard ----------------
 
-function obtenerDashboardInventarioMensualApp(){
+function obtenerDashboardInventarioMensualApp(token){
+
+  requerirSesionActivaApp_(token);
 
   const historial = obtenerHojaHistorialInventario_();
 
@@ -4519,7 +4865,7 @@ function construirHtmlInventarioMensual_(folio){
 
   if(!info) throw new Error("No se encontró el inventario " + folio);
 
-  const items = obtenerDetalleInventarioApp(folio);
+  const items = obtenerDetalleInventarioApp_(folio);
   const conDiferencia = items.filter(it=>Number(it.diferencia) !== 0);
 
   const fechaInicio = info[1] instanceof Date ? Utilities.formatDate(info[1], Session.getScriptTimeZone(), "dd/MM/yyyy") : info[1];
@@ -4627,7 +4973,8 @@ function generarYGuardarPDFInventarioMensual_(folio){
 
 }
 
-function obtenerPDFInventarioMensualApp(folio){
+function obtenerPDFInventarioMensualApp(folio, token){
+  requerirSesionActivaApp_(token);
   return generarYGuardarPDFInventarioMensual_(folio);
 }
 
@@ -4645,7 +4992,7 @@ function construirHtmlInventarioMensualCompleto_(folio){
 
   if(!info) throw new Error("No se encontró el inventario " + folio);
 
-  const items = obtenerDetalleInventarioApp(folio);
+  const items = obtenerDetalleInventarioApp_(folio);
 
   const fechaInicio = info[1] instanceof Date ? Utilities.formatDate(info[1], Session.getScriptTimeZone(), "dd/MM/yyyy") : info[1];
   const fechaCierre = info[7] instanceof Date ? Utilities.formatDate(info[7], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "";
@@ -4732,7 +5079,8 @@ function generarYGuardarPDFInventarioMensualCompleto_(folio){
 
 }
 
-function obtenerPDFInventarioMensualCompletoApp(folio){
+function obtenerPDFInventarioMensualCompletoApp(folio, token){
+  requerirSesionActivaApp_(token);
   return generarYGuardarPDFInventarioMensualCompleto_(folio);
 }
 
@@ -4833,6 +5181,7 @@ function obtenerSucursalUsuarioPorCorreo_(correo){
  * pantalla que ya sepa usar uno sepa usar el otro.
  */
 function obtenerAccesoSucursalApp(token){
+  requerirSesionActivaApp_(token);
   const correo = obtenerCorreoDesdeToken_(token);
   const rol = obtenerRolDesdeToken(token);
   const sucursal = normalizarSucursal_(obtenerSucursalUsuarioPorCorreo_(correo));
@@ -4929,6 +5278,7 @@ function requerirSesionActivaApp_(token){
  * TODAS las áreas (Admin, o Área = "Almacén").
  */
 function obtenerAccesoRequisicionesApp(token){
+  requerirSesionActivaApp_(token);
   const correo = obtenerCorreoDesdeToken_(token);
   const rol = obtenerRolDesdeToken(token);
   const area = obtenerAreaUsuarioPorCorreo_(correo);
@@ -5058,7 +5408,9 @@ function generarFolioRequisicion_(){
  * Catálogo para armar una requisición: solo productos con ubicación,
  * con su existencia actual (para que el usuario vea disponible).
  */
-function buscarProductoParaRequisicionApp(texto){
+function buscarProductoParaRequisicionApp(texto, token){
+
+  requerirSesionActivaApp_(token);
 
   const busqueda = normalizarTexto_(texto);
   if(!busqueda) return [];
@@ -5095,6 +5447,8 @@ function buscarProductoParaRequisicionApp(texto){
  * fecha requerida.
  */
 function crearRequisicionApp(observaciones, items, token, fechaRequerida){
+
+  requerirSesionActivaApp_(token);
 
   const correo = obtenerCorreoDesdeToken_(token);
   const usuario = obtenerNombreDesdeToken(token);
@@ -5231,9 +5585,73 @@ function obtenerDetalleRequisicionApp(folio, token){
 }
 
 /**
+ * Cancela una requisición interna (Área o Receta — comparten la misma
+ * hoja REQUISICIONES) que se creó por error. Nunca se borra la fila,
+ * solo cambia de estado, igual que ya hace cancelarOrdenCompraApp con
+ * las órdenes de compra. Solo se puede cancelar mientras sigue
+ * PENDIENTE: una vez ENTREGADA ya movió existencia real (salida +
+ * Kardex), cancelarla después dejaría el inventario desincronizado sin
+ * revertir esa salida — fuera de alcance de este cambio.
+ */
+function cancelarRequisicionApp(folio, motivo, token){
+
+  const acceso = obtenerAccesoRequisicionesApp(token);
+  if(!acceso.esAdmin){
+    throw new Error("Solo Almacén puede cancelar requisiciones.");
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const req = obtenerHojaRequisiciones_();
+  const datosReq = req.getRange(2,1,req.getLastRow()-1,9).getValues();
+
+  let filaReq = -1, estadoActual = "", observacionesActuales = "";
+
+  datosReq.forEach((f,i) => {
+    if(String(f[0]) === String(folio)){
+      filaReq = i+2;
+      estadoActual = String(f[4]||"").toUpperCase();
+      observacionesActuales = String(f[5]||"");
+    }
+  });
+
+  if(filaReq === -1) throw new Error("No se encontró la requisición " + folio);
+
+  if(estadoActual === "ENTREGADA"){
+    throw new Error("Esta requisición ya fue entregada, no se puede cancelar.");
+  }
+  if(estadoActual === "CANCELADA"){
+    throw new Error("Esta requisición ya está cancelada.");
+  }
+
+  const nota = "[CANCELADA por " + usuario + (motivo ? " — " + motivo : "") + "]";
+  const observacionesNuevas = (observacionesActuales ? observacionesActuales + " " : "") + nota;
+
+  req.getRange(filaReq, 5).setValue("CANCELADA");
+  req.getRange(filaReq, 6).setValue(observacionesNuevas);
+
+  registrarAuditoria(usuario, "REQUISICIONES", "REQUISICIÓN CANCELADA", folio, "", "", 0, 0,
+    "Estaba " + estadoActual + (motivo ? " — Motivo: " + motivo : ""));
+
+  return { ok: true };
+
+}
+
+/**
  * FASE 4: Confirmar entrega — descuenta existencia con la misma
  * función central que usan Entradas/Salidas/Conteos/Inventario Mensual,
  * registra Kardex, guarda quién surtió y cuándo, cierra la requisición.
+ *
+ * entregas = [{codigo, cantidadEntregada}]. Normalmente cada código ya
+ * es uno de los solicitados originales (fila existente en
+ * DETALLE_REQUISICIONES) — pero también se acepta un código que NO
+ * estaba en la solicitud original: pasa que a veces Almacén ya le dio
+ * a la sucursal/área un insumo adicional durante el día (algo que no
+ * pidieron pero sí se les entregó) y quiere que quede registrado en
+ * esta misma requisición en vez de perderse. Ese código se resuelve
+ * SIEMPRE contra MATRIZ en el servidor (nunca se confía en un nombre o
+ * unidad mandado por el cliente) y se agrega como una fila nueva de
+ * detalle con Solicitado=0, para que quede visible que fue un extra,
+ * no algo que la sucursal/área pidió.
  */
 function confirmarEntregaRequisicionApp(folio, entregas, token){
 
@@ -5254,22 +5672,35 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
   const detalle = obtenerHojaDetalleRequisiciones_();
   const datosDetalle = detalle.getRange(2,1,detalle.getLastRow()-1,6).getValues();
 
-  // Para poder pasarle la ubicación a registrarSalidaInterna_ (columna K de SALIDA).
+  // Para poder pasarle la ubicación a registrarSalidaInterna_ (columna K de
+  // SALIDA), y para resolver producto/UDM de un código extra (ver abajo)
+  // siempre contra MATRIZ, nunca contra lo que mande el cliente.
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow()-1, 11).getValues();
   const ubicacionPorCodigo = {};
-  datosMatriz.forEach(f => { if(f[4]) ubicacionPorCodigo[String(f[4]).trim()] = f[9] || ""; });
+  const productoPorCodigo = {};
+  const udmPorCodigo = {};
+  datosMatriz.forEach(f => {
+    const codigo = String(f[4]||"").trim();
+    if(!codigo) return;
+    ubicacionPorCodigo[codigo] = f[9] || "";
+    productoPorCodigo[codigo] = f[0];
+    udmPorCodigo[codigo] = f[1];
+  });
 
   const mapaEntregas = {};
-  (entregas||[]).forEach(e => { mapaEntregas[String(e.codigo)] = Number(e.cantidadEntregada) || 0; });
+  (entregas||[]).forEach(e => { mapaEntregas[String(e.codigo).trim()] = Number(e.cantidadEntregada) || 0; });
 
   let productosEntregados = 0;
+  const codigosOriginales = {};
 
   datosDetalle.forEach((f, i) => {
 
     if(String(f[0]) !== String(folio)) return;
 
     const codigo = String(f[1]).trim();
+    codigosOriginales[codigo] = true;
+
     const producto = f[2];
     const unidad = f[3];
     const cantidadEntregar = mapaEntregas[codigo] || 0;
@@ -5294,6 +5725,45 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
     productosEntregados++;
 
   });
+
+  // Códigos que Almacén agregó al momento de entregar — no estaban en la
+  // solicitud original (ver doc de la función). Se resuelven contra
+  // MATRIZ y se agregan como fila nueva de detalle, con Solicitado=0.
+  const filasExtra = [];
+
+  Object.keys(mapaEntregas).forEach(codigo => {
+
+    if(codigosOriginales[codigo]) return; // ya se procesó en el loop de arriba
+
+    const cantidadEntregar = mapaEntregas[codigo];
+    if(cantidadEntregar <= 0) return;
+
+    const producto = productoPorCodigo[codigo];
+    if(!producto){
+      throw new Error("El código " + codigo + " no existe en MATRIZ — no se puede agregar como extra.");
+    }
+
+    const unidad = udmPorCodigo[codigo] || "";
+
+    registrarSalidaInterna_({
+      codigo: codigo,
+      producto: producto,
+      cantidad: cantidadEntregar,
+      udm: unidad,
+      area: areaReq,
+      ubicacion: ubicacionPorCodigo[codigo] || "",
+      folio: folio,
+      observacion: "Requisición interna " + folio + " — Área " + areaReq + " (extra agregado al entregar)"
+    }, usuario);
+
+    filasExtra.push([folio, codigo, producto, unidad, 0, cantidadEntregar]);
+    productosEntregados++;
+
+  });
+
+  if(filasExtra.length){
+    detalle.getRange(detalle.getLastRow()+1, 1, filasExtra.length, 6).setValues(filasExtra);
+  }
 
   if(productosEntregados === 0){
     throw new Error("Captura al menos una cantidad a entregar.");
@@ -5380,6 +5850,7 @@ function generarYGuardarPDFRequisicion_(folio, token){
 }
 
 function obtenerPDFRequisicionApp(folio, token){
+  requerirSesionActivaApp_(token);
   return generarYGuardarPDFRequisicion_(folio, token);
 }
 
@@ -5390,7 +5861,9 @@ function obtenerPDFRequisicionApp(folio, token){
  * Nueva Requisición — no es una lista fija, sale de lo que de verdad ha
  * consumido esa área antes.
  */
-function obtenerProductosSugeridosAreaApp(area){
+function obtenerProductosSugeridosAreaApp(area, token){
+
+  requerirSesionActivaApp_(token);
 
   if(!area) return [];
 

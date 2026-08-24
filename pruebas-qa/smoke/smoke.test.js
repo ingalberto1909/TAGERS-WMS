@@ -211,7 +211,7 @@ prueba({
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [
       { codigo: 'COD-001', cantidadRecibida: 15 }, // intenta recibir MÁS de lo pedido (10)
     ], token);
-    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio);
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     const recibido = detalle.items[0].recibido;
     return {
       datos: 'pedido=10, intenta recibir=15',

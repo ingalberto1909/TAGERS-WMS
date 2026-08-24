@@ -38,6 +38,9 @@ const ARCHIVOS_DE_PRUEBA = [
   'legado/onedit-entrada-salida.test.js',
   'notificaciones/notificaciones.test.js',
   'reportes/reportes.test.js',
+  'inteligencia/inteligencia.test.js',
+  'fefo/fefo.test.js',
+  'kpis/kpis-operativos.test.js',
 ];
 
 function cargarTodasLasPruebas() {

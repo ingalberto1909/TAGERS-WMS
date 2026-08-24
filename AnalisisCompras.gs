@@ -1,5 +1,7 @@
 
-function obtenerAnalisisProductoComprasApp(busqueda){
+function obtenerAnalisisProductoComprasApp(busqueda, token){
+
+  requerirSesionActivaApp_(token);
 
   const texto = normalizarTexto_(busqueda);
   if(!texto) throw new Error("Escribe un producto o código para buscar.");
@@ -132,9 +134,11 @@ function obtenerAnalisisProductoComprasApp(busqueda){
 
 }
 
-function generarProyeccionConsumoApp(busqueda, incrementoPct){
+function generarProyeccionConsumoApp(busqueda, incrementoPct, token){
 
-  const analisis = obtenerAnalisisProductoComprasApp(busqueda);
+  requerirSesionActivaApp_(token);
+
+  const analisis = obtenerAnalisisProductoComprasApp(busqueda, token);
   if(!analisis) throw new Error("No hay historial de compras para ese producto todavía.");
 
   const incremento = Number(incrementoPct) || 0;

@@ -216,3 +216,120 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'REQ-012', grupo: 'requisiciones', nombre: 'Cancelar una requisición PENDIENTE cambia su estado y registra el motivo', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionApp debe poner Estado=CANCELADA y anexar el motivo a Observaciones, solo para Almacén/Admin',
+  ejecutar() {
+    const { entorno, token: tokenCocina } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 5 }], tokenCocina);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('cancelarRequisicionApp', req.folio, 'Duplicada por error', tokenAdmin);
+    const fila = entorno.leerHoja('REQUISICIONES').find(f => f[0] === req.folio);
+    return {
+      datos: `requisición ${req.folio} PENDIENTE, cancelada por Admin con motivo`,
+      esperado: 'Estado=CANCELADA, Observaciones incluye el motivo',
+      obtenido: `estado=${fila[4]}, observaciones="${fila[5]}"`,
+      pasa: fila[4] === 'CANCELADA' && /Duplicada por error/.test(fila[5]),
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-013', grupo: 'requisiciones', nombre: 'No se puede cancelar una requisición ya ENTREGADA', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionApp debe rechazar una requisición ENTREGADA — ya movió existencia real, cancelarla dejaría el inventario desincronizado',
+  ejecutar() {
+    const { entorno, token: tokenCocina } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 5 }], tokenCocina);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('confirmarEntregaRequisicionApp', req.folio, [{ codigo: 'COD-001', cantidadEntregada: 5 }], tokenAdmin);
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('cancelarRequisicionApp', req.folio, '', tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    return {
+      datos: `${req.folio} ya fue entregada`,
+      esperado: 'bloqueado ("ya fue entregada")',
+      obtenido: bloqueado ? mensaje : 'PERMITIDO',
+      pasa: bloqueado && /entregada/i.test(mensaje),
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-014', grupo: 'requisiciones', nombre: 'No se puede cancelar dos veces la misma requisición', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionApp debe rechazar una requisición que ya está CANCELADA',
+  ejecutar() {
+    const { entorno, token: tokenCocina } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 5 }], tokenCocina);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('cancelarRequisicionApp', req.folio, '', tokenAdmin);
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('cancelarRequisicionApp', req.folio, '', tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    return {
+      datos: `${req.folio} ya está CANCELADA`,
+      esperado: 'bloqueado ("ya está cancelada")',
+      obtenido: bloqueado ? mensaje : 'PERMITIDO',
+      pasa: bloqueado && /cancelada/i.test(mensaje),
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-015', grupo: 'requisiciones', nombre: 'Solo Almacén puede cancelar requisiciones', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionApp debe bloquear a un OPERADOR de área que no sea Admin/Almacén, incluso sobre su propia requisición',
+  ejecutar() {
+    const { entorno, token: tokenCocina } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA', unidad: 'KG', solicitado: 5 }], tokenCocina);
+    let bloqueado = false;
+    try { entorno.invocar('cancelarRequisicionApp', req.folio, '', tokenCocina); }
+    catch (e) { bloqueado = true; }
+    return { datos: 'Cocina intenta cancelar su propia requisición', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO', pasa: bloqueado };
+  },
+});
+
+prueba({
+  id: 'REQ-016', grupo: 'requisiciones', nombre: 'Entregar un producto EXTRA (no solicitado) descuenta existencia y queda registrado con Solicitado=0', metodo: 'EMPÍRICO',
+  objetivo: 'confirmarEntregaRequisicionApp debe aceptar un código en "entregas" que NO estaba en la solicitud original, resolverlo contra MATRIZ, descontar su existencia real, y agregarlo como fila nueva de detalle con Solicitado=0 (para que se note que fue un extra)',
+  ejecutar() {
+    const { entorno, token: tokenCocina } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 5 }], tokenCocina);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    // COD-003 (SAL DE MESA, existencia=50) NO estaba en la requisición original.
+    const r = entorno.invocar('confirmarEntregaRequisicionApp', req.folio, [
+      { codigo: 'COD-001', cantidadEntregada: 5 },
+      { codigo: 'COD-003', cantidadEntregada: 8 },
+    ], tokenAdmin);
+    const existenciaSal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-003')[10];
+    const filaExtra = entorno.leerHoja('DETALLE_REQUISICIONES').find(f => f[0] === req.folio && f[1] === 'COD-003');
+    return {
+      datos: 'HARINA (solicitada, 5) + SAL (extra, 8, existencia inicial=50)',
+      esperado: 'productosEntregados=2, SAL existencia=42, fila extra con Solicitado=0/Entregado=8',
+      obtenido: `productosEntregados=${r.productosEntregados}, salExistencia=${existenciaSal}, filaExtra=${filaExtra ? JSON.stringify([filaExtra[4], filaExtra[5]]) : '(no encontrada)'}`,
+      pasa: r.productosEntregados === 2 && existenciaSal === 42 && !!filaExtra && filaExtra[4] === 0 && filaExtra[5] === 8,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-017', grupo: 'requisiciones', nombre: 'Un código extra que no existe en MATRIZ se rechaza (no se inventa un producto)', metodo: 'EMPÍRICO',
+  objetivo: 'confirmarEntregaRequisicionApp debe lanzar un error claro si el código extra no existe en MATRIZ, en vez de aceptar cualquier código que mande el cliente',
+  ejecutar() {
+    const { entorno, token: tokenCocina } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 5 }], tokenCocina);
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    let bloqueado = false, mensaje = '';
+    try {
+      entorno.invocar('confirmarEntregaRequisicionApp', req.folio, [
+        { codigo: 'COD-001', cantidadEntregada: 5 },
+        { codigo: 'COD-NO-EXISTE', cantidadEntregada: 3 },
+      ], tokenAdmin);
+    } catch (e) { bloqueado = true; mensaje = e.message; }
+    return {
+      datos: 'código extra "COD-NO-EXISTE" no está en MATRIZ',
+      esperado: 'bloqueado ("no existe en MATRIZ")',
+      obtenido: bloqueado ? mensaje : 'PERMITIDO',
+      pasa: bloqueado && /no existe en MATRIZ/i.test(mensaje),
+    };
+  },
+});
