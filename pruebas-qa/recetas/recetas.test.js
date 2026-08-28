@@ -97,6 +97,42 @@ prueba({
 });
 
 prueba({
+  id: 'REC-007', grupo: 'recetas', nombre: 'AUDITORÍA: la entrega de una requisición de receta descuenta MATRIZ en la UDM real del producto, no en la UDM de la receta', metodo: 'EMPÍRICO',
+  objetivo: 'Cadena completa receta→requisición→cálculo→entrega: una receta que pide el ingrediente en GRAMOS, sobre un producto que MATRIZ controla en KILOGRAMOS, debe descontar 0.5 (convertido), NUNCA 500 (el número crudo de la receta) — ese bug dejaría la existencia negativa/corrupta',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    // HARINA DE TRIGO (COD-001) en MATRIZ está en KG, existencia=100 (fixture estándar).
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [{ nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }], // 500 GRAMOS por tanda
+    }, token);
+
+    const tokenCocina = entorno.invocar('crearSesion_', 'cocina@tagers.com', 'Cocina', 'OPERADOR');
+    const req = entorno.invocar('crearRequisicionRecetaApp', '', [{ codigoReceta: 'REC-0001', cantidadSolicitada: 1 }], tokenCocina);
+
+    const calculo = entorno.invocar('obtenerCalculoIngredientesRequisicionApp', req.folio, token);
+    const ingHarina = calculo.ingredientes.find(i => i.codigo === 'COD-001');
+
+    // El frontend real siempre manda lo que este cálculo ya sugiere/convirtió
+    // (entregarSugerido + udm) — nunca el número crudo de la receta.
+    entorno.invocar('confirmarEntregaRequisicionRecetaApp', req.folio, [
+      { codigo: ingHarina.codigo, nombre: ingHarina.nombre, cantidadEntregada: ingHarina.entregarSugerido, udm: ingHarina.udm },
+    ], token);
+
+    const existenciaFinal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const kardex = entorno.leerHoja('KARDEX').slice(1);
+
+    return {
+      datos: `receta pide 500 G de HARINA por tanda; MATRIZ controla HARINA en KG con existencia=100; cálculo convertido: necesario=${ingHarina.necesario} ${ingHarina.udm}, entregarSugerido=${ingHarina.entregarSugerido}`,
+      esperado: 'entregarSugerido=0.5 (500g convertidos a KG), existencia final=99.5 (NO 100 sin descontar, NI -400 por tratar 500 como si fueran 500 KG)',
+      obtenido: `entregarSugerido=${ingHarina.entregarSugerido} ${ingHarina.udm}, existenciaFinal=${existenciaFinal}, filasKardex=${kardex.length}`,
+      pasa: ingHarina.entregarSugerido === 0.5 && ingHarina.udm === 'KG' && existenciaFinal === 99.5 && kardex.length === 1,
+    };
+  },
+});
+
+prueba({
   id: 'REC-006', grupo: 'recetas', nombre: 'Una receta INACTIVA no se puede requisitar', metodo: 'EMPÍRICO',
   objetivo: 'crearRequisicionRecetaApp debe rechazar una receta que ya no está ACTIVA',
   ejecutar() {
