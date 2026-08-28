@@ -1730,6 +1730,51 @@ function obtenerContadoresControl(){
  * hoy/mañana — así el front puede resaltarla sin tener que rehacer la
  * cuenta de días).
  */
+// COM-03 (auditoría comparativa vs. MarketMan): antes, HISTORIAL_PRECIOS ya
+// calculaba el %Cambio de cada cambio de precio pero nadie lo consultaba de
+// forma proactiva — había que entrar a Análisis de Costos a buscarlo. Estas
+// dos constantes son los únicos números que definen "inusual": cualquier
+// cambio de precio con |%| >= UMBRAL_VARIACION_PRECIO_ que haya ocurrido en
+// los últimos VENTANA_VARIACION_PRECIO_DIAS_ días aparece en la campana de
+// notificaciones — pasada esa ventana, deja de mostrarse solo (no hace
+// falta "descartar" nada a mano, ni queda para siempre en la lista).
+const UMBRAL_VARIACION_PRECIO_ = 20;
+const UMBRAL_VARIACION_PRECIO_URGENTE_ = 40;
+const VENTANA_VARIACION_PRECIO_DIAS_ = 7;
+
+function obtenerVariacionesPrecioInusualesRecientes_(){
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("HISTORIAL_PRECIOS");
+  if(!hoja || hoja.getLastRow() < 2) return [];
+
+  const desde = new Date();
+  desde.setDate(desde.getDate() - VENTANA_VARIACION_PRECIO_DIAS_);
+
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 10).getValues();
+  const resultado = [];
+
+  datos.forEach(f=>{
+    const fecha = f[0] instanceof Date ? f[0] : new Date(f[0]);
+    if(isNaN(fecha.getTime()) || fecha < desde) return;
+
+    const porcentaje = Number(f[7]) || 0;
+    if(Math.abs(porcentaje) < UMBRAL_VARIACION_PRECIO_) return;
+
+    resultado.push({
+      fecha: fecha,
+      codigo: f[1],
+      producto: f[2],
+      proveedor: f[3] || "Sin proveedor asignado",
+      precioAnterior: Number(f[4]) || 0,
+      precioNuevo: Number(f[5]) || 0,
+      porcentaje: porcentaje
+    });
+  });
+
+  return resultado;
+
+}
+
 function obtenerNotificacionesApp(token){
 
   requerirSesionActivaApp_(token);
@@ -1749,6 +1794,18 @@ function obtenerNotificacionesApp(token){
 
   const accesoArea = obtenerAccesoRequisicionesApp(token);
   if(!accesoArea.esAdmin) return resultado;
+
+  obtenerVariacionesPrecioInusualesRecientes_().forEach(v => {
+    const subioOBajo = v.porcentaje > 0 ? "subió" : "bajó";
+    resultado.push({
+      tipo: "variacion-precio",
+      clave: "variacion-precio|" + v.codigo + "|" + v.fecha.getTime(),
+      titulo: "Variación de precio inusual — " + v.producto,
+      detalle: "Precio " + subioOBajo + " " + Math.abs(v.porcentaje) + "% ($" + v.precioAnterior + " → $" + v.precioNuevo + ") — " + v.proveedor,
+      urgente: Math.abs(v.porcentaje) >= UMBRAL_VARIACION_PRECIO_URGENTE_,
+      datos: { codigo: v.codigo }
+    });
+  });
 
   const contadores = obtenerContadoresControl();
   if(contadores.conteosAbiertos > 0){
@@ -2497,11 +2554,54 @@ function sincronizarPresentacionMatriz_(codigo, presentacion){
 }
 
 /**
+ * COM-02 (auditoría comparativa vs. MarketMan): antes, el "Total" de una
+ * OC era solo cantidad×precio neto — el propio código lo reconocía
+ * ("no tenemos capturados... tasa de IVA"). Descuento/IVA%/Flete son
+ * OPCIONALES y se capturan a nivel de toda la orden (no por línea, para
+ * no complicar el formulario) — si no se capturan, totalConImpuestos
+ * queda igual al subtotal, exactamente el comportamiento de antes.
+ *
+ * A propósito esto NO toca procesarCambioPrecioProducto_ ni
+ * calcularValorInventario_: el IVA es un impuesto acreditable, no forma
+ * parte del costo del producto para efectos de valorizar inventario —
+ * meterlo ahí sobrestimaría el valor de existencia. El flete si suele
+ * capitalizarse al costo (landed cost), pero prorratearlo por unidad
+ * recibida es un cambio de mayor alcance sobre el costeo que ya usan
+ * Dashboard/Reportes/Proveedores — se deja fuera de esta corrección para
+ * no arriesgar esa cadena; aquí solo se captura y se muestra en el PDF/
+ * detalle, que es el hallazgo puntual de la auditoría ("no hay dónde
+ * capturar esto").
+ */
+/**
+ * Mismo patrón lazy-header ya usado en DETALLE_OC para "Presentación"/
+ * "Piezas" — las columnas 8-11 de ORDENES_COMPRA (Descuento, IVA %,
+ * Flete, Total Con Impuestos) son nuevas; una OC generada antes de este
+ * cambio simplemente no las tiene (quedan en blanco, tratadas como 0 al
+ * leerlas — ver obtenerDetalleOCApp_/obtenerOrdenesCompraApp).
+ */
+function asegurarEncabezadosImpuestosOrdenesCompra_(ordenes){
+  if(ordenes.getRange(1, 8).getValue() === ""){
+    ordenes.getRange(1, 8, 1, 4).setValues([["Descuento", "IVA %", "Flete", "Total Con Impuestos"]]);
+    ordenes.getRange(1, 8, 1, 4).setFontWeight("bold");
+  }
+}
+
+function calcularDesgloseOrdenCompra_(subtotal, extras){
+  const descuento = Math.max(0, Number(extras && extras.descuento) || 0);
+  const ivaPorcentaje = Math.max(0, Number(extras && extras.ivaPorcentaje) || 0);
+  const flete = Math.max(0, Number(extras && extras.flete) || 0);
+  const baseConDescuento = Math.max(0, subtotal - descuento);
+  const ivaMonto = Math.round(baseConDescuento * (ivaPorcentaje / 100) * 100) / 100;
+  const totalConImpuestos = Math.round((baseConDescuento + ivaMonto + flete) * 100) / 100;
+  return { descuento, ivaPorcentaje, flete, ivaMonto, totalConImpuestos };
+}
+
+/**
  * FASE 2: genera la Orden de Compra. items = [{codigo, producto, udm,
  * cantidad, precio}, ...]. Crea el folio, guarda encabezado en
  * ORDENES_COMPRA, detalle en DETALLE_OC, y deja registro en AUDITORIA.
  */
-function generarOrdenCompraApp(proveedor, observaciones, items, token){
+function generarOrdenCompraApp(proveedor, observaciones, items, token, extras){
 
   requerirAccesoAlmacenApp_(token);
 
@@ -2531,7 +2631,7 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
   // generadas al mismo tiempo no pueden terminar con el mismo folio. El
   // resto (detalle, auditoría, PDF) no depende de esa sección compartida
   // y queda igual que antes, fuera del lock.
-  let folioOC, total, filasDetalle;
+  let folioOC, total, filasDetalle, desglose;
 
   conBloqueoApp_(function(){
 
@@ -2583,6 +2683,8 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
 
     total = Math.round(total * 100) / 100;
 
+    desglose = calcularDesgloseOrdenCompra_(total, extras);
+
     ordenes.appendRow([
       folioOC,
       fecha,
@@ -2590,10 +2692,16 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
       usuario,
       "PENDIENTE",
       total,
-      observaciones || ""
+      observaciones || "",
+      desglose.descuento,
+      desglose.ivaPorcentaje,
+      desglose.flete,
+      desglose.totalConImpuestos
     ]);
 
   });
+
+  asegurarEncabezadosImpuestosOrdenesCompra_(ordenes);
 
   // Si DETALLE_OC todavía no tiene las columnas de presentación (de una
   // versión anterior), les ponemos encabezado la primera vez que se usan.
@@ -2613,7 +2721,7 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
 
   generarYGuardarPDFOrdenCompra_(folioOC);
 
-  return { folio: folioOC, total: total, productos: filasDetalle.length };
+  return { folio: folioOC, total: total, productos: filasDetalle.length, totalConImpuestos: desglose.totalConImpuestos };
 
 }
 
@@ -2627,7 +2735,7 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token){
  * generarla la primera vez. Como solo se permite en PENDIENTE, "Recibido"
  * siempre es 0 en todas las líneas, así que no hay nada que preservar.
  */
-function editarOrdenCompraApp(oc, proveedor, observaciones, items, token){
+function editarOrdenCompraApp(oc, proveedor, observaciones, items, token, extras){
 
   requerirAccesoAlmacenApp_(token);
 
@@ -2707,9 +2815,13 @@ function editarOrdenCompraApp(oc, proveedor, observaciones, items, token){
 
     total = Math.round(total * 100) / 100;
 
+    const desglose = calcularDesgloseOrdenCompra_(total, extras);
+
     ordenes.getRange(filaOrden, 3).setValue(proveedor);
     ordenes.getRange(filaOrden, 6).setValue(total);
     ordenes.getRange(filaOrden, 7).setValue(observaciones || "");
+    asegurarEncabezadosImpuestosOrdenesCompra_(ordenes);
+    ordenes.getRange(filaOrden, 8, 1, 4).setValues([[desglose.descuento, desglose.ivaPorcentaje, desglose.flete, desglose.totalConImpuestos]]);
 
     if(detalle.getRange(1, 9).getValue() === ""){
       detalle.getRange(1, 9, 1, 2).setValues([["Presentación", "Piezas"]]);
@@ -2755,7 +2867,8 @@ function obtenerOrdenesCompraApp(token){
 
   if(!hoja || hoja.getLastRow() < 2) return [];
 
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 7).getValues();
+  const anchoHoja = Math.min(Math.max(hoja.getLastColumn(), 7), 11);
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, anchoHoja).getValues();
 
   return datos.map(f=>({
     oc: f[0],
@@ -2764,7 +2877,14 @@ function obtenerOrdenesCompraApp(token){
     usuario: f[3],
     estado: f[4],
     total: Number(f[5]) || 0,
-    observaciones: f[6] || ""
+    observaciones: f[6] || "",
+    // COM-02: en blanco para cualquier OC generada antes de esta corrección
+    // (misma convención que Presentación/Piezas en DETALLE_OC) — se leen
+    // como 0, y totalConImpuestos cae de vuelta al Total de siempre.
+    descuento: Number(f[7]) || 0,
+    ivaPorcentaje: Number(f[8]) || 0,
+    flete: Number(f[9]) || 0,
+    totalConImpuestos: Number(f[10]) || Number(f[5]) || 0
   })).reverse(); // más recientes primero
 
 }
@@ -2790,17 +2910,24 @@ function obtenerDetalleOCApp_(oc){
   let encabezado = null;
 
   if(ordenes.getLastRow() > 1){
-    const datosOrdenes = ordenes.getRange(2, 1, ordenes.getLastRow()-1, 7).getValues();
+    const anchoOrdenes = Math.min(Math.max(ordenes.getLastColumn(), 7), 11);
+    const datosOrdenes = ordenes.getRange(2, 1, ordenes.getLastRow()-1, anchoOrdenes).getValues();
     for(let i=0;i<datosOrdenes.length;i++){
       if(String(datosOrdenes[i][0]||"").trim().toUpperCase() === oc){
+        const total = Number(datosOrdenes[i][5]) || 0;
         encabezado = {
           oc: datosOrdenes[i][0],
           fecha: datosOrdenes[i][1] instanceof Date ? Utilities.formatDate(datosOrdenes[i][1], Session.getScriptTimeZone(), "dd/MM/yyyy") : String(datosOrdenes[i][1]||""),
           proveedor: datosOrdenes[i][2],
           usuario: datosOrdenes[i][3],
           estado: datosOrdenes[i][4],
-          total: Number(datosOrdenes[i][5]) || 0,
-          observaciones: datosOrdenes[i][6] || ""
+          total: total,
+          observaciones: datosOrdenes[i][6] || "",
+          descuento: Number(datosOrdenes[i][7]) || 0,
+          ivaPorcentaje: Number(datosOrdenes[i][8]) || 0,
+          ivaMonto: Math.round(Math.max(0, total - (Number(datosOrdenes[i][7])||0)) * ((Number(datosOrdenes[i][8])||0) / 100) * 100) / 100,
+          flete: Number(datosOrdenes[i][9]) || 0,
+          totalConImpuestos: Number(datosOrdenes[i][10]) || total
         };
         break;
       }
@@ -3103,6 +3230,19 @@ function construirHtmlOrdenCompra_(datos){
 
   const generado = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm");
 
+  // COM-02: solo se arma un desglose (Subtotal/Descuento/IVA/Flete/Total)
+  // cuando la orden de verdad tiene algo que desglosar — si nadie capturó
+  // descuento/IVA/flete, se ve exactamente como antes (una sola caja con
+  // el total).
+  const tieneExtras = datos.descuento > 0 || datos.ivaPorcentaje > 0 || datos.flete > 0;
+  const desglose = tieneExtras ? [
+    { etiqueta: "Subtotal", valor: datos.total },
+    ...(datos.descuento > 0 ? [{ etiqueta: "Descuento", valor: -datos.descuento }] : []),
+    ...(datos.ivaPorcentaje > 0 ? [{ etiqueta: "IVA (" + datos.ivaPorcentaje + "%)", valor: datos.ivaMonto }] : []),
+    ...(datos.flete > 0 ? [{ etiqueta: "Flete", valor: datos.flete }] : []),
+    { etiqueta: "Total de la orden", valor: datos.totalConImpuestos, destacado: true }
+  ] : null;
+
   return construirHtmlDocumentoTagers_({
     titulo: "ORDEN DE COMPRA",
     folio: datos.oc,
@@ -3118,6 +3258,7 @@ function construirHtmlOrdenCompra_(datos){
     tablaFilas: filasHtml,
     etiquetaTotal: "Total de la orden",
     monto: datos.total,
+    desglose: desglose,
     observaciones: datos.observaciones,
     firmas: ["Compras", "Almacén", "Proveedor"],
     generado: generado
@@ -3200,6 +3341,8 @@ border-bottom:2px solid #e8ddd0;
 .totales .caja{ background:#F7F2EA; border-radius:10px; padding:14px 24px; text-align:right; min-width:210px; }
 .totales .etiquetaTotal{ font-size:10.5px; color:#8a7a72; text-transform:uppercase; letter-spacing:.3px; }
 .totales .montoTotal{ font-size:23px; font-weight:800; color:#6B2737; margin-top:3px; }
+.totales .filaDesglose{ display:flex; justify-content:space-between; gap:28px; font-size:12.5px; color:#6b5d52; padding:3px 0; }
+.totales .filaDesglose.destacado{ margin-top:6px; padding-top:8px; border-top:1px solid #e2d8ca; font-size:17px; font-weight:800; color:#6B2737; }
 
 .kpisDoc{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:6px 36px 18px; }
 .kpiDoc{ background:#F7F2EA; border-radius:10px; padding:12px; text-align:center; }
@@ -3259,7 +3402,13 @@ text-align:center;
     <tbody>${d.tablaFilas || `<tr><td colspan="10" style="text-align:center;padding:14px;color:#a8907f">Sin registros</td></tr>`}</tbody>
   </table>
 
-  ${d.monto !== undefined ? `
+  ${d.desglose ? `
+  <div class="totales">
+    <div class="caja">
+      ${d.desglose.map(l=>`<div class="filaDesglose${l.destacado ? ' destacado' : ''}"><span>${l.etiqueta}</span><span>${l.valor < 0 ? '-$' + formatearMoneda_(Math.abs(l.valor)) : '$' + formatearMoneda_(l.valor)}</span></div>`).join("")}
+    </div>
+  </div>
+  ` : d.monto !== undefined ? `
   <div class="totales">
     <div class="caja">
       <div class="etiquetaTotal">${d.etiquetaTotal}</div>
@@ -4551,6 +4700,36 @@ function aprobarDiscrepanciaInventarioMensualApp(fila, comentario, token){
 }
 
 /**
+ * Hermana de aprobarDiscrepanciaInventarioMensualApp — antes no existía
+ * ninguna forma de rechazar una diferencia de inventario mensual (a
+ * diferencia del conteo cíclico, que sí tiene rechazarDiscrepancia en
+ * Código.gs). Sin esto, cerrarInventarioMensualApp no tenía forma de
+ * distinguir "todavía sin revisar" de "revisado y descartado" — ver el
+ * comentario en cerrarInventarioMensualApp sobre por qué ahora exige que
+ * cada diferencia quede en APROBADO o RECHAZADO antes de poder cerrar.
+ */
+function rechazarDiscrepanciaInventarioMensualApp(fila, comentario, token){
+
+  requerirAccesoAlmacenApp_(token);
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const hoja = obtenerHojaInventarioMensual_();
+
+  const codigo = hoja.getRange(fila,4).getValue();
+  const producto = hoja.getRange(fila,5).getValue();
+  const teorica = Number(hoja.getRange(fila,9).getValue()) || 0;
+  const fisico = Number(hoja.getRange(fila,10).getValue()) || 0;
+  const folio = hoja.getRange(fila,1).getValue();
+
+  hoja.getRange(fila,12).setValue("RECHAZADO");
+
+  registrarAuditoria(usuario, "INVENTARIO_MENSUAL", "RECHAZO DIFERENCIA", folio, codigo, producto, teorica, fisico, comentario || "Diferencia rechazada — no se ajusta la existencia");
+
+  return true;
+
+}
+
+/**
  * Aprueba de un jalón todas las filas (diferencias) que se le pasen —
  * usada por el botón "Aprobar todas" en Revisar Diferencias.
  */
@@ -4634,7 +4813,41 @@ function cerrarInventarioMensualApp(folio, supervisor, token){
   const mapaMatriz = {};
   datosMatriz.forEach((f,i)=>{ if(f[4]) mapaMatriz[String(f[4]).trim()] = i+2; });
 
+  // Antes de esta corrección, el cierre aplicaba TODA diferencia a MATRIZ
+  // sin importar si alguien la había "aprobado" o no en la pantalla de
+  // Revisar Diferencias — aprobarDiscrepanciaInventarioMensualApp solo
+  // ponía una etiqueta cosmética que nadie más leía. Ahora una diferencia
+  // sin resolver (ni APROBADO ni RECHAZADO) bloquea el cierre igual que un
+  // producto sin contar, y una RECHAZADA se cuenta pero no se le aplica
+  // ningún ajuste a existencia — solo una APROBADA mueve MATRIZ.
+  //
+  // Esta validación corre en una pasada PREVIA y separada (sin tocar
+  // ninguna hoja) a propósito: si se mezclara con la pasada que aplica los
+  // ajustes (como pasaba antes con "pendientes"), un folio con una fila sin
+  // resolver dejaría ya aplicadas a MATRIZ las filas aprobadas que se
+  // procesaron antes de encontrarla, y el error solo se lanzaría después —
+  // un cierre "fallido" a medias. Validando todo primero, o se cierra
+  // completo o no se toca nada.
   let pendientes = 0;
+  let sinResolver = 0;
+
+  datos.forEach(f=>{
+    if(String(f[0]) !== String(folio)) return;
+    if(f[9] === "" || f[9] === null){ pendientes++; return; }
+    const diferencia = Number(f[10]) || 0;
+    if(diferencia === 0) return;
+    const estado = String(f[11] || "").trim().toUpperCase();
+    if(estado !== "APROBADO" && estado !== "RECHAZADO") sinResolver++;
+  });
+
+  if(pendientes > 0){
+    throw new Error("El inventario todavía tiene " + pendientes + " producto(s) sin contar.");
+  }
+
+  if(sinResolver > 0){
+    throw new Error("Hay " + sinResolver + " diferencia(s) sin aprobar ni rechazar todavía. Resuélvelas en \"Revisar Diferencias\" antes de cerrar.");
+  }
+
   let contados = 0;
   let conDiferencia = 0;
   let valorAjustado = 0;
@@ -4646,10 +4859,7 @@ function cerrarInventarioMensualApp(folio, supervisor, token){
 
     if(String(f[0]) !== String(folio)) return;
 
-    if(f[9] === "" || f[9] === null){
-      pendientes++;
-      return;
-    }
+    if(f[9] === "" || f[9] === null) return;
 
     contados++;
 
@@ -4659,8 +4869,12 @@ function cerrarInventarioMensualApp(folio, supervisor, token){
     const codigo = String(f[3]).trim();
     const producto = f[4];
     const ubicacion = f[5];
+    const estado = String(f[11] || "").trim().toUpperCase();
 
     if(diferencia === 0) return;
+
+    // RECHAZADA: ya se validó arriba que todo lo demás quedó APROBADO.
+    if(estado === "RECHAZADO") return;
 
     conDiferencia++;
 
@@ -4712,10 +4926,6 @@ function cerrarInventarioMensualApp(folio, supervisor, token){
     }
 
   });
-
-  if(pendientes > 0){
-    throw new Error("El inventario todavía tiene " + pendientes + " producto(s) sin contar.");
-  }
 
   ajustesKardex.forEach(a=>{
     registrarKardex(

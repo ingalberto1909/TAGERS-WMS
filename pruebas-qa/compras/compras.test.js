@@ -440,3 +440,72 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'COM-020', grupo: 'compras', nombre: 'COM-02: OC con descuento/IVA/flete calcula el total con impuestos, sin alterar el subtotal', metodo: 'EMPÍRICO',
+  objetivo: 'generarOrdenCompraApp debe aceptar un 5º parámetro opcional {descuento, ivaPorcentaje, flete} y calcular totalConImpuestos = (subtotal - descuento) * (1 + iva%) + flete, dejando "total" (el subtotal de siempre) sin tocar',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const r = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token, { descuento: 20, ivaPorcentaje: 16, flete: 50 });
+
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
+    const lista = entorno.invocar('obtenerOrdenesCompraApp', token);
+    const filaLista = lista.find(o => o.oc === r.folio);
+
+    // subtotal=150, -20 descuento=130, +16% IVA(130)=20.8 => 150.8, +50 flete => 200.8
+    const esperado = 200.8;
+
+    return {
+      datos: 'subtotal=150 (10×15), descuento=20, IVA=16%, flete=50',
+      esperado: `total (subtotal) sigue en 150; totalConImpuestos=${esperado} tanto en el detalle como en la lista`,
+      obtenido: `total=${detalle.total}, ivaMonto=${detalle.ivaMonto}, totalConImpuestos(detalle)=${detalle.totalConImpuestos}, totalConImpuestos(lista)=${filaLista.totalConImpuestos}`,
+      pasa: detalle.total === 150 && detalle.ivaMonto === 20.8 && detalle.totalConImpuestos === esperado && filaLista.totalConImpuestos === esperado,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-021', grupo: 'compras', nombre: 'COM-02: sin descuento/IVA/flete, totalConImpuestos cae de vuelta al total de siempre', metodo: 'EMPÍRICO',
+  objetivo: 'Compatibilidad hacia atrás — una OC generada sin el 5º parámetro (como todas las anteriores a esta corrección) debe comportarse exactamente igual que antes: totalConImpuestos === total, descuento/iva/flete en 0',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const r = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
+
+    return {
+      datos: 'OC generada sin el parámetro extras (llamada tal cual la hacía el frontend antes de este cambio)',
+      esperado: 'descuento=0, ivaPorcentaje=0, flete=0, totalConImpuestos=total=150',
+      obtenido: `total=${detalle.total}, descuento=${detalle.descuento}, ivaPorcentaje=${detalle.ivaPorcentaje}, flete=${detalle.flete}, totalConImpuestos=${detalle.totalConImpuestos}`,
+      pasa: detalle.total === 150 && detalle.descuento === 0 && detalle.ivaPorcentaje === 0 && detalle.flete === 0 && detalle.totalConImpuestos === 150,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-022', grupo: 'compras', nombre: 'COM-02: editarOrdenCompraApp actualiza el desglose de impuestos de una OC PENDIENTE', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe aceptar el mismo 6º parámetro opcional y sobreescribir descuento/IVA/flete de la orden, igual que ya sobreescribe proveedor/observaciones/productos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const r = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token, { ivaPorcentaje: 16 });
+
+    entorno.invocar('editarOrdenCompraApp', r.folio, 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token, { ivaPorcentaje: 16, flete: 30 });
+
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
+
+    return {
+      datos: 'OC creada con solo IVA=16%, luego editada agregando flete=30',
+      esperado: 'el detalle refleja la edición: flete=30, totalConImpuestos=150*1.16+30=204',
+      obtenido: `flete=${detalle.flete}, totalConImpuestos=${detalle.totalConImpuestos}`,
+      pasa: detalle.flete === 30 && detalle.totalConImpuestos === 204,
+    };
+  },
+});

@@ -6834,6 +6834,21 @@ function abrirReabastoProveedor(proveedor){
     <label>Observaciones (opcional)</label>
     <input id="observacionesOC" style="max-width:900px" placeholder="Notas para esta orden">
 
+    <div class="gridFormulario" style="max-width:600px;margin-top:10px">
+      <div class="campo">
+        <label>Descuento (opcional)</label>
+        <input id="descuentoOC" type="number" min="0" step="0.01" placeholder="$0.00">
+      </div>
+      <div class="campo">
+        <label>IVA % (opcional)</label>
+        <input id="ivaPorcentajeOC" type="number" min="0" step="0.01" placeholder="0">
+      </div>
+      <div class="campo">
+        <label>Flete (opcional)</label>
+        <input id="fleteOC" type="number" min="0" step="0.01" placeholder="$0.00">
+      </div>
+    </div>
+
     <div id="resumenReabasto" style="margin:14px 0;font-size:13px;color:var(--text-soft)">Cargando productos...</div>
 
     <div style="position:relative;max-width:500px;margin-bottom:14px">
@@ -7071,6 +7086,11 @@ async function generarOrdenDesdeReabasto(){
 
   const proveedor = window.proveedorReabastoActual;
   const observaciones = document.getElementById("observacionesOC").value.trim();
+  const extras = {
+    descuento: Number(document.getElementById("descuentoOC").value) || 0,
+    ivaPorcentaje: Number(document.getElementById("ivaPorcentajeOC").value) || 0,
+    flete: Number(document.getElementById("fleteOC").value) || 0
+  };
   const lista = window.reabastoLista || [];
 
   if(!proveedor){
@@ -7132,7 +7152,8 @@ async function generarOrdenDesdeReabasto(){
   google.script.run
 
   .withSuccessHandler(function(resultado){
-    mostrarMensajeTemporal("mensajeOC", "✅ Orden " + resultado.folio + " generada — Total: $" + resultado.total.toLocaleString("es-MX",{minimumFractionDigits:2}), "ok");
+    const totalMostrar = resultado.totalConImpuestos && resultado.totalConImpuestos !== resultado.total ? resultado.totalConImpuestos : resultado.total;
+    mostrarMensajeTemporal("mensajeOC", "✅ Orden " + resultado.folio + " generada — Total: $" + totalMostrar.toLocaleString("es-MX",{minimumFractionDigits:2}), "ok");
     setTimeout(abrirOrdenesCompra, 1400);
   })
 
@@ -7141,7 +7162,7 @@ async function generarOrdenDesdeReabasto(){
     activarCargaBoton("btnGenerarOrden", false);
   })
 
-  .generarOrdenCompraApp(proveedor, observaciones, items, obtenerTokenSesion());
+  .generarOrdenCompraApp(proveedor, observaciones, items, obtenerTokenSesion(), extras);
 
 }
 
@@ -7585,7 +7606,12 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
             <td>${o.proveedor}</td>
             <td>${o.fecha}</td>
             <td><span class="badgeEstado ${o.estado}">${o.estado}</span></td>
-            <td style="text-align:right">$${Number(o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+            <td style="text-align:right">
+              <div style="text-align:right">
+                <div>$${Number(o.totalConImpuestos || o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+                ${o.totalConImpuestos && o.totalConImpuestos !== o.total ? `<div style="font-size:11px;color:var(--text-muted)">Subtotal $${Number(o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>` : ""}
+              </div>
+            </td>
             <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
               <span style="cursor:pointer;color:var(--text-muted)" title="Ver PDF" onclick="verPDFOrdenCompra('${o.oc}')">${tgIcon("documento",15)}</span>
               <span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
@@ -7716,11 +7742,24 @@ function verDetalleOC(oc){
 
     document.querySelector("#modalLista .modalListaBuscar").style.display = "none";
 
+    const tieneExtras = datos.descuento > 0 || datos.ivaPorcentaje > 0 || datos.flete > 0;
+    const moneda = n => Number(n||0).toLocaleString("es-MX",{minimumFractionDigits:2});
+    const desgloseHtml = tieneExtras ? `
+      <div style="margin-top:12px;padding:10px 14px;background:var(--bg-inset,rgba(0,0,0,.03));border-radius:8px;font-size:13px;max-width:320px;margin-left:auto">
+        <div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>$${moneda(datos.total)}</span></div>
+        ${datos.descuento > 0 ? `<div style="display:flex;justify-content:space-between"><span>Descuento</span><span>-$${moneda(datos.descuento)}</span></div>` : ""}
+        ${datos.ivaPorcentaje > 0 ? `<div style="display:flex;justify-content:space-between"><span>IVA (${datos.ivaPorcentaje}%)</span><span>$${moneda(datos.ivaMonto)}</span></div>` : ""}
+        ${datos.flete > 0 ? `<div style="display:flex;justify-content:space-between"><span>Flete</span><span>$${moneda(datos.flete)}</span></div>` : ""}
+        <div style="display:flex;justify-content:space-between;font-weight:700;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"><span>Total</span><span>$${moneda(datos.totalConImpuestos)}</span></div>
+      </div>
+    ` : "";
+
     document.getElementById("modalListaBody").innerHTML = `
       <table class="tablaActividad">
         <thead><tr><th>Producto</th><th>Pedido</th><th>Recibido</th><th>Precio</th><th>Importe</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
+      ${desgloseHtml}
       <div class="boton" style="margin-top:16px" onclick="imprimirOC('${datos.oc}')">🖨️ Descargar / Imprimir PDF</div>
     `;
 
@@ -7796,6 +7835,18 @@ function abrirEditarOC(oc){
             <div class="campo">
               <label>Observaciones (opcional)</label>
               <input id="editarOcObservaciones" value="${String(datos.observaciones||"").replace(/"/g,"&quot;")}">
+            </div>
+            <div class="campo">
+              <label>Descuento (opcional)</label>
+              <input id="editarOcDescuento" type="number" min="0" step="0.01" value="${Number(datos.descuento)||0}">
+            </div>
+            <div class="campo">
+              <label>IVA % (opcional)</label>
+              <input id="editarOcIva" type="number" min="0" step="0.01" value="${Number(datos.ivaPorcentaje)||0}">
+            </div>
+            <div class="campo">
+              <label>Flete (opcional)</label>
+              <input id="editarOcFlete" type="number" min="0" step="0.01" value="${Number(datos.flete)||0}">
             </div>
           </div>
         </div>
@@ -7975,6 +8026,11 @@ function guardarEdicionOC(){
 
   const proveedor = document.getElementById("editarOcProveedor").value.trim();
   const observaciones = document.getElementById("editarOcObservaciones").value.trim();
+  const extras = {
+    descuento: Number(document.getElementById("editarOcDescuento").value) || 0,
+    ivaPorcentaje: Number(document.getElementById("editarOcIva").value) || 0,
+    flete: Number(document.getElementById("editarOcFlete").value) || 0
+  };
   const items = (window.ocEditItems || []).filter(p => (Number(p.cantidad)||0) > 0);
 
   if(!proveedor){
@@ -8001,7 +8057,7 @@ function guardarEdicionOC(){
     activarCargaBoton("btnGuardarEdicionOC", false);
   })
 
-  .editarOrdenCompraApp(window.ocEditando, proveedor, observaciones, items, obtenerTokenSesion());
+  .editarOrdenCompraApp(window.ocEditando, proveedor, observaciones, items, obtenerTokenSesion(), extras);
 
 }
 
@@ -9031,7 +9087,10 @@ function pintarDiferenciasInventarioMensual(){
       <div style="display:flex;gap:8px;margin-top:8px">
         ${d.estado === "APROBADO"
           ? `<div style="flex:1;text-align:center;color:var(--color-success);font-weight:700;padding:8px;display:flex;align-items:center;justify-content:center;gap:6px">${tgIcon("checkCirculo",16)} Aprobada</div>`
-          : `<div class="boton success" style="flex:1;margin:0" onclick="aprobarDiferenciaInventarioMensual(${d.fila}, this)">${tgIcon("checkCirculo",16)} Aprobar</div>`}
+          : d.estado === "RECHAZADO"
+          ? `<div style="flex:1;text-align:center;color:var(--text-muted);font-weight:700;padding:8px;display:flex;align-items:center;justify-content:center;gap:6px">${tgIcon("xCirculo",16)} Rechazada — no se ajusta</div>`
+          : `<div class="boton success" style="flex:1;margin:0" onclick="aprobarDiferenciaInventarioMensual(${d.fila}, this)">${tgIcon("checkCirculo",16)} Aprobar</div>
+             <div class="boton danger" style="flex:1;margin:0" onclick="rechazarDiferenciaInventarioMensual(${d.fila}, this)">${tgIcon("xCirculo",16)} Rechazar</div>`}
         <div class="boton secundario" style="flex:1;margin:0" onclick="editarConteoInventarioMensual(${d.fila})">${tgIcon("editar",15)} Editar conteo</div>
       </div>
     </div>
@@ -9082,6 +9141,24 @@ function aprobarDiferenciaInventarioMensual(fila, boton){
       alert("⚠️ " + e.message);
     })
     .aprobarDiscrepanciaInventarioMensualApp(fila, comentario, obtenerTokenSesion());
+
+}
+
+function rechazarDiferenciaInventarioMensual(fila, boton){
+
+  if(botonOcupado_(boton)) return;
+
+  const comentario = document.getElementById("comentarioDif-"+fila).value;
+
+  google.script.run
+    .withSuccessHandler(function(){
+      cargarDiferenciasInventarioMensual();
+    })
+    .withFailureHandler(function(e){
+      liberarBoton_(boton);
+      alert("⚠️ " + e.message);
+    })
+    .rechazarDiscrepanciaInventarioMensualApp(fila, comentario, obtenerTokenSesion());
 
 }
 
@@ -9559,11 +9636,12 @@ function dibujarNotificaciones(){
 }
 
 /**
- * Un solo despachador para los 4 tipos de alerta de la campana. El
+ * Un solo despachador para los 5 tipos de alerta de la campana. El
  * inventario conserva exactamente su flujo de antes (abre el modal de
  * producto, se marca como vista al cerrarlo — ver cerrarModalDetalle).
- * Conteos/requisiciones no tienen modal propio: navegan a la pantalla
- * correspondiente y se marcan como vistas de inmediato, al hacer clic.
+ * Conteos/requisiciones/variación de precio no tienen modal propio:
+ * navegan a la pantalla correspondiente y se marcan como vistas de
+ * inmediato, al hacer clic.
  */
 function manejarClicNotificacion(tipo, clave, datos){
 
@@ -9592,6 +9670,7 @@ function manejarClicNotificacion(tipo, clave, datos){
   if(tipo === "conteo" && typeof abrirCerrarConteo === "function") abrirCerrarConteo();
   else if(tipo === "requisicion-area" && typeof abrirRequisicionesPendientes === "function") abrirRequisicionesPendientes();
   else if(tipo === "requisicion-sucursal" && typeof abrirRequisicionesSucursal === "function") abrirRequisicionesSucursal();
+  else if(tipo === "variacion-precio" && typeof abrirAnalisisCostos === "function") abrirAnalisisCostos();
 
 }
 

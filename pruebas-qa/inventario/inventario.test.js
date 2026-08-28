@@ -212,6 +212,98 @@ prueba({
 });
 
 prueba({
+  id: 'INV-009', grupo: 'inventario', nombre: 'Cerrar Inventario Mensual con una diferencia sin aprobar ni rechazar bloquea el cierre completo, sin aplicar nada', metodo: 'EMPÍRICO',
+  objetivo: 'cerrarInventarioMensualApp debe rechazar el cierre si queda alguna diferencia en un estado distinto de APROBADO/RECHAZADO, y NO debe haber aplicado ningún ajuste a MATRIZ aunque otra línea del mismo folio ya estuviera aprobada (antes de esta corrección, el cierre aplicaba todas las diferencias sin revisar el estado)',
+  ejecutar() {
+    const hoy = new Date();
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' }, {
+      INVENTARIO_MENSUAL: [
+        ['Folio', 'Fecha', 'Usuario', 'Código', 'Producto', 'Ubicación', 'UDM', 'Categoría', 'Existencia Teórica', 'Existencia Física', 'Diferencia', 'Estado'],
+        ['INV-9', hoy, 'Admin', 'COD-001', 'HARINA DE TRIGO', 'A-01', 'KG', 'Abarrotes', 100, 95, -5, 'DIFERENCIA'],
+        ['INV-9', hoy, 'Admin', 'COD-002', 'AZUCAR ESTANDAR', 'A-02', 'KG', 'Abarrotes', 5, 8, 3, 'APROBADO'],
+      ],
+    });
+
+    const existenciaCOD001Antes = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const existenciaCOD002Antes = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10];
+
+    let error = '';
+    try { entorno.invocar('cerrarInventarioMensualApp', 'INV-9', 'Supervisor X', token); }
+    catch (e) { error = e.message; }
+
+    const existenciaCOD001Despues = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const existenciaCOD002Despues = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10];
+    const estadoFolio = entorno.leerHoja('INVENTARIO_MENSUAL')[1][11];
+
+    return {
+      datos: 'COD-001 con diferencia -5 en estado DIFERENCIA (sin resolver), COD-002 con diferencia +3 ya APROBADA, mismo folio INV-9',
+      esperado: 'lanza error mencionando diferencia(s) sin aprobar ni rechazar; existencia de AMBOS productos queda intacta (100 y 5); el folio no queda CERRADO',
+      obtenido: `error="${error}", COD-001 ${existenciaCOD001Antes}->${existenciaCOD001Despues}, COD-002 ${existenciaCOD002Antes}->${existenciaCOD002Despues}, estadoFolio=${estadoFolio}`,
+      pasa: /sin aprobar ni rechazar/.test(error) && existenciaCOD001Despues === 100 && existenciaCOD002Despues === 5 && estadoFolio !== 'CERRADO',
+    };
+  },
+});
+
+prueba({
+  id: 'INV-010', grupo: 'inventario', nombre: 'Cerrar Inventario Mensual aplica SOLO las diferencias aprobadas; una rechazada no toca existencia', metodo: 'EMPÍRICO',
+  objetivo: 'con todas las diferencias del folio resueltas (una APROBADA, una RECHAZADA), el cierre debe tener éxito, ajustar existencia solo de la aprobada, y dejar la rechazada exactamente como estaba',
+  ejecutar() {
+    const hoy = new Date();
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' }, {
+      INVENTARIO_MENSUAL: [
+        ['Folio', 'Fecha', 'Usuario', 'Código', 'Producto', 'Ubicación', 'UDM', 'Categoría', 'Existencia Teórica', 'Existencia Física', 'Diferencia', 'Estado'],
+        ['INV-10', hoy, 'Admin', 'COD-001', 'HARINA DE TRIGO', 'A-01', 'KG', 'Abarrotes', 100, 95, -5, 'RECHAZADO'],
+        ['INV-10', hoy, 'Admin', 'COD-002', 'AZUCAR ESTANDAR', 'A-02', 'KG', 'Abarrotes', 5, 8, 3, 'APROBADO'],
+      ],
+      CONTROL_INVENTARIO: [
+        ['Folio', 'Fecha Inicio', 'Responsable', 'Productos', 'Contados', 'Avance %', 'Estado', 'Fecha Cierre', 'Supervisor', 'Productos con Diferencia', 'Exactitud %', 'Valor Ajustado'],
+        ['INV-10', hoy, 'Admin', 2, 2, 100, 'ABIERTO', '', '', 0, 0, 0],
+      ],
+    });
+
+    const resultado = entorno.invocar('cerrarInventarioMensualApp', 'INV-10', 'Supervisor X', token);
+
+    const existenciaCOD001 = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const existenciaCOD002 = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10];
+    const filas = entorno.leerHoja('INVENTARIO_MENSUAL');
+    const ambasCerradas = filas[1][11] === 'CERRADO' && filas[2][11] === 'CERRADO';
+
+    return {
+      datos: 'COD-001 rechazada (diferencia -5), COD-002 aprobada (diferencia +3), folio INV-10',
+      esperado: 'cierre exitoso; COD-001 se queda en 100 (sin tocar, por estar rechazada); COD-002 pasa a 8 (valor físico aprobado); ambas filas quedan marcadas CERRADO',
+      obtenido: `productosConDiferencia=${resultado.productosConDiferencia}, COD-001=${existenciaCOD001}, COD-002=${existenciaCOD002}, ambasCerradas=${ambasCerradas}`,
+      pasa: resultado.productosConDiferencia === 1 && existenciaCOD001 === 100 && existenciaCOD002 === 8 && ambasCerradas,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-011', grupo: 'inventario', nombre: 'rechazarDiscrepanciaInventarioMensualApp marca RECHAZADO y deja rastro en AUDITORIA', metodo: 'EMPÍRICO',
+  objetivo: 'la función nueva debe escribir "RECHAZADO" en la columna Estado de la fila indicada, sin tocar Existencia Física ni Diferencia, y registrar el motivo en AUDITORIA',
+  ejecutar() {
+    const hoy = new Date();
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' }, {
+      INVENTARIO_MENSUAL: [
+        ['Folio', 'Fecha', 'Usuario', 'Código', 'Producto', 'Ubicación', 'UDM', 'Categoría', 'Existencia Teórica', 'Existencia Física', 'Diferencia', 'Estado'],
+        ['INV-11', hoy, 'Admin', 'COD-001', 'HARINA DE TRIGO', 'A-01', 'KG', 'Abarrotes', 100, 95, -5, 'DIFERENCIA'],
+      ],
+    });
+
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    entorno.invocar('rechazarDiscrepanciaInventarioMensualApp', 2, 'Error de báscula, no es una diferencia real', token);
+    const fila = entorno.leerHoja('INVENTARIO_MENSUAL')[1];
+    const auditoriaDespues = entorno.leerHoja('AUDITORIA').length;
+
+    return {
+      datos: 'fila 2 (COD-001) en estado DIFERENCIA, se rechaza con un comentario',
+      esperado: 'columna Estado pasa a RECHAZADO, Física (95) y Diferencia (-5) intactas, 1 fila nueva en AUDITORIA',
+      obtenido: `estado=${fila[11]}, fisico=${fila[9]}, diferencia=${fila[10]}, auditoria +${auditoriaDespues - auditoriaAntes}`,
+      pasa: fila[11] === 'RECHAZADO' && fila[9] === 95 && fila[10] === -5 && (auditoriaDespues - auditoriaAntes) === 1,
+    };
+  },
+});
+
+prueba({
   id: 'INV-008', grupo: 'inventario', nombre: 'Marcar conteos programados como generados (getRangeList) solo toca las filas indicadas', metodo: 'EMPÍRICO',
   objetivo: 'marcarConteoProgramadoGeneradoApp se reescribió para usar getRangeList + un solo setValue() en vez de un setValue() por fila — debe seguir poniendo la fecha de hoy exactamente en la columna G (ÚltimaGeneración) de cada fila marcada, sin tocar las filas no incluidas',
   ejecutar() {

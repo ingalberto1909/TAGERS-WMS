@@ -465,6 +465,24 @@ function ajustarExistenciaYReservaSucursal_(codigo, sucursal, deltaExistencia, d
 }
 
 /**
+ * Auditoría comparativa vs. MarketMan (hallazgo SEG-01): aprobar,
+ * rechazar, surtir y despachar requisiciones de sucursal solo validaban
+ * acceso.esTodasLasSucursales (rol ADMIN, O el atributo Sucursal="TODAS"
+ * capturado a mano en USUARIOS) — nunca el rol en sí. Un usuario OPERADOR
+ * o CONSULTA con Sucursal="TODAS" por error de captura podía aprobar o
+ * despachar cualquier requisición de cualquier sucursal. Esta validación
+ * de rol se agrega como un chequeo aparte (no se toca
+ * obtenerAccesoSucursalApp, que usan ~15 funciones más solo para
+ * aislamiento de datos por sucursal, donde no hace falta exigir rol).
+ */
+function requerirRolAprobacionSucursalApp_(token){
+  const rol = String(obtenerRolDesdeToken(token) || "").toUpperCase();
+  if(rol !== "ADMIN" && rol !== "SUPERVISOR"){
+    throw new Error("Tu rol no tiene permiso para aprobar, rechazar, surtir ni despachar requisiciones de sucursal.");
+  }
+}
+
+/**
  * Aprueba (total o parcialmente) las líneas de una requisición de
  * sucursal ya creada. NO descuenta existencia física: solo RESERVA la
  * cantidad aprobada contra el almacén de origen — hoy siempre
@@ -482,6 +500,7 @@ function aprobarLineaRequisicionSucursalApp(folio, aprobaciones, token){
   if(!acceso.esTodasLasSucursales){
     throw new Error("Solo un usuario con acceso a todas las sucursales puede aprobar requisiciones.");
   }
+  requerirRolAprobacionSucursalApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const almacenOrigen = SUCURSAL_DEFAULT_;
@@ -591,6 +610,7 @@ function rechazarLineaRequisicionSucursalApp(folio, codigo, motivo, token){
   if(!acceso.esTodasLasSucursales){
     throw new Error("Solo un usuario con acceso a todas las sucursales puede rechazar líneas de una requisición.");
   }
+  requerirRolAprobacionSucursalApp_(token);
   if(!motivo || !String(motivo).trim()){
     throw new Error("Captura el motivo del rechazo.");
   }
@@ -644,6 +664,7 @@ function surtirRequisicionSucursalApp(folio, surtido, token){
   if(!acceso.esTodasLasSucursales){
     throw new Error("Solo un usuario con acceso a todas las sucursales puede surtir requisiciones.");
   }
+  requerirRolAprobacionSucursalApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const almacenOrigen = SUCURSAL_DEFAULT_;
@@ -762,6 +783,7 @@ function despacharRequisicionSucursalApp(folio, token){
   if(!acceso.esTodasLasSucursales){
     throw new Error("Solo un usuario con acceso a todas las sucursales puede despachar requisiciones.");
   }
+  requerirRolAprobacionSucursalApp_(token);
 
   const usuario = obtenerNombreDesdeToken(token);
   const almacenOrigen = SUCURSAL_DEFAULT_;
