@@ -549,3 +549,65 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'SEG-026', grupo: 'seguridad', nombre: 'SEG-02: iniciar sesión de nuevo invalida la sesión anterior del mismo usuario', metodo: 'EMPÍRICO',
+  objetivo: 'crearSesion_ debe implementar sesión única por usuario — un segundo login del mismo correo (otro dispositivo/pestaña) debe dejar el primer token inválido de inmediato',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenViejo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+    const validaAntes = entorno.invocar('validarSesionApp', tokenViejo);
+
+    const tokenNuevo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+
+    const validaViejoDespues = entorno.invocar('validarSesionApp', tokenViejo);
+    const validaNuevo = entorno.invocar('validarSesionApp', tokenNuevo);
+
+    return {
+      datos: 'admin@tagers.com inicia sesión, y luego vuelve a iniciar sesión (otro dispositivo)',
+      esperado: 'el token viejo era válido antes, deja de serlo después del segundo login; el token nuevo sí es válido',
+      obtenido: `validaAntes=${validaAntes.ok}, validaViejoDespues=${validaViejoDespues.ok}, validaNuevo=${validaNuevo.ok}, mismoToken=${tokenViejo === tokenNuevo}`,
+      pasa: validaAntes.ok === true && validaViejoDespues.ok === false && validaNuevo.ok === true && tokenViejo !== tokenNuevo,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-027', grupo: 'seguridad', nombre: 'SEG-02: la sesión única es por usuario, no global', metodo: 'EMPÍRICO',
+  objetivo: 'Iniciar sesión con un correo NO debe afectar la sesión activa de otro correo distinto',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+    entorno.invocar('crearSesion_', 'supervisor@tagers.com', 'Supervisor Prueba', 'SUPERVISOR');
+
+    const validaAdmin = entorno.invocar('validarSesionApp', tokenAdmin);
+
+    return {
+      datos: 'admin@tagers.com inicia sesión, luego supervisor@tagers.com inicia sesión (correo distinto)',
+      esperado: 'la sesión de admin@tagers.com sigue siendo válida — la restricción es por usuario, no global',
+      obtenido: `validaAdmin=${validaAdmin.ok}`,
+      pasa: validaAdmin.ok === true,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-028', grupo: 'seguridad', nombre: 'SEG-02: cerrar sesión no borra el índice de una sesión más nueva del mismo usuario', metodo: 'EMPÍRICO',
+  objetivo: 'Si el token viejo ya fue invalidado por un segundo login (SEG-02) y luego alguien llama cerrarSesionApp con ese token viejo, no debe borrar por accidente el índice que ya apunta a la sesión nueva',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenViejo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+    const tokenNuevo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+
+    entorno.invocar('cerrarSesionApp', tokenViejo); // token viejo, ya inválido por SEG-02
+
+    const validaNuevoDespues = entorno.invocar('validarSesionApp', tokenNuevo);
+
+    return {
+      datos: 'token viejo (ya invalidado por el segundo login) se manda a cerrarSesionApp',
+      esperado: 'la sesión nueva sigue siendo válida — cerrarSesionApp con un token ya inválido no debe afectarla',
+      obtenido: `validaNuevoDespues=${validaNuevoDespues.ok}`,
+      pasa: validaNuevoDespues.ok === true,
+    };
+  },
+});

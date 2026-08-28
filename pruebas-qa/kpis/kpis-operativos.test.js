@@ -138,8 +138,13 @@ prueba({
   id: 'KPI-005', grupo: 'kpis', nombre: 'Fill rate de Sucursal: toma el máximo entre Entregado (heredado) y lo realmente recibido vía transferencia (pipeline)', metodo: 'EMPÍRICO',
   objetivo: 'DETALLE_REQUISICIONES_SUCURSAL.Recibido nunca se escribe en el flujo real (recibirTransferenciaSucursalApp solo llena TRANSFERENCIAS_DETALLE) — la función debe juntar TRANSFERENCIAS con TRANSFERENCIAS_DETALLE para el flujo de pipeline, y usar la columna Entregado para el flujo heredado',
   ejecutar() {
-    const { entorno, token } = admin();
+    const { entorno } = admin();
     bootstrapHojasSucursal_(entorno); // crea las hojas con todas sus columnas
+    // SEG-02: bootstrapHojasSucursal_ crea su propia sesión de admin por
+    // dentro — con sesión única por usuario, eso invalida el token de
+    // arriba. Se saca uno nuevo, ya después del bootstrap, para la
+    // llamada real de esta prueba.
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
     const hoy = entorno.crearFechaDesdeHoy(0);
 
     // Flujo heredado: fila con Entregado (col F, índice 5) lleno.
@@ -209,8 +214,10 @@ prueba({
   id: 'KPI-008', grupo: 'kpis', nombre: 'Tiempo de surtido de Sucursal: cubre tanto el flujo heredado como el de pipeline, y excluye recepciones parciales/con incidencia', metodo: 'EMPÍRICO',
   objetivo: 'obtenerTiempoSurtidoSucursalApp debe medir tiempo en el flujo heredado (FechaEntrega) y en el de pipeline (última RECEPCIÓN REGISTRADA del historial), y NO contar folios RECIBIDA_PARCIAL/CON_INCIDENCIA (cierre ambiguo)',
   ejecutar() {
-    const { entorno, token } = admin();
+    const { entorno } = admin();
     bootstrapHojasSucursal_(entorno);
+    // SEG-02: mismo ajuste que KPI-005 — token fresco después del bootstrap.
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
 
     entorno.leerHoja('REQUISICIONES_SUCURSAL').push(['REQ-T-LEGACY', entorno.crearFechaDesdeHoy(-3), 'S02', 'Tester', 'ENTREGADA', '', entorno.crearFechaDesdeHoy(0), 'Tester', '']);
 
