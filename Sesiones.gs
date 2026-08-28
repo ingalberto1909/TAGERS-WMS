@@ -53,7 +53,13 @@ function validarSesionApp(token) {
 
 function cerrarSesionApp(token) {
   if (token) {
+    // AUD-01: hay que leer la sesión ANTES de borrarla — una vez borrado
+    // el token ya no hay forma de saber quién era.
+    const sesion = obtenerSesion_(token);
     PropertiesService.getScriptProperties().deleteProperty("SESION_" + token);
+    if (sesion) {
+      registrarAuditoria(sesion.nombre, "SEGURIDAD", "LOGOUT", "", "", "", 0, 0, sesion.correo);
+    }
   }
   return { ok: true };
 }

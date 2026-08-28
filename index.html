@@ -1037,6 +1037,7 @@ display:inline-block;
 .badgeEstado.AGOTADA{ background:var(--color-danger-bg); color:var(--color-danger); }
 
 .badgeEstado.PENDIENTE,
+.badgeEstado.PENDIENTE_APROBACION,
 .badgeEstado.BAJO_MINIMO,
 .badgeEstado.PARCIAL,
 .badgeEstado.ABIERTO,
@@ -2648,11 +2649,11 @@ function tgIcon(nombre, tamano){
 const ICONOS_MENU = {
   btnInicio:"casa", btnEntradas:"entrada", btnSalidas:"salida", btnImportarSalidas:"documento",
   btnAjustes:"balanza", btnKardex:"kardex", btnMapa:"ubicacion", btnInventarioLista:"paquete",
-  btnUbicaciones:"buscar", btnGenerarConteo:"documento", btnCapturarConteo:"camara",
+  btnUbicaciones:"buscar", btnMermas:"basura", btnGenerarConteo:"documento", btnCapturarConteo:"camara",
   btnRevisarDiscrepancias:"buscar", btnAprobarDiscrepancias:"checkCirculo", btnCerrarConteo:"recibo",
   btnNuevaRequisicion:"mas", btnNuevaRequisicionReceta:"receta", btnMisRequisiciones:"documento",
   btnRequisicionesPendientes:"reloj", btnPreparacionRequisicion:"paquete", btnEntregasRequisicion:"checkCirculo",
-  btnHistorialRequisicion:"reloj", btnRequisicionesSucursal:"ubicacion", btnTransferenciasSucursal:"camion", btnCentroReabastecimiento:"refrescar", btnSugerenciasRequisicion:"grafica", btnOrdenesCompra:"recibo",
+  btnHistorialRequisicion:"reloj", btnRequisicionesSucursal:"ubicacion", btnTransferenciasSucursal:"camion", btnDevoluciones:"entrada", btnCentroReabastecimiento:"refrescar", btnSugerenciasRequisicion:"grafica", btnOrdenesCompra:"recibo",
   btnRecepcionMercancia:"camion", btnHistorialCompras:"reloj", btnAnalisisCostos:"dinero",
   btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
@@ -3017,12 +3018,13 @@ const PERMISOS_ROL = {
     // btnAjustes) — a partir de ahora exclusivo de ADMIN/OPERADOR. Se agregó
     // acceso completo a Compras e Inventario mensual.
     "btnInicio",
-    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones",
+    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     "btnTransferenciasSucursal",
+    "btnDevoluciones",
     "btnCentroReabastecimiento","btnSugerenciasRequisicion","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
     "btnAnalisisCostos","btnAnalisisCompras","btnProveedores",
     "btnGenerarInventarioMensual","btnCapturarInventarioMensual","btnRevisarDiferenciasMensual",
@@ -4816,6 +4818,328 @@ async function confirmarTransferenciaSucursal(){
       mostrarMensajeTemporal("mensajeTransferenciaSucursal", "⚠️ " + e.message, "error");
     })
     .transferirEntreSucursalesApp(producto.codigo, sucursalOrigen, sucursalDestino, cantidad, obtenerTokenSesion());
+
+}
+
+// ===============================
+// DEVOLUCIONES (INV-04, auditoría comparativa vs. MarketMan)
+// ===============================
+
+function abrirDevoluciones(){
+
+  marcarActivo("btnDevoluciones");
+
+  const contenedor = document.querySelector(".contenedor");
+  window.productoDevolucionSucursal = null;
+  window.productoDevolucionProveedor = null;
+
+  contenedor.innerHTML = `
+
+  <div class="vista-animada">
+
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("entrada",20)} Devoluciones</h2>
+  <p style="font-size:12.5px;color:var(--text-muted);margin-top:-6px">Producto que regresa — de una sucursal a CEDIS, o de CEDIS a un proveedor. Ninguna se puede deshacer.</p>
+
+  <div class="cardProducto">
+    <h3 style="margin:0 0 10px">Sucursal → CEDIS</h3>
+
+    <div style="position:relative;max-width:500px;margin:10px 0">
+      <label>Producto</label>
+      <input id="buscarProductoDevolucionSucursal" placeholder="Nombre o código..." oninput="buscarProductoParaDevolucionSucursal()" autocomplete="off">
+      <div id="resultadosProductoDevolucionSucursal" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+
+    <div id="productoSeleccionadoDevolucionSucursal" style="font-size:13px;margin-bottom:10px"></div>
+
+    <div class="gridFormulario">
+      <div class="campo" style="position:relative">
+        <label>Sucursal de origen</label>
+        <input id="buscarSucursalDevolucion" placeholder="Buscar sucursal..." autocomplete="off" oninput="buscarSucursalDevolucion()" onfocus="buscarSucursalDevolucion()">
+        <input type="hidden" id="sucursalOrigenDevolucion">
+        <div id="resultadosSucursalDevolucion" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+      </div>
+      <div class="campo">
+        <label>Cantidad</label>
+        <input id="cantidadDevolucionSucursal" type="number" min="0" step="any" placeholder="0">
+      </div>
+    </div>
+
+    <label>Motivo</label>
+    <input id="motivoDevolucionSucursal" placeholder="Ej. sobrante de la entrega, error de surtido...">
+
+    <div id="mensajeDevolucionSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" id="btnDevolucionSucursal" style="margin-top:14px" onclick="confirmarDevolucionSucursal()">${tgIcon("enviar",17)} Registrar devolución a CEDIS</div>
+  </div>
+
+  <div class="cardProducto">
+    <h3 style="margin:0 0 10px">CEDIS → Proveedor</h3>
+
+    <div style="position:relative;max-width:500px;margin:10px 0">
+      <label>Producto</label>
+      <input id="buscarProductoDevolucionProveedor" placeholder="Nombre o código..." oninput="buscarProductoParaDevolucionProveedor()" autocomplete="off">
+      <div id="resultadosProductoDevolucionProveedor" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+
+    <div id="productoSeleccionadoDevolucionProveedor" style="font-size:13px;margin-bottom:10px"></div>
+
+    <div class="gridFormulario">
+      <div class="campo">
+        <label>Cantidad</label>
+        <input id="cantidadDevolucionProveedor" type="number" min="0" step="any" placeholder="0">
+      </div>
+      <div class="campo">
+        <label>Folio de OC (opcional)</label>
+        <input id="folioOCDevolucion" placeholder="Ej. OC-20260828-001">
+      </div>
+    </div>
+
+    <label>Motivo</label>
+    <input id="motivoDevolucionProveedor" placeholder="Ej. producto en mal estado, no corresponde al pedido...">
+
+    <div id="mensajeDevolucionProveedor" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" id="btnDevolucionProveedor" style="margin-top:14px" onclick="confirmarDevolucionProveedor()">${tgIcon("enviar",17)} Registrar devolución a proveedor</div>
+  </div>
+
+  <div class="cardProducto">
+    <h3 style="margin:0 0 10px">Historial (últimos 30 días)</h3>
+    <div id="tablaDevoluciones" style="overflow:auto;max-height:55vh">
+      <div class="skeleton skeletonLinea" style="width:80%"></div>
+      <div class="skeleton skeletonLinea" style="width:65%"></div>
+    </div>
+  </div>
+
+  </div>
+
+  `;
+
+  cargarDevoluciones();
+
+}
+
+let temporizadorBuscarProductoDevolucionSucursal;
+
+function buscarProductoParaDevolucionSucursal(){
+
+  clearTimeout(temporizadorBuscarProductoDevolucionSucursal);
+
+  const texto = document.getElementById("buscarProductoDevolucionSucursal").value.trim();
+  const cont = document.getElementById("resultadosProductoDevolucionSucursal");
+
+  if(texto.length < 2){ cont.innerHTML = ""; cont.style.display = "none"; return; }
+
+  temporizadorBuscarProductoDevolucionSucursal = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='seleccionarProductoDevolucionSucursal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+      })
+      .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; cont.style.display = "block"; })
+      .buscarProductoParaRequisicionApp(texto, obtenerTokenSesion());
+  }, 300);
+
+}
+
+function seleccionarProductoDevolucionSucursal(producto){
+  window.productoDevolucionSucursal = producto;
+  document.getElementById("productoSeleccionadoDevolucionSucursal").innerHTML =
+    `Seleccionado: <b>${producto.producto}</b> <span style="color:var(--text-muted)">(${producto.codigo})</span>`;
+  document.getElementById("buscarProductoDevolucionSucursal").value = "";
+  document.getElementById("resultadosProductoDevolucionSucursal").innerHTML = "";
+  document.getElementById("resultadosProductoDevolucionSucursal").style.display = "none";
+}
+
+function buscarSucursalDevolucion(){
+
+  const texto = document.getElementById("buscarSucursalDevolucion").value.trim().toUpperCase();
+  const cont = document.getElementById("resultadosSucursalDevolucion");
+  document.getElementById("sucursalOrigenDevolucion").value = "";
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      const filtrada = (lista || []).filter(s => s !== "S01" && s.includes(texto)); // S01/CEDIS no puede ser su propio origen
+      if(!filtrada.length){
+        cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+        cont.style.display = "block";
+        return;
+      }
+      cont.innerHTML = filtrada.map(s => `
+        <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="seleccionarSucursalDevolucion('${s}')">${s}</div>
+      `).join("");
+      cont.style.display = "block";
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; cont.style.display = "block"; })
+    .obtenerSucursalesConocidasApp(obtenerTokenSesion());
+
+}
+
+function seleccionarSucursalDevolucion(sucursal){
+  document.getElementById("buscarSucursalDevolucion").value = sucursal;
+  document.getElementById("sucursalOrigenDevolucion").value = sucursal;
+  document.getElementById("resultadosSucursalDevolucion").innerHTML = "";
+  document.getElementById("resultadosSucursalDevolucion").style.display = "none";
+}
+
+async function confirmarDevolucionSucursal(){
+
+  const producto = window.productoDevolucionSucursal;
+  const sucursalOrigen = document.getElementById("sucursalOrigenDevolucion").value.trim();
+  const cantidad = Number(document.getElementById("cantidadDevolucionSucursal").value) || 0;
+  const motivo = document.getElementById("motivoDevolucionSucursal").value.trim();
+
+  if(!producto){ mostrarMensajeTemporal("mensajeDevolucionSucursal", "Selecciona un producto", "error"); return; }
+  if(!sucursalOrigen){ mostrarMensajeTemporal("mensajeDevolucionSucursal", "Captura la sucursal de origen", "error"); return; }
+  if(cantidad <= 0){ mostrarMensajeTemporal("mensajeDevolucionSucursal", "Captura una cantidad mayor a cero", "error"); return; }
+  if(!motivo){ mostrarMensajeTemporal("mensajeDevolucionSucursal", "Captura el motivo de la devolución", "error"); return; }
+
+  if(!(await tgConfirmar(`¿Registrar la devolución de ${cantidad} ${producto.udm||""} de ${producto.producto} desde ${sucursalOrigen} a CEDIS? No se puede deshacer.`, { peligroso: true }))) return;
+
+  activarCargaBoton("btnDevolucionSucursal", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnDevolucionSucursal", false);
+      mostrarMensajeTemporal("mensajeDevolucionSucursal", "✅ Devolución " + resultado.folio + " registrada", "ok");
+      window.productoDevolucionSucursal = null;
+      document.getElementById("productoSeleccionadoDevolucionSucursal").innerHTML = "";
+      document.getElementById("cantidadDevolucionSucursal").value = "";
+      document.getElementById("motivoDevolucionSucursal").value = "";
+      seleccionarSucursalDevolucion("");
+      cargarDevoluciones();
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnDevolucionSucursal", false);
+      mostrarMensajeTemporal("mensajeDevolucionSucursal", "⚠️ " + e.message, "error");
+    })
+    .registrarDevolucionSucursalApp(producto.codigo, cantidad, sucursalOrigen, motivo, "", obtenerTokenSesion());
+
+}
+
+let temporizadorBuscarProductoDevolucionProveedor;
+
+function buscarProductoParaDevolucionProveedor(){
+
+  clearTimeout(temporizadorBuscarProductoDevolucionProveedor);
+
+  const texto = document.getElementById("buscarProductoDevolucionProveedor").value.trim();
+  const cont = document.getElementById("resultadosProductoDevolucionProveedor");
+
+  if(texto.length < 2){ cont.innerHTML = ""; cont.style.display = "none"; return; }
+
+  temporizadorBuscarProductoDevolucionProveedor = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='seleccionarProductoDevolucionProveedor(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo} — existencia ${p.existencia})</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+      })
+      .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; cont.style.display = "block"; })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+  }, 300);
+
+}
+
+function seleccionarProductoDevolucionProveedor(producto){
+  window.productoDevolucionProveedor = producto;
+  document.getElementById("productoSeleccionadoDevolucionProveedor").innerHTML =
+    `Seleccionado: <b>${producto.producto}</b> <span style="color:var(--text-muted)">(${producto.codigo} — existencia actual ${producto.existencia})</span>`;
+  document.getElementById("buscarProductoDevolucionProveedor").value = "";
+  document.getElementById("resultadosProductoDevolucionProveedor").innerHTML = "";
+  document.getElementById("resultadosProductoDevolucionProveedor").style.display = "none";
+}
+
+async function confirmarDevolucionProveedor(){
+
+  const producto = window.productoDevolucionProveedor;
+  const cantidad = Number(document.getElementById("cantidadDevolucionProveedor").value) || 0;
+  const folioOC = document.getElementById("folioOCDevolucion").value.trim();
+  const motivo = document.getElementById("motivoDevolucionProveedor").value.trim();
+
+  if(!producto){ mostrarMensajeTemporal("mensajeDevolucionProveedor", "Selecciona un producto", "error"); return; }
+  if(cantidad <= 0){ mostrarMensajeTemporal("mensajeDevolucionProveedor", "Captura una cantidad mayor a cero", "error"); return; }
+  if(!motivo){ mostrarMensajeTemporal("mensajeDevolucionProveedor", "Captura el motivo de la devolución", "error"); return; }
+
+  if(!(await tgConfirmar(`¿Registrar la devolución de ${cantidad} ${producto.udm||""} de ${producto.producto} al proveedor? Esto descuenta la existencia y no se puede deshacer.`, { peligroso: true }))) return;
+
+  activarCargaBoton("btnDevolucionProveedor", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnDevolucionProveedor", false);
+      mostrarMensajeTemporal("mensajeDevolucionProveedor", "✅ Devolución " + resultado.folio + " registrada", "ok");
+      window.productoDevolucionProveedor = null;
+      document.getElementById("productoSeleccionadoDevolucionProveedor").innerHTML = "";
+      document.getElementById("cantidadDevolucionProveedor").value = "";
+      document.getElementById("folioOCDevolucion").value = "";
+      document.getElementById("motivoDevolucionProveedor").value = "";
+      cargarDevoluciones();
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnDevolucionProveedor", false);
+      mostrarMensajeTemporal("mensajeDevolucionProveedor", "⚠️ " + e.message, "error");
+    })
+    .registrarDevolucionProveedorApp(producto.codigo, producto.producto, cantidad, producto.udm || "", motivo, folioOC, "", obtenerTokenSesion());
+
+}
+
+function cargarDevoluciones(){
+
+  const desde = new Date();
+  desde.setDate(desde.getDate() - 30);
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      const cont = document.getElementById("tablaDevoluciones");
+      if(!cont) return;
+
+      if(!lista || !lista.length){
+        cont.innerHTML = tgEmptyState("entrada", "Sin devoluciones registradas en los últimos 30 días");
+        return;
+      }
+
+      cont.innerHTML = `
+        <table class="tablaTop" style="font-size:13px">
+          <thead><tr><th>Fecha</th><th>Producto</th><th style="text-align:right">Cantidad</th><th>Tipo</th><th>Motivo</th><th>Usuario</th></tr></thead>
+          <tbody>
+            ${lista.map(d => `
+              <tr>
+                <td>${d.fecha}</td>
+                <td>${d.producto}<br><span style="font-size:10px;color:var(--text-muted)">${d.codigo}</span></td>
+                <td style="text-align:right">${d.cantidad}</td>
+                <td>${d.tipo === "SUCURSAL_A_CEDIS" ? ("De " + d.origen + " a CEDIS") : ("De CEDIS a proveedor" + (d.folioOC ? (" (" + d.folioOC + ")") : ""))}</td>
+                <td>${d.motivo}</td>
+                <td>${d.usuario}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    })
+    .withFailureHandler(function(e){
+      const cont = document.getElementById("tablaDevoluciones");
+      if(cont) cont.innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerDevolucionesApp(desde.toISOString(), null, obtenerTokenSesion());
 
 }
 
@@ -7617,9 +7941,10 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
               <span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
               <span style="cursor:pointer;color:var(--text-muted)" title="Imprimir" onclick="imprimirOC('${o.oc}')">${tgIcon("imprimir",15)}</span>
             </td>
-            ${conAcciones ? `<td style="white-space:nowrap;display:flex;gap:6px">
-              ${o.estado==="PENDIENTE" ? `<button class="boton secundario" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="abrirEditarOC('${o.oc}')">${tgIcon("editar",14)} Editar</button>` : ""}
-              ${(o.estado==="PENDIENTE"||o.estado==="PARCIAL") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}
+            ${conAcciones ? `<td style="display:flex;flex-wrap:wrap;gap:6px">
+              ${o.estado==="PENDIENTE_APROBACION" && USUARIO_ACTUAL.rol === "ADMIN" ? `<button class="boton success" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="aprobarOC('${o.oc}')">${tgIcon("checkCirculo",14)} Aprobar</button>` : ""}
+              ${(o.estado==="PENDIENTE"||o.estado==="PENDIENTE_APROBACION") ? `<button class="boton secundario" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="abrirEditarOC('${o.oc}')">${tgIcon("editar",14)} Editar</button>` : ""}
+              ${(o.estado==="PENDIENTE"||o.estado==="PARCIAL"||o.estado==="PENDIENTE_APROBACION") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}
             </td>` : ""}
           </tr>
         `).join("")}
@@ -7770,6 +8095,22 @@ function verDetalleOC(oc){
   .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
 
   .obtenerDetalleOCApp(oc, obtenerTokenSesion());
+
+}
+
+async function aprobarOC(oc){
+
+  if(!(await tgConfirmar("¿Aprobar la orden " + oc + "? A partir de ahí ya se puede recibir mercancía."))) return;
+
+  google.script.run
+
+  .withSuccessHandler(function(){
+    abrirOrdenesCompra();
+  })
+
+  .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+
+  .aprobarOrdenCompraApp(oc, obtenerTokenSesion());
 
 }
 
@@ -8153,6 +8494,11 @@ function buscarOCParaRecepcion(){
     if(datos.estado === "RECIBIDA" || datos.estado === "CANCELADA"){
       cont.innerHTML = "";
       mostrarMensajeTemporal("mensajeRecepcion", "Esta orden ya está " + datos.estado + ", no se puede recibir.", "error");
+      return;
+    }
+    if(datos.estado === "PENDIENTE_APROBACION"){
+      cont.innerHTML = "";
+      mostrarMensajeTemporal("mensajeRecepcion", "Esta orden todavía no está aprobada — apruébala en Órdenes de Compra antes de recibirla.", "error");
       return;
     }
 
@@ -12648,6 +12994,254 @@ function mostrarResultadosUbicacion(resultados){
 }
 
 // ===============================
+// MERMAS (INV-03, auditoría comparativa vs. MarketMan)
+// ===============================
+
+const MOTIVOS_MERMA_UI_ = ["PRODUCTO DAÑADO", "CADUCIDAD/VENCIMIENTO", "ERROR DE MANEJO", "ROBO/EXTRAVÍO", "OTRO"];
+
+function abrirMermas(){
+
+  marcarActivo("btnMermas");
+
+  const contenedor=document.querySelector(".contenedor");
+
+  contenedor.innerHTML=`
+
+  <div class="vista-animada">
+
+  <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("basura",20)} Mermas</h2>
+  <p style="color:var(--text-soft);font-size:13px">Producto dañado, caducado o perdido — separado de una salida normal, para poder ver cuánto dinero representa.</p>
+
+  <div class="cardProducto">
+    <h3 style="margin:0 0 10px">Registrar merma</h3>
+    <div style="position:relative;max-width:500px">
+      <div class="filaConEscaner">
+        <div>
+          <label>Producto</label>
+          <input id="buscarProductoMerma" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaMerma()" autocomplete="off">
+        </div>
+        <button type="button" class="btnEscaner" onclick="abrirEscaner('buscarProductoMerma')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
+      </div>
+      <div id="resultadosBuscarProductoMerma" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+    </div>
+
+    <div id="productoMermaSeleccionado"></div>
+
+    <div class="gridFormulario" style="max-width:600px;margin-top:10px">
+      <div class="campo">
+        <label>Cantidad</label>
+        <input id="cantidadMerma" type="number" min="0" step="any" placeholder="0">
+      </div>
+      <div class="campo">
+        <label>Motivo</label>
+        <select id="motivoMerma">
+          ${MOTIVOS_MERMA_UI_.map(m => `<option value="${m}">${m.charAt(0) + m.slice(1).toLowerCase()}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+
+    <label>Observaciones (opcional)</label>
+    <input id="observacionesMerma" placeholder="Detalle de lo ocurrido">
+
+    <div id="mensajeMerma" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div class="boton" id="btnRegistrarMerma" style="margin-top:14px;max-width:600px" onclick="registrarMerma()">${tgIcon("basura",17)} Registrar merma</div>
+  </div>
+
+  <div id="resumenMermas" class="cardProducto" style="text-align:center;padding:30px">
+    <div class="spinnerCentro"><div class="spinner"></div></div>
+  </div>
+
+  <div class="cardProducto">
+    <h3 style="margin:0 0 10px">Historial (últimos 30 días)</h3>
+    <div id="tablaMermas" style="overflow:auto;max-height:55vh">
+      <div class="skeleton skeletonLinea" style="width:80%"></div>
+      <div class="skeleton skeletonLinea" style="width:65%"></div>
+    </div>
+  </div>
+
+  </div>
+
+  `;
+
+  cargarMermas();
+
+}
+
+let temporizadorBuscarProductoMerma;
+
+function buscarProductoParaMerma(){
+
+  clearTimeout(temporizadorBuscarProductoMerma);
+
+  const texto = document.getElementById("buscarProductoMerma").value.trim();
+  const resultados = document.getElementById("resultadosBuscarProductoMerma");
+
+  if(texto.length < 2){
+    resultados.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoMerma = setTimeout(function(){
+
+    google.script.run
+      .withSuccessHandler(function(lista){
+
+        if(!lista || !lista.length){
+          resultados.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          resultados.style.display = "block";
+          return;
+        }
+
+        resultados.innerHTML = lista.map(p=>`
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='seleccionarProductoMerma(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo} — existencia ${p.existencia})</span>
+          </div>
+        `).join("");
+        resultados.style.display = "block";
+
+      })
+      .withFailureHandler(function(e){
+        resultados.innerHTML = "⚠️ " + e.message;
+        resultados.style.display = "block";
+      })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+
+  }, 300);
+
+}
+
+function seleccionarProductoMerma(producto){
+
+  window.productoMermaActual = producto;
+
+  document.getElementById("productoMermaSeleccionado").innerHTML = `
+    <div class="cardProducto" style="margin:10px 0 0;background:var(--bg-inset,rgba(0,0,0,.03))">
+      <div class="nombreProducto">${producto.producto}</div>
+      <div class="infoProducto"><span class="codigo">Código: ${producto.codigo}</span> · Existencia actual: ${producto.existencia} ${producto.udm}</div>
+    </div>
+  `;
+
+  document.getElementById("buscarProductoMerma").value = "";
+  document.getElementById("resultadosBuscarProductoMerma").innerHTML = "";
+  document.getElementById("resultadosBuscarProductoMerma").style.display = "none";
+
+}
+
+async function registrarMerma(){
+
+  const producto = window.productoMermaActual;
+  const cantidad = Number(document.getElementById("cantidadMerma").value) || 0;
+  const motivo = document.getElementById("motivoMerma").value;
+  const observaciones = document.getElementById("observacionesMerma").value.trim();
+
+  if(!producto){
+    mostrarMensajeTemporal("mensajeMerma", "Busca y selecciona un producto", "error");
+    return;
+  }
+  if(cantidad <= 0){
+    mostrarMensajeTemporal("mensajeMerma", "Captura una cantidad mayor a cero", "error");
+    return;
+  }
+
+  if(!(await tgConfirmar("¿Registrar merma de " + cantidad + " " + producto.udm + " de " + producto.producto + "? No se puede deshacer."))) return;
+
+  activarCargaBoton("btnRegistrarMerma", true);
+
+  google.script.run
+
+  .withSuccessHandler(function(resultado){
+    activarCargaBoton("btnRegistrarMerma", false);
+    mostrarMensajeTemporal("mensajeMerma", "✅ Merma registrada — Valor: $" + resultado.valor.toLocaleString("es-MX",{minimumFractionDigits:2}), "ok");
+    window.productoMermaActual = null;
+    document.getElementById("productoMermaSeleccionado").innerHTML = "";
+    document.getElementById("cantidadMerma").value = "";
+    document.getElementById("observacionesMerma").value = "";
+    cargarMermas();
+  })
+
+  .withFailureHandler(function(e){
+    activarCargaBoton("btnRegistrarMerma", false);
+    mostrarMensajeTemporal("mensajeMerma", "⚠️ " + e.message, "error");
+  })
+
+  .registrarMermaApp(producto.codigo, cantidad, motivo, "", observaciones, obtenerTokenSesion());
+
+}
+
+function cargarMermas(){
+
+  const desde = new Date();
+  desde.setDate(desde.getDate() - 30);
+  const desdeISO = desde.toISOString();
+
+  google.script.run
+    .withSuccessHandler(function(resumen){
+      const cont = document.getElementById("resumenMermas");
+      if(!cont) return;
+
+      if(!resumen || !resumen.totalRegistros){
+        cont.style.textAlign = "left";
+        cont.innerHTML = "<p style='color:var(--text-muted);margin:0'>Sin mermas registradas en los últimos 30 días.</p>";
+        return;
+      }
+
+      const motivos = Object.keys(resumen.porMotivo).sort((a,b) => resumen.porMotivo[b] - resumen.porMotivo[a]);
+
+      cont.style.textAlign = "left";
+      cont.style.padding = "0";
+      cont.innerHTML = `
+        <div class="cardValorInventario">
+          <div class="etiqueta">Valor perdido por merma (30 días)</div>
+          <div class="valor">$${Number(resumen.valorTotal).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+          <div class="nota">${resumen.totalRegistros} registro(s) — ${motivos.map(m => m + ": $" + Number(resumen.porMotivo[m]).toLocaleString("es-MX",{minimumFractionDigits:2})).join(" · ")}</div>
+        </div>
+      `;
+    })
+    .withFailureHandler(function(e){
+      const cont = document.getElementById("resumenMermas");
+      if(cont) cont.innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerResumenMermasApp(desdeISO, null, obtenerTokenSesion());
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      const cont = document.getElementById("tablaMermas");
+      if(!cont) return;
+
+      if(!lista || !lista.length){
+        cont.innerHTML = tgEmptyState("basura", "Sin mermas registradas en los últimos 30 días");
+        return;
+      }
+
+      cont.innerHTML = `
+        <table class="tablaTop" style="font-size:13px">
+          <thead><tr><th>Fecha</th><th>Producto</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Valor</th><th>Motivo</th><th>Usuario</th></tr></thead>
+          <tbody>
+            ${lista.map(m => `
+              <tr>
+                <td>${m.fecha}</td>
+                <td>${m.producto}<br><span style="font-size:10px;color:var(--text-muted)">${m.codigo}</span></td>
+                <td style="text-align:right">${m.cantidad} ${m.udm}</td>
+                <td style="text-align:right">$${Number(m.valor).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+                <td>${m.motivo}${m.observaciones ? `<br><span style="font-size:10px;color:var(--text-muted)">${m.observaciones}</span>` : ""}</td>
+                <td>${m.usuario}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    })
+    .withFailureHandler(function(e){
+      const cont = document.getElementById("tablaMermas");
+      if(cont) cont.innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerMermasApp(desdeISO, null, obtenerTokenSesion());
+
+}
+
+// ===============================
 // DASHBOARD (REPORTES)
 // ===============================
 
@@ -13204,6 +13798,7 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnMapa" onclick="irAMapa()" title="Mapa del almacén"><span class="icono">📍</span><span class="textoMenu">Mapa del almacén</span></button>
     <button class="menuLateralBtn sub" id="btnInventarioLista" onclick="abrirInventario()" title="Existencias"><span class="icono">📋</span><span class="textoMenu">Existencias</span></button>
     <button class="menuLateralBtn sub" id="btnUbicaciones" onclick="abrirUbicaciones()" title="Buscar ubicación"><span class="icono">🔎</span><span class="textoMenu">Buscar ubicación</span></button>
+    <button class="menuLateralBtn sub" id="btnMermas" onclick="abrirMermas()" title="Mermas"><span class="icono">🗑️</span><span class="textoMenu">Mermas</span></button>
   </div>
 </div>
 
@@ -13238,6 +13833,8 @@ function aplicarFiltros(){
 <button class="menuLateralBtn" id="btnRequisicionesSucursal" onclick="abrirRequisicionesSucursal()" title="Requisiciones por sucursal"><span class="icono">🏬</span><span class="textoMenu">Requisiciones por Sucursal</span></button>
 
 <button class="menuLateralBtn" id="btnTransferenciasSucursal" onclick="abrirTransferenciasSucursal()" title="Transferencias entre sucursales"><span class="icono">🚚</span><span class="textoMenu">Transferencias entre Sucursales</span></button>
+
+<button class="menuLateralBtn" id="btnDevoluciones" onclick="abrirDevoluciones()" title="Devoluciones"><span class="icono">↩️</span><span class="textoMenu">Devoluciones</span></button>
 
 <div class="grupoMenu">
   <button class="menuLateralBtn grupoBtn" data-icono="fabrica" onclick="toggleGrupo('grupoProduccion')" title="Producción">

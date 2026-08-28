@@ -68,6 +68,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
     const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     return {
@@ -87,6 +88,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 8 }], token);
     const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
@@ -108,6 +110,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 30 }], token);
     const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     return {
@@ -143,6 +146,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10 }], token);
     let bloqueado = false, mensaje = '';
     try { entorno.invocar('cancelarOrdenCompraApp', oc.folio, token); } catch (e) { bloqueado = true; mensaje = e.message; }
@@ -158,6 +162,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10, precioFactura: 18 }], token);
     const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[17];
     const historial = entorno.leerHoja('HISTORIAL_PRECIOS').length - 1;
@@ -217,6 +222,7 @@ prueba({
     const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
 
     const ocParcial = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 }], token);
+    entorno.invocar('aprobarOrdenCompraApp', ocParcial.folio, token);
     entorno.invocar('registrarRecepcionOCApp', ocParcial.folio, [{ codigo: 'COD-001', cantidadRecibida: 4 }], token);
     let bloqueadoParcial = false;
     try { entorno.invocar('editarOrdenCompraApp', ocParcial.folio, 'OTRO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 1, udm: 'KG', precio: 1 }], token); }
@@ -350,6 +356,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 120, udm: 'KG', precio: 22 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-002', cantidadRecibida: 120 }], token);
     entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 5; // simula que ya se consumió lo recibido
     entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
@@ -395,6 +402,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 240, udm: 'KG', precio: 22 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-002', cantidadRecibida: 240 }], token);
     entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 5; // simula que ya se consumió lo recibido — vuelve a estar bajo mínimo
 
@@ -506,6 +514,86 @@ prueba({
       esperado: 'el detalle refleja la edición: flete=30, totalConImpuestos=150*1.16+30=204',
       obtenido: `flete=${detalle.flete}, totalConImpuestos=${detalle.totalConImpuestos}`,
       pasa: detalle.flete === 30 && detalle.totalConImpuestos === 204,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-023', grupo: 'compras', nombre: 'COM-01: una OC nace PENDIENTE_APROBACION y no se puede recibir hasta aprobarse', metodo: 'EMPÍRICO',
+  objetivo: 'generarOrdenCompraApp debe crear la OC en PENDIENTE_APROBACION (no PENDIENTE) — registrarRecepcionOCApp debe rechazarla hasta que aprobarOrdenCompraApp la mueva a PENDIENTE',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    const estadoInicial = entorno.invocar('obtenerDetalleOCApp', oc.folio, token).estado;
+
+    let bloqueadoRecepcion = false, mensaje = '';
+    try { entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10 }], token); }
+    catch (e) { bloqueadoRecepcion = true; mensaje = e.message; }
+
+    const resultadoAprobar = entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    const estadoTrasAprobar = entorno.invocar('obtenerDetalleOCApp', oc.folio, token).estado;
+
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10 }], token);
+    const estadoFinal = entorno.invocar('obtenerDetalleOCApp', oc.folio, token).estado;
+
+    return {
+      datos: 'OC recién generada, se intenta recibir antes de aprobar, luego se aprueba y se recibe',
+      esperado: 'estadoInicial=PENDIENTE_APROBACION, recepción bloqueada antes de aprobar, tras aprobar queda PENDIENTE, tras recibir queda RECIBIDA',
+      obtenido: `estadoInicial=${estadoInicial}, bloqueadoRecepcion=${bloqueadoRecepcion} ("${mensaje}"), estadoTrasAprobar=${estadoTrasAprobar} (${resultadoAprobar.estado}), estadoFinal=${estadoFinal}`,
+      pasa: estadoInicial === 'PENDIENTE_APROBACION' && bloqueadoRecepcion && estadoTrasAprobar === 'PENDIENTE' && estadoFinal === 'RECIBIDA',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-024', grupo: 'compras', nombre: 'COM-01: solo ADMIN puede aprobar una OC — ni Almacén ni Supervisor pueden', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarOrdenCompraApp debe exigir rol ADMIN específicamente — a propósito distinto de requerirAccesoAlmacenApp_ (que ya permite generar/recibir a Supervisor), para separar quién genera de quién aprueba',
+  ejecutar() {
+    const { entorno, token: tokenAdmin } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], tokenAdmin);
+
+    const tokenSupervisor = entorno.invocar('crearSesion_', 'supervisor@tagers.com', 'Supervisor', 'SUPERVISOR');
+
+    let bloqueado = false;
+    try { entorno.invocar('aprobarOrdenCompraApp', oc.folio, tokenSupervisor); }
+    catch (e) { bloqueado = true; }
+
+    const estado = entorno.invocar('obtenerDetalleOCApp', oc.folio, tokenAdmin).estado;
+
+    return {
+      datos: 'usuario SUPERVISOR (que sí puede generar/recibir OC) intenta aprobarla',
+      esperado: 'bloqueado, la OC sigue PENDIENTE_APROBACION',
+      obtenido: `bloqueado=${bloqueado}, estado=${estado}`,
+      pasa: bloqueado && estado === 'PENDIENTE_APROBACION',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-025', grupo: 'compras', nombre: 'COM-01: no se puede aprobar dos veces ni una OC que no está pendiente de aprobación', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarOrdenCompraApp debe rechazar la aprobación si el estado actual no es PENDIENTE_APROBACION (ya aprobada, o cualquier otro estado)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+
+    let bloqueadoSegunda = false;
+    try { entorno.invocar('aprobarOrdenCompraApp', oc.folio, token); }
+    catch (e) { bloqueadoSegunda = true; }
+
+    return {
+      datos: 'OC ya aprobada (PENDIENTE), se intenta aprobar de nuevo',
+      esperado: 'bloqueado',
+      obtenido: bloqueadoSegunda ? 'bloqueado' : 'PERMITIDO',
+      pasa: bloqueadoSegunda,
     };
   },
 });

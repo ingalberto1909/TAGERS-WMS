@@ -132,10 +132,11 @@ prueba({
 
 prueba({
   id: 'INT-005', grupo: 'inteligencia', nombre: 'Órdenes de compra PENDIENTE/PARCIAL cuentan como pendientes; RECIBIDA no', metodo: 'EMPÍRICO',
-  objetivo: 'El agregador debe listar OC en PENDIENTE o PARCIAL como "atención", y dejar de contarlas en cuanto quedan RECIBIDA — reusando obtenerOrdenesCompraApp sin duplicar su cálculo de estado',
+  objetivo: 'El agregador debe listar OC en PENDIENTE o PARCIAL como "atención" (esperando recepción) solo DESPUÉS de aprobarse (COM-01: ahora nace en PENDIENTE_APROBACION, una categoría de atención distinta — ver INT-005B), y dejar de contarlas en cuanto quedan RECIBIDA — reusando obtenerOrdenesCompraApp sin duplicar su cálculo de estado',
   ejecutar() {
     const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
     const oc1 = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 }], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc1.folio, token);
     const antes = entorno.invocar('obtenerAccionesRequeridasApp', token);
     const ocAntes = antes.atencion.find(a => a.tipo === 'ordenes-compra');
 
@@ -144,10 +145,35 @@ prueba({
     const ocDespues = despues.atencion.find(a => a.tipo === 'ordenes-compra');
 
     return {
-      datos: `${oc1.folio}: PENDIENTE, luego recibida por completo (RECIBIDA)`,
+      datos: `${oc1.folio}: aprobada (PENDIENTE), luego recibida por completo (RECIBIDA)`,
       esperado: 'antes de recibir: 1 OC pendiente en atención. Después de recibirla completa: ya no aparece',
       obtenido: `antes=${ocAntes ? ocAntes.cantidad : 0}, despues=${ocDespues ? ocDespues.cantidad : 0}`,
       pasa: !!ocAntes && ocAntes.cantidad === 1 && !ocDespues,
+    };
+  },
+});
+
+prueba({
+  id: 'INT-005B', grupo: 'inteligencia', nombre: 'COM-01: una OC sin aprobar aparece en su propia categoría de atención, no en "esperando recepción"', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerAccionesRequeridasApp debe distinguir "sin aprobar" (PENDIENTE_APROBACION) de "esperando recepción" (PENDIENTE/PARCIAL) — una OC recién generada no debe aparecer en ambas a la vez',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc1 = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 }], token);
+
+    const antes = entorno.invocar('obtenerAccionesRequeridasApp', token);
+    const porAprobarAntes = antes.atencion.find(a => a.tipo === 'ordenes-compra-por-aprobar');
+    const porRecibirAntes = antes.atencion.find(a => a.tipo === 'ordenes-compra');
+
+    entorno.invocar('aprobarOrdenCompraApp', oc1.folio, token);
+    const despues = entorno.invocar('obtenerAccionesRequeridasApp', token);
+    const porAprobarDespues = despues.atencion.find(a => a.tipo === 'ordenes-compra-por-aprobar');
+    const porRecibirDespues = despues.atencion.find(a => a.tipo === 'ordenes-compra');
+
+    return {
+      datos: `${oc1.folio}: recién generada (PENDIENTE_APROBACION), luego aprobada (PENDIENTE)`,
+      esperado: 'antes: 1 en "por aprobar", 0 en "esperando recepción". Después de aprobar: 0 en "por aprobar", 1 en "esperando recepción"',
+      obtenido: `antes: porAprobar=${porAprobarAntes ? porAprobarAntes.cantidad : 0}, porRecibir=${porRecibirAntes ? porRecibirAntes.cantidad : 0} | después: porAprobar=${porAprobarDespues ? porAprobarDespues.cantidad : 0}, porRecibir=${porRecibirDespues ? porRecibirDespues.cantidad : 0}`,
+      pasa: !!porAprobarAntes && porAprobarAntes.cantidad === 1 && !porRecibirAntes && !porAprobarDespues && !!porRecibirDespues && porRecibirDespues.cantidad === 1,
     };
   },
 });

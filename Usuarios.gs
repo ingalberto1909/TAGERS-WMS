@@ -15,6 +15,36 @@ function calcularHashPassword_(password){
   }).join("");
 }
 
+// AUD-01 (auditoría comparativa vs. MarketMan): antes, login/logout no
+// dejaban NINGÚN rastro (ni éxito ni fallo) y no había límite de
+// intentos — relevante porque el despliegue es access:ANYONE (cualquiera
+// con la URL llega a la pantalla de login). El contador vive en
+// PropertiesService, mismo mecanismo ya usado para sesiones — nunca se
+// distingue en el mensaje ni en el conteo entre "correo no existe",
+// "cuenta inactiva" o "contraseña incorrecta": tratarlos igual es lo que
+// ya hacía el código (siempre regresaba el mismo {ok:false}) y evita que
+// alguien use el contador para averiguar qué correos sí existen.
+const UMBRAL_INTENTOS_LOGIN_ = 5;
+const VENTANA_BLOQUEO_LOGIN_MINUTOS_ = 15;
+
+function obtenerClaveIntentosLogin_(correo){
+  return "LOGIN_INTENTOS_" + String(correo || "").toLowerCase().trim();
+}
+
+function obtenerEstadoIntentosLogin_(correo){
+  const raw = PropertiesService.getScriptProperties().getProperty(obtenerClaveIntentosLogin_(correo));
+  if(!raw) return { intentos: 0, bloqueadoHasta: 0 };
+  try { return JSON.parse(raw); } catch(e){ return { intentos: 0, bloqueadoHasta: 0 }; }
+}
+
+function guardarEstadoIntentosLogin_(correo, estado){
+  PropertiesService.getScriptProperties().setProperty(obtenerClaveIntentosLogin_(correo), JSON.stringify(estado));
+}
+
+function limpiarIntentosLogin_(correo){
+  PropertiesService.getScriptProperties().deleteProperty(obtenerClaveIntentosLogin_(correo));
+}
+
 /**
  * Login. ANTES comparaba la contraseña en texto plano contra la
  * columna C de USUARIOS. AHORA compara contra un hash SHA-256.
@@ -36,6 +66,17 @@ function validarUsuario(correo, password) {
 
   if (!hoja) {
     throw new Error("No existe la hoja USUARIOS");
+  }
+
+  const correoNormalizado = String(correo || "").toLowerCase().trim();
+  const ahora = new Date().getTime();
+
+  const estadoIntentos = obtenerEstadoIntentosLogin_(correoNormalizado);
+  if(estadoIntentos.bloqueadoHasta && estadoIntentos.bloqueadoHasta > ahora){
+    const minutosRestantes = Math.ceil((estadoIntentos.bloqueadoHasta - ahora) / 60000);
+    registrarAuditoria(correo, "SEGURIDAD", "LOGIN BLOQUEADO", "", "", "", 0, 0,
+      "Demasiados intentos fallidos — bloqueado " + minutosRestantes + " minuto(s) más");
+    return { ok: false, bloqueado: true, mensaje: "Demasiados intentos fallidos. Intenta de nuevo en " + minutosRestantes + " minuto(s)." };
   }
 
   const datos = hoja.getDataRange().getValues();
@@ -66,7 +107,11 @@ function validarUsuario(correo, password) {
       hoja.getRange(i + 1, 3).setValue(hashIngresado);
     }
 
+    limpiarIntentosLogin_(correoNormalizado);
+
     const token = crearSesion_(correoBD, nombre, rol);
+
+    registrarAuditoria(nombre, "SEGURIDAD", "LOGIN EXITOSO", "", "", "", 0, 0, correoBD);
 
     return {
       ok: true,
@@ -76,6 +121,17 @@ function validarUsuario(correo, password) {
     };
 
   }
+
+  const intentosNuevos = (estadoIntentos.intentos || 0) + 1;
+  const nuevoEstado = { intentos: intentosNuevos, bloqueadoHasta: 0 };
+  if(intentosNuevos >= UMBRAL_INTENTOS_LOGIN_){
+    nuevoEstado.bloqueadoHasta = ahora + VENTANA_BLOQUEO_LOGIN_MINUTOS_ * 60000;
+    nuevoEstado.intentos = 0;
+  }
+  guardarEstadoIntentosLogin_(correoNormalizado, nuevoEstado);
+
+  registrarAuditoria(correo, "SEGURIDAD", "LOGIN FALLIDO", "", "", "", 0, 0,
+    "Intento " + intentosNuevos + " de " + UMBRAL_INTENTOS_LOGIN_);
 
   return { ok: false };
 }

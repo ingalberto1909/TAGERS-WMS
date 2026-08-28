@@ -174,16 +174,18 @@ function revisarStockCriticoYNotificarApp_(){
 /**
  * Destinatarios: mismo criterio que ya usa obtenerAccesoRequisicionesApp
  * para decidir quién es "Almacén" (Rol=ADMIN, o Área=Almacén) — son
- * quienes ya ven y actúan sobre el stock crítico desde el Dashboard.
+ * quienes ya ven y actúan sobre estos avisos desde el Dashboard. Función
+ * compartida por los 3 avisos que se mandan solo a Admin/Almacén (stock
+ * crítico y, desde AUTO-01, acciones requeridas).
  */
-function enviarCorreoStockCriticoNuevo_(productos){
+function obtenerDestinatariosAlmacenAdmin_(){
 
   const hoja = SpreadsheetApp.getActive().getSheetByName("USUARIOS");
-  if(!hoja || hoja.getLastRow() < 2) return;
+  if(!hoja || hoja.getLastRow() < 2) return [];
 
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getValues();
 
-  const destinatarios = datos
+  return datos
     .filter(function(f){
       const estado = String(f[4] || "").trim().toUpperCase();
       if(estado !== "ACTIVO") return false;
@@ -194,6 +196,11 @@ function enviarCorreoStockCriticoNuevo_(productos){
     .map(function(f){ return String(f[0] || "").trim(); })
     .filter(Boolean);
 
+}
+
+function enviarCorreoStockCriticoNuevo_(productos){
+
+  const destinatarios = obtenerDestinatariosAlmacenAdmin_();
   if(!destinatarios.length) return;
 
   const asunto = "🔴 TAGERS WMS — " + productos.length + " producto(s) cruzaron su mínimo";
@@ -229,5 +236,82 @@ function instalarTriggerStockCritico(){
     .create();
 
   return { ok: true, mensaje: "Disparador instalado — revisa stock crítico cada hora." };
+
+}
+
+// ================================================================
+// AVISO 3 (AUTO-01, auditoría comparativa vs. MarketMan): resumen diario
+// de "acciones requeridas" — OC pendientes/sin aprobar, requisiciones
+// atrasadas, transferencias sin confirmar, discrepancias, etc. Antes,
+// obtenerAccionesRequeridasApp (Inteligencia.gs) ya calculaba todo esto
+// para las tarjetas de Inicio, pero solo se veía si alguien entraba a la
+// app — nadie se enteraba si no abría TAGERS ese día.
+// ================================================================
+
+/**
+ * Reutiliza obtenerAccionesRequeridasApp TAL CUAL — nada de esto
+ * reimplementa ningún cálculo. Como es un trigger automático (sin un
+ * usuario real detrás), se crea una sesión sintética con rol ADMIN solo
+ * para poder llamar esa función pública igual que la llamaría cualquier
+ * administrador real — se cierra de inmediato después, no queda viva
+ * más de lo que dura esta ejecución.
+ */
+function enviarAvisoAccionesRequeridasApp_(){
+
+  const tokenSistema = crearSesion_("sistema@tagers.com", "Sistema Automático", "ADMIN");
+
+  let acciones;
+  try {
+    acciones = obtenerAccionesRequeridasApp(tokenSistema);
+  } finally {
+    cerrarSesionApp(tokenSistema);
+  }
+
+  const total = acciones.urgente.length + acciones.atencion.length + acciones.revisar.length;
+  if(!total) return { enviados: 0, total: 0 };
+
+  const destinatarios = obtenerDestinatariosAlmacenAdmin_();
+  if(!destinatarios.length) return { enviados: 0, total: total };
+
+  function bloque(titulo, lista){
+    if(!lista.length) return "";
+    return "\n" + titulo + ":\n" + lista.map(function(a){ return "  • " + a.titulo + " — " + a.detalle; }).join("\n") + "\n";
+  }
+
+  const asunto = "📌 TAGERS WMS — " + total + " acción(es) requerida(s) hoy";
+  const cuerpo =
+    "Resumen de lo que necesita atención hoy en TAGERS WMS:\n" +
+    bloque("🔴 Urgente", acciones.urgente) +
+    bloque("🟠 Atención", acciones.atencion) +
+    bloque("🟡 Revisar", acciones.revisar) +
+    "\nEntra a TAGERS WMS → Inicio para ver el detalle completo.\n\n" +
+    "— Aviso automático de TAGERS WMS";
+
+  MailApp.sendEmail(destinatarios.join(","), asunto, cuerpo);
+
+  return { enviados: destinatarios.length, total: total };
+
+}
+
+/**
+ * Instalar UNA SOLA VEZ a mano desde el editor de Apps Script — manda el
+ * resumen todos los días entre 7:00 y 8:00 a.m. (después del aviso de
+ * conteos, para no encimar dos correos a la misma hora).
+ */
+function instalarTriggerAccionesRequeridas(){
+
+  ScriptApp.getProjectTriggers().forEach(function(t){
+    if(t.getHandlerFunction() === "enviarAvisoAccionesRequeridasApp_"){
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  ScriptApp.newTrigger("enviarAvisoAccionesRequeridasApp_")
+    .timeBased()
+    .everyDays(1)
+    .atHour(7)
+    .create();
+
+  return { ok: true, mensaje: "Disparador diario instalado — corre todos los días entre 7:00 y 8:00 a.m." };
 
 }

@@ -2685,12 +2685,18 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token, extras){
 
     desglose = calcularDesgloseOrdenCompra_(total, extras);
 
+    // COM-01 (auditoría comparativa vs. MarketMan): antes, la OC nacía
+    // directo en PENDIENTE — el mismo estado que ya permitía recibirla —
+    // así que quien la generaba también podía recibirla, sin ningún
+    // segundo visto bueno. Ahora nace en PENDIENTE_APROBACION y
+    // registrarRecepcionOCApp la rechaza hasta que aprobarOrdenCompraApp
+    // (solo ADMIN) la mueva a PENDIENTE.
     ordenes.appendRow([
       folioOC,
       fecha,
       proveedor,
       usuario,
-      "PENDIENTE",
+      "PENDIENTE_APROBACION",
       total,
       observaciones || "",
       desglose.descuento,
@@ -2770,8 +2776,8 @@ function editarOrdenCompraApp(oc, proveedor, observaciones, items, token, extras
       if(String(datosOrdenes[i][0]||"").trim().toUpperCase() === oc){
         filaOrden = i + 2;
         const estadoActual = String(datosOrdenes[i][4]||"").toUpperCase();
-        if(estadoActual !== "PENDIENTE"){
-          throw new Error("Solo se puede editar una orden mientras sigue PENDIENTE (esta ya está " + estadoActual + ").");
+        if(estadoActual !== "PENDIENTE" && estadoActual !== "PENDIENTE_APROBACION"){
+          throw new Error("Solo se puede editar una orden antes de que se le reciba algo (esta ya está " + estadoActual + ").");
         }
         break;
       }
@@ -2971,6 +2977,53 @@ function obtenerDetalleOCApp(oc, token){
 }
 
 /**
+ * COM-01: aprueba una OC recién generada (PENDIENTE_APROBACION ->
+ * PENDIENTE) — a partir de aquí ya se puede recibir. Solo ADMIN, a
+ * propósito distinto del rol que ya puede generar/recibir
+ * (requerirAccesoAlmacenApp_ = ADMIN o Almacén/Supervisor): la idea es
+ * que quien genera la compra no sea necesariamente quien la aprueba.
+ */
+function aprobarOrdenCompraApp(oc, token){
+
+  requerirSesionActivaApp_(token);
+  const rol = String(obtenerRolDesdeToken(token) || "").toUpperCase();
+  if(rol !== "ADMIN"){
+    throw new Error("Solo un administrador puede aprobar una orden de compra.");
+  }
+
+  oc = String(oc || "").trim().toUpperCase();
+
+  const ss = SpreadsheetApp.getActive();
+  const ordenes = ss.getSheetByName("ORDENES_COMPRA");
+  if(!ordenes) throw new Error("No existe la hoja ORDENES_COMPRA.");
+
+  const datos = ordenes.getRange(2, 1, ordenes.getLastRow() - 1, 7).getValues();
+
+  for(let i = 0; i < datos.length; i++){
+    if(String(datos[i][0] || "").trim().toUpperCase() === oc){
+
+      const estadoActual = String(datos[i][4] || "").toUpperCase();
+      if(estadoActual !== "PENDIENTE_APROBACION"){
+        throw new Error("Esta orden está " + estadoActual + " — solo se puede aprobar mientras está pendiente de aprobación.");
+      }
+
+      ordenes.getRange(i + 2, 5).setValue("PENDIENTE");
+
+      const usuario = obtenerNombreDesdeToken(token);
+      registrarAuditoria(usuario, "COMPRAS", "ORDEN APROBADA", oc, "", "", 0, 0, "Aprobada, lista para recibirse");
+
+      generarYGuardarPDFOrdenCompra_(oc);
+
+      return { folio: oc, estado: "PENDIENTE" };
+
+    }
+  }
+
+  throw new Error("No se encontró la orden " + oc);
+
+}
+
+/**
  * FASE 3: registra la recepción de mercancía de una OC.
  * recepciones = [{codigo, cantidadRecibida}, ...] — solo lo que llegó
  * EN ESTA recepción (puede ser parcial, y se puede volver a recibir
@@ -3025,6 +3078,9 @@ function registrarRecepcionOCApp(oc, recepciones, token){
 
   if(estadoActual === "RECIBIDA" || estadoActual === "CANCELADA"){
     throw new Error("Esta orden ya está " + estadoActual + ", no se puede recibir de nuevo.");
+  }
+  if(estadoActual === "PENDIENTE_APROBACION"){
+    throw new Error("Esta orden todavía no está aprobada — apruébala antes de registrar la recepción.");
   }
 
   // Localizamos todas las filas de detalle de esta OC.

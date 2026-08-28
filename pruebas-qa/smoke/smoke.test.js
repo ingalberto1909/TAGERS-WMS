@@ -208,6 +208,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [
       { codigo: 'COD-001', cantidadRecibida: 15 }, // intenta recibir MÁS de lo pedido (10)
     ], token);

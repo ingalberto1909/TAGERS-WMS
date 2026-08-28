@@ -125,3 +125,62 @@ prueba({
     };
   },
 });
+
+/*
+ * AUTO-01 (auditoría comparativa vs. MarketMan): resumen diario de
+ * "acciones requeridas" — reutiliza obtenerAccionesRequeridasApp tal
+ * cual (vía una sesión sintética de ADMIN que se crea y se cierra en la
+ * misma llamada), así que estas pruebas verifican la integración
+ * (cuándo manda, a quién, y que no truene sin destinatarios) — no
+ * vuelven a probar la lógica de clasificación de acciones, ya cubierta
+ * en pruebas-qa/inteligencia/inteligencia.test.js.
+ */
+
+prueba({
+  id: 'NOTIFCORREO-006', grupo: 'notificaciones', nombre: 'AUTO-01: con algo pendiente (bajo mínimo por default), el aviso se manda a Admin/Almacén', metodo: 'EMPÍRICO',
+  objetivo: 'enviarAvisoAccionesRequeridasApp_ debe detectar que hay acciones pendientes (el fixture base ya trae COD-002 bajo mínimo) y mandar el resumen a los usuarios ADMIN/Almacén activos',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const resultado = entorno.invocar('enviarAvisoAccionesRequeridasApp_');
+    return {
+      datos: 'fixture base sin tocar — COD-002 ya está bajo mínimo (existencia=5, mínimo=10) por default',
+      esperado: 'total > 0 y enviados > 0 (hay al menos un ADMIN activo en el fixture base)',
+      obtenido: `total=${resultado.total}, enviados=${resultado.enviados}`,
+      pasa: resultado.total > 0 && resultado.enviados > 0,
+    };
+  },
+});
+
+prueba({
+  id: 'NOTIFCORREO-007', grupo: 'notificaciones', nombre: 'AUTO-01: sin ninguna acción pendiente, no manda nada', metodo: 'EMPÍRICO',
+  objetivo: 'enviarAvisoAccionesRequeridasApp_ no debe intentar mandar correo si obtenerAccionesRequeridasApp regresa las 3 listas vacías',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const matriz = entorno.leerHoja('MATRIZ');
+    matriz.find(f => f[4] === 'COD-002')[10] = 999; // sube el único producto bajo mínimo del fixture base
+    const resultado = entorno.invocar('enviarAvisoAccionesRequeridasApp_');
+    return {
+      datos: 'todo el catálogo por encima de su mínimo, sin discrepancias/requisiciones/OC/transferencias pendientes',
+      esperado: 'total=0, enviados=0',
+      obtenido: `total=${resultado.total}, enviados=${resultado.enviados}`,
+      pasa: resultado.total === 0 && resultado.enviados === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'NOTIFCORREO-008', grupo: 'notificaciones', nombre: 'AUTO-01: la sesión sintética del sistema se cierra explícitamente después de mandar el aviso', metodo: 'EMPÍRICO',
+  objetivo: 'enviarAvisoAccionesRequeridasApp_ debe llamar cerrarSesionApp sobre la sesión sintética que crea para leer obtenerAccionesRequeridasApp — no debe quedar viva indefinidamente. cerrarSesionApp deja su propio rastro en AUDITORIA (AUD-01), que es lo verificable aquí',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    entorno.invocar('enviarAvisoAccionesRequeridasApp_');
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const logoutsSistema = auditoria.filter(f => f[3] === 'Sistema Automático' && f[5] === 'LOGOUT');
+    return {
+      datos: 'una corrida del aviso de acciones requeridas',
+      esperado: 'exactamente 1 fila LOGOUT en AUDITORIA para "Sistema Automático" (la sesión sintética se cerró en la misma llamada)',
+      obtenido: `logoutsSistema=${logoutsSistema.length}`,
+      pasa: logoutsSistema.length === 1,
+    };
+  },
+});
