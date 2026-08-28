@@ -1052,6 +1052,124 @@ display:inline-block;
 
 .badgeEstado.CON_INCIDENCIA{ background:var(--color-danger-bg); color:var(--color-danger); }
 
+/* Fila expandible reutilizable para listas móviles densas (Conteos
+   cíclicos del Dashboard, bandejas de Requisiciones, etc.): título +
+   estado siempre visibles, el resto de los campos bajo demanda
+   (toggleFilaExpandibleMovil). El contenedor que la usa se oculta en
+   escritorio con la MISMA convención en cada pantalla: la tabla de
+   siempre lleva la clase .soloDesktopTabla y la lista de tarjetas va en
+   un contenedor propio que solo se muestra dentro de
+   @media (max-width:768px) — así ninguna pantalla de escritorio cambia. */
+.soloMovilLista{ display:none; }
+
+.filaExpandibleMovil{
+border:1px solid var(--border);
+border-radius:var(--radius-md);
+margin-bottom:8px;
+overflow:hidden;
+background:var(--bg-panel);
+}
+
+.filaExpandibleMovilHead{
+width:100%;
+display:flex;
+align-items:center;
+gap:10px;
+padding:14px;
+min-height:48px;
+background:none;
+border:none;
+font:inherit;
+color:inherit;
+text-align:left;
+cursor:pointer;
+}
+
+.filaExpandibleMovilTitulo{
+font-size:16px;
+font-weight:800;
+color:var(--guinda);
+flex:1;
+}
+
+.filaExpandibleMovilChevron{
+display:flex;
+color:var(--text-muted);
+transition:transform .15s ease;
+flex-shrink:0;
+}
+
+.filaExpandibleMovilHead[aria-expanded="true"] .filaExpandibleMovilChevron{
+transform:rotate(180deg);
+}
+
+.filaExpandibleMovilDetalle{
+padding:10px 14px 14px;
+display:flex;
+flex-direction:column;
+gap:8px;
+border-top:1px solid var(--border);
+}
+
+.filaExpandibleMovilDetalle > div{
+display:flex;
+justify-content:space-between;
+align-items:baseline;
+gap:10px;
+font-size:13.5px;
+}
+
+.filaExpandibleMovilDetalle span{
+color:var(--text-muted);
+font-size:11.5px;
+text-transform:uppercase;
+letter-spacing:.3px;
+}
+
+.filaExpandibleMovilAcciones{
+display:flex;
+flex-wrap:wrap;
+gap:8px;
+margin-top:4px;
+padding-top:10px;
+border-top:1px solid var(--border);
+}
+
+/* Stepper +/− de cantidad (Requisición de Sucursal) — tamaño de escritorio
+   por defecto; @media (max-width:768px) lo agranda a un área táctil real. */
+.stepperBoton{
+cursor:pointer;
+width:26px;
+height:26px;
+flex:none;
+display:flex;
+align-items:center;
+justify-content:center;
+border:1px solid var(--border);
+border-radius:6px;
+font-weight:700;
+user-select:none;
+}
+
+.stepperInput{
+width:52px;
+max-width:52px;
+text-align:center;
+margin:0;
+padding:6px;
+}
+
+/* Ícono de acción suelto dentro de una tabla (ver/descargar/imprimir PDF,
+   etc.) — en escritorio es solo el ícono; @media (max-width:768px) le da
+   una caja táctil real sin agrandar visualmente el ícono en sí. */
+.iconoAccionTabla{
+cursor:pointer;
+color:var(--text-muted);
+display:inline-flex;
+align-items:center;
+justify-content:center;
+}
+
 .tablaImportar{
 width:100%;
 border-collapse:collapse;
@@ -2130,6 +2248,51 @@ grid-template-columns:repeat(2,1fr);
 gap:10px;
 }
 
+/* Jerarquía del Dashboard en móvil: Bajo mínimo/Agotados (kpiPrimaria) son
+   las 2 cifras que de verdad piden una acción — se adelantan al frente
+   (order, solo visual, el HTML/orden de escritorio no cambia) y crecen.
+   El resto (kpiSecundaria: Productos/Ubicaciones/Discrepancias/Conteos)
+   son datos de consulta — se quedan compactas y sin la nota, para no
+   competir en peso visual con lo que sí requiere atención. En escritorio
+   ninguna de estas dos clases tiene regla propia, así que el kpiGrid de
+   6 columnas iguales se queda exactamente como estaba. */
+.kpiCard.kpiPrimaria{
+order:-1;
+padding:18px 16px;
+}
+
+.kpiCard.kpiPrimaria .kpiValor{
+font-size:32px;
+}
+
+.kpiCard.kpiPrimaria .kpiLabel{
+font-size:12.5px;
+}
+
+.kpiCard.kpiSecundaria{
+padding:12px 10px;
+}
+
+.kpiCard.kpiSecundaria .kpiIcono{
+width:28px;
+height:28px;
+font-size:13px;
+margin-bottom:6px;
+}
+
+.kpiCard.kpiSecundaria .kpiValor{
+font-size:19px;
+margin:2px 0;
+}
+
+.kpiCard.kpiSecundaria .kpiLabel{
+font-size:10px;
+}
+
+.kpiCard.kpiSecundaria .kpiNota{
+display:none;
+}
+
 .indicadores{
 grid-template-columns:repeat(3,1fr);
 gap:8px;
@@ -2324,6 +2487,38 @@ margin-top:2px !important;
 .detalleAccionRequerida{
 font-size:12.5px !important;
 margin-top:2px !important;
+}
+
+/* Widget de conteos programados: en móvil se apaga la tabla de escritorio
+   y se enciende la lista compacta (ver estilos base arriba). */
+.soloDesktopTabla{
+display:none;
+}
+
+.soloMovilLista{
+display:block;
+margin-top:14px;
+}
+
+/* TOUCH FIRST: área táctil real (≥40px) para controles pequeños pensados
+   para mouse — el tamaño visual del ícono/texto no cambia, solo el área
+   que responde al toque. */
+.stepperBoton{
+width:40px;
+height:40px;
+font-size:17px;
+}
+
+.stepperInput{
+width:56px;
+max-width:56px;
+padding:8px 4px;
+font-size:15px;
+}
+
+.iconoAccionTabla{
+width:38px;
+height:38px;
 }
 
 }
@@ -3515,7 +3710,7 @@ function dibujarTablaNuevaRequisicion(){
               <input type="number" id="solicitadoReq${i}" value="${p.solicitado}" min="0"
                 style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
             </td>
-            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoRequisicion(${i})">✕</span></td>
+            <td><span class="iconoAccionTabla" style="color:var(--terracota)" onclick="quitarProductoRequisicion(${i})">✕</span></td>
           </tr>
         `).join("")}
       </tbody>
@@ -3574,8 +3769,17 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
     return;
   }
 
+  const accionesHtml = function(r){
+    return `
+      <span class="iconoAccionTabla" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
+      ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span class="iconoAccionTabla" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">${tgIcon("cajas",15)}</span>` : ""}
+      ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span class="iconoAccionTabla" title="Cancelar requisición" onclick="cancelarRequisicionUI('${r.folio}', '${contenedorId}')">${tgIcon("x",15)}</span>` : ""}
+      ${r.estado === "ENTREGADA" ? `<span class="iconoAccionTabla" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">${tgIcon("descargar",15)}</span>` : ""}
+    `;
+  };
+
   cont.innerHTML = `
-    <table class="tablaTop" style="font-size:13px">
+    <table class="tablaTop soloDesktopTabla" style="font-size:13px">
       <thead>
         <tr><th>Folio</th><th>Área</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
@@ -3589,15 +3793,27 @@ function dibujarTablaRequisiciones(lista, contenedorId, conAccionesAlmacen){
             <td>${r.fechaRequerida || "—"}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
             <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
-              <span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSegunTipo('${r.folio}')">${tgIcon("buscar",15)}</span>
-              ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--color-primary)" title="Preparar" onclick="cargarPreparacionRequisicion('${r.folio}')">${tgIcon("cajas",15)}</span>` : ""}
-              ${conAccionesAlmacen && r.estado === "PENDIENTE" ? `<span style="cursor:pointer;color:var(--terracota)" title="Cancelar requisición" onclick="cancelarRequisicionUI('${r.folio}', '${contenedorId}')">${tgIcon("x",15)}</span>` : ""}
-              ${r.estado === "ENTREGADA" ? `<span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFRequisicion('${r.folio}')">${tgIcon("descargar",15)}</span>` : ""}
+              ${accionesHtml(r)}
             </td>
           </tr>
         `).join("")}
       </tbody>
     </table>
+
+    <div class="soloMovilLista">
+      ${lista.map((r,i) => construirFilaExpandibleMovil_(
+        contenedorId + i,
+        r.folio,
+        dibujarBadgeEstadoRequisicion(r.estado),
+        [
+          { etiqueta: "Área", valor: r.area },
+          { etiqueta: "Solicitante", valor: r.solicitante },
+          { etiqueta: "Fecha", valor: r.fecha },
+          { etiqueta: "Requerida", valor: r.fechaRequerida || "—" },
+        ],
+        accionesHtml(r)
+      )).join("")}
+    </div>
   `;
 
 }
@@ -3959,16 +4175,14 @@ function dibujarTablaNuevaRequisicionSucursal(){
             <td style="text-align:right;color:var(--text-muted)">${p.maximo}</td>
             <td style="text-align:right">
               <div style="display:inline-flex;align-items:center;gap:8px;justify-content:flex-end">
-                <span onclick="ajustarCantidadRequisicionSucursal(${i},-1)" title="Restar 1"
-                  style="cursor:pointer;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-weight:700;user-select:none">−</span>
+                <span class="stepperBoton" onclick="ajustarCantidadRequisicionSucursal(${i},-1)" title="Restar 1">−</span>
                 <input type="number" id="solicitadoReqSuc${i}" value="${p.solicitado}" min="0"
                   oninput="sincronizarSolicitadosRequisicionSucursal(); dibujarResumenRequisicionSucursal(window.itemsRequisicionSucursal)"
-                  style="width:52px;max-width:52px;text-align:center;margin:0;padding:6px">
-                <span onclick="ajustarCantidadRequisicionSucursal(${i},1)" title="Sumar 1"
-                  style="cursor:pointer;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-weight:700;user-select:none">+</span>
+                  class="stepperInput">
+                <span class="stepperBoton" onclick="ajustarCantidadRequisicionSucursal(${i},1)" title="Sumar 1">+</span>
               </div>
             </td>
-            <td><span style="cursor:pointer;color:var(--terracota)" onclick="quitarProductoRequisicionSucursal(${i})">✕</span></td>
+            <td><span class="iconoAccionTabla" style="color:var(--terracota)" onclick="quitarProductoRequisicionSucursal(${i})">✕</span></td>
           </tr>
         `).join("")}
       </tbody>
@@ -4123,7 +4337,7 @@ function redibujarBandejaReqSuc(){
   }
 
   tablaCont.innerHTML = `
-    <table class="tablaTop" style="font-size:13px">
+    <table class="tablaTop soloDesktopTabla" style="font-size:13px">
       <thead>
         <tr><th>Folio</th><th>Sucursal</th><th>Solicitante</th><th>Fecha</th><th>Requerida</th><th>Estado</th><th></th></tr>
       </thead>
@@ -4136,11 +4350,26 @@ function redibujarBandejaReqSuc(){
             <td>${r.fecha}</td>
             <td>${r.fechaRequerida || "—"}</td>
             <td>${dibujarBadgeEstadoRequisicion(r.estado)}</td>
-            <td><span style="cursor:pointer;color:var(--text-muted)" title="Ver detalle" onclick="verDetalleRequisicionSucursal('${r.folio}')">${tgIcon("buscar",15)}</span></td>
+            <td><span class="iconoAccionTabla" title="Ver detalle" onclick="verDetalleRequisicionSucursal('${r.folio}')">${tgIcon("buscar",15)}</span></td>
           </tr>
         `).join("")}
       </tbody>
     </table>
+
+    <div class="soloMovilLista">
+      ${filtrada.map((r,i) => construirFilaExpandibleMovil_(
+        "reqSuc" + i,
+        r.folio,
+        dibujarBadgeEstadoRequisicion(r.estado),
+        [
+          { etiqueta: "Sucursal", valor: r.sucursal },
+          { etiqueta: "Solicitante", valor: r.solicitante },
+          { etiqueta: "Fecha", valor: r.fecha },
+          { etiqueta: "Requerida", valor: r.fechaRequerida || "—" },
+        ],
+        `<span class="iconoAccionTabla" title="Ver detalle" onclick="verDetalleRequisicionSucursal('${r.folio}')">${tgIcon("buscar",15)} Ver detalle</span>`
+      )).join("")}
+    </div>
   `;
 
 }
@@ -8089,10 +8318,10 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
                 ${o.totalConImpuestos && o.totalConImpuestos !== o.total ? `<div style="font-size:11px;color:var(--text-muted)">Subtotal $${Number(o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>` : ""}
               </div>
             </td>
-            <td style="white-space:nowrap;display:flex;gap:6px;align-items:center">
-              <span style="cursor:pointer;color:var(--text-muted)" title="Ver PDF" onclick="verPDFOrdenCompra('${o.oc}')">${tgIcon("documento",15)}</span>
-              <span style="cursor:pointer;color:var(--text-muted)" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
-              <span style="cursor:pointer;color:var(--text-muted)" title="Imprimir" onclick="imprimirOC('${o.oc}')">${tgIcon("imprimir",15)}</span>
+            <td style="white-space:nowrap;display:flex;gap:2px;align-items:center">
+              <span class="iconoAccionTabla" title="Ver PDF" onclick="verPDFOrdenCompra('${o.oc}')">${tgIcon("documento",15)}</span>
+              <span class="iconoAccionTabla" title="Descargar PDF" onclick="descargarPDFOrdenCompra('${o.oc}')">${tgIcon("descargar",15)}</span>
+              <span class="iconoAccionTabla" title="Imprimir" onclick="imprimirOC('${o.oc}')">${tgIcon("imprimir",15)}</span>
             </td>
             ${conAcciones ? `<td style="display:flex;flex-wrap:wrap;gap:6px">
               ${o.estado==="PENDIENTE_APROBACION" && USUARIO_ACTUAL.rol === "ADMIN" ? `<button class="boton success" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="aprobarOC('${o.oc}')">${tgIcon("checkCirculo",14)} Aprobar</button>` : ""}
@@ -10473,37 +10702,37 @@ function volverInicio(){
   <div id="accionesRequeridas" style="margin-bottom:20px"></div>
 
   <div class="kpiGrid">
-    <div class="kpiCard tono-guinda">
+    <div class="kpiCard tono-guinda kpiSecundaria">
       <div class="kpiIcono">${tgIcon("paquete",18)}</div>
       <div class="kpiLabel">Productos</div>
       <div class="kpiValor" id="kpiProductos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">en catálogo</div>
     </div>
-    <div class="kpiCard tono-oliva">
+    <div class="kpiCard tono-oliva kpiSecundaria">
       <div class="kpiIcono">${tgIcon("ubicacion",18)}</div>
       <div class="kpiLabel">Ubicaciones</div>
       <div class="kpiValor" id="kpiUbicaciones"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">con producto asignado</div>
     </div>
-    <div class="kpiCard tono-terracota" style="cursor:pointer" onclick="abrirModalListaStock('bajo')" title="Ver productos bajo mínimo">
+    <div class="kpiCard tono-terracota kpiPrimaria" style="cursor:pointer" onclick="abrirModalListaStock('bajo')" title="Ver productos bajo mínimo">
       <div class="kpiIcono">${tgIcon("alertaTriangulo",18)}</div>
       <div class="kpiLabel">Bajo mínimo</div>
       <div class="kpiValor" id="kpiBajo"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requieren reorden</div>
     </div>
-    <div class="kpiCard tono-guinda" style="cursor:pointer" onclick="abrirModalListaStock('agotado')" title="Ver productos agotados">
+    <div class="kpiCard tono-guinda kpiPrimaria" style="cursor:pointer" onclick="abrirModalListaStock('agotado')" title="Ver productos agotados">
       <div class="kpiIcono">${tgIcon("xCirculo",18)}</div>
       <div class="kpiLabel">Agotados</div>
       <div class="kpiValor" id="kpiAgotados"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">requiere atención</div>
     </div>
-    <div class="kpiCard tono-oliva" style="cursor:pointer" onclick="abrirRevisarDiscrepancias()" title="Ir a Revisar discrepancias">
+    <div class="kpiCard tono-oliva kpiSecundaria" style="cursor:pointer" onclick="abrirRevisarDiscrepancias()" title="Ir a Revisar discrepancias">
       <div class="kpiIcono">${tgIcon("documento",18)}</div>
       <div class="kpiLabel">Discrepancias</div>
       <div class="kpiValor" id="kpiDiscrepancias"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
       <div class="kpiNota">pendientes de aprobar</div>
     </div>
-    <div class="kpiCard tono-terracota" style="cursor:pointer" onclick="abrirCapturarConteo()" title="Ir a Capturar conteo">
+    <div class="kpiCard tono-terracota kpiSecundaria" style="cursor:pointer" onclick="abrirCapturarConteo()" title="Ir a Capturar conteo">
       <div class="kpiIcono">${tgIcon("refrescar",18)}</div>
       <div class="kpiLabel">Conteos abiertos</div>
       <div class="kpiValor" id="kpiConteos"><span class="skeleton skeletonLinea" style="width:36px;height:22px;display:inline-block;vertical-align:middle"></span></div>
@@ -11008,6 +11237,28 @@ function dibujarConteosProgramadosHoy(lista){
     </tr>
   `).join("");
 
+  // Móvil: fila compacta "código + estado", con Responsable/Frecuencia/
+  // Última generación bajo demanda (toggleFilaExpandibleMovil) — la
+  // conversión genérica tabla→tarjeta (usada en el resto del sistema)
+  // apilaría las 4 columnas como 4 líneas por rack, que es exactamente la
+  // densidad que hace que este widget se coma media pantalla antes de
+  // llegar a los KPIs. Desktop sigue viendo la tabla de siempre (abajo,
+  // clase soloDesktopTabla) sin ningún cambio.
+  const filasMovil = lista.map((c,i) => `
+    <div class="filaExpandibleMovil">
+      <button type="button" class="filaExpandibleMovilHead" onclick="toggleFilaExpandibleMovil(${i})" aria-expanded="false" aria-controls="detalleExpandibleMovil${i}">
+        <span class="filaExpandibleMovilTitulo">${c.rack}</span>
+        <span class="badgeEstado PENDIENTE">Pendiente</span>
+        <span class="filaExpandibleMovilChevron">${tgIcon("chevronAbajo",16)}</span>
+      </button>
+      <div class="filaExpandibleMovilDetalle" id="detalleExpandibleMovil${i}" hidden>
+        <div><span>Responsable</span><b>${c.responsable || "-"}</b></div>
+        <div><span>Frecuencia</span><b>${c.frecuencia}</b></div>
+        <div><span>Última generación</span><b>${c.ultimaGeneracion}</b></div>
+      </div>
+    </div>
+  `).join("");
+
   panel.style.display = "block";
   panel.innerHTML = `
     <div class="cardProducto" style="border-left:4px solid var(--terracota)">
@@ -11023,13 +11274,56 @@ function dibujarConteosProgramadosHoy(lista){
         </button>
       </div>
 
-      <table class="tablaActividad" style="margin-top:14px">
+      <table class="tablaActividad soloDesktopTabla" style="margin-top:14px">
         <thead><tr><th>Rack</th><th>Responsable</th><th>Frecuencia</th><th>Última generación</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
+
+      <div class="soloMovilLista">${filasMovil}</div>
     </div>
   `;
 
+}
+
+function toggleFilaExpandibleMovil(indice){
+  const detalle = document.getElementById("detalleExpandibleMovil" + indice);
+  if(!detalle) return;
+  const boton = detalle.previousElementSibling;
+  const seVaAAbrir = detalle.hidden;
+  detalle.hidden = !seVaAAbrir;
+  if(boton) boton.setAttribute("aria-expanded", String(seVaAAbrir));
+}
+
+/**
+ * Arma UNA fila expandible reutilizable (ver toggleFilaExpandibleMovil):
+ * título + estado siempre visibles, "campos" secundarios ([{etiqueta,valor}])
+ * bajo demanda. Pensada para reemplazar, SOLO en móvil, tablas de
+ * escritorio con muchas columnas (bandejas de Requisiciones, etc.) — la
+ * tabla de escritorio no se toca ni se reescribe, esta lista vive en un
+ * contenedor aparte que la pantalla muestra únicamente dentro de
+ * @media (max-width:768px) (misma convención que .soloDesktopTabla /
+ * .soloMovilLista ya usada en el Dashboard).
+ * accionesHtml: el MISMO html de acciones que ya arma cada pantalla (no se
+ * duplica esa lógica) — se inserta tal cual dentro del detalle.
+ */
+function construirFilaExpandibleMovil_(id, titulo, estadoHtml, campos, accionesHtml){
+  const filasDetalle = (campos || [])
+    .filter(function(c){ return c.valor !== undefined && c.valor !== null && c.valor !== ""; })
+    .map(function(c){ return `<div><span>${c.etiqueta}</span><b>${c.valor}</b></div>`; })
+    .join("");
+  return `
+    <div class="filaExpandibleMovil">
+      <button type="button" class="filaExpandibleMovilHead" onclick="toggleFilaExpandibleMovil('${id}')" aria-expanded="false" aria-controls="detalleExpandibleMovil${id}">
+        <span class="filaExpandibleMovilTitulo">${titulo}</span>
+        ${estadoHtml || ""}
+        <span class="filaExpandibleMovilChevron">${tgIcon("chevronAbajo",16)}</span>
+      </button>
+      <div class="filaExpandibleMovilDetalle" id="detalleExpandibleMovil${id}" hidden>
+        ${filasDetalle}
+        ${accionesHtml ? `<div class="filaExpandibleMovilAcciones">${accionesHtml}</div>` : ""}
+      </div>
+    </div>
+  `;
 }
 
 async function generarConteosProgramadosHoy(){
