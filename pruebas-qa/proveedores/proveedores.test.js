@@ -40,6 +40,52 @@ prueba({
 });
 
 prueba({
+  id: 'PROV-011', grupo: 'proveedores', nombre: 'Lista de proveedores trae el valor de inventario y ordena de mayor a menor', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerListaProveedoresApp debe sumar existencia×precio de cada producto por proveedor (calcularValorInventario_) y ordenar de mayor a menor valor, para responder directo "qué proveedor pesa más en mi inventario"',
+  ejecutar() {
+    const matriz = hojaMatrizEstandar();
+    // "Proveedor Caro": 10 unidades a $500 = $5,000 -> debe quedar primero.
+    matriz.push(filaProducto({ producto: 'TRUFA NEGRA', udm: 'KG', codigo: 'COD-020', existencia: 10, proveedor: 'Proveedor Caro', costo: 500 }));
+    // "Proveedor Barato": 2 unidades a $5 = $10 -> debe quedar al final.
+    matriz.push(filaProducto({ producto: 'SERVILLETAS', udm: 'PZ', codigo: 'COD-021', existencia: 2, proveedor: 'Proveedor Barato', costo: 5 }));
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' }, { MATRIZ: matriz });
+
+    const lista = entorno.invocar('obtenerListaProveedoresApp', token);
+    const caro = lista.find(p => p.proveedor === 'Proveedor Caro');
+    const barato = lista.find(p => p.proveedor === 'Proveedor Barato');
+    const indiceCaro = lista.findIndex(p => p.proveedor === 'Proveedor Caro');
+    const indiceBarato = lista.findIndex(p => p.proveedor === 'Proveedor Barato');
+
+    return {
+      datos: 'Proveedor Caro: 10×$500=$5,000. Proveedor Barato: 2×$5=$10',
+      esperado: 'valorInventario correcto para cada uno, y Proveedor Caro aparece ANTES que Proveedor Barato en la lista (orden descendente por valor)',
+      obtenido: `Caro.valorInventario=${caro && caro.valorInventario} (posición ${indiceCaro}), Barato.valorInventario=${barato && barato.valorInventario} (posición ${indiceBarato})`,
+      pasa: !!caro && caro.valorInventario === 5000 && !!barato && barato.valorInventario === 10 && indiceCaro < indiceBarato,
+    };
+  },
+});
+
+prueba({
+  id: 'PROV-012', grupo: 'proveedores', nombre: 'El detalle por proveedor trae el valor de cada producto y suma correctamente', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerProductosProveedorInfoApp debe traer "valor" (existencia×precio) por producto, y la suma de esos valores debe coincidir con el valorInventario que reporta obtenerListaProveedoresApp para ese mismo proveedor',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const lista = entorno.invocar('obtenerListaProveedoresApp', token);
+    const totalProveedorGenerico = lista.find(p => p.proveedor === 'PROVEEDOR GENERICO').valorInventario;
+
+    const detalle = entorno.invocar('obtenerProductosProveedorInfoApp', 'PROVEEDOR GENERICO', token);
+    const sumaDetalle = Math.round(detalle.reduce((s, p) => s + p.valor, 0) * 100) / 100;
+
+    return {
+      datos: 'suma de "valor" por producto en el detalle vs. "valorInventario" total de la lista, mismo proveedor',
+      esperado: 'ambos números coinciden exactamente — no hay dos fórmulas de valorización distintas conviviendo',
+      obtenido: `sumaDetalle=${sumaDetalle}, totalLista=${totalProveedorGenerico}`,
+      pasa: sumaDetalle === totalProveedorGenerico,
+    };
+  },
+});
+
+prueba({
   id: 'PROV-002', grupo: 'proveedores', nombre: 'El detalle por proveedor SÍ incluye productos sin ubicación (a diferencia de Centro de Reabastecimiento)', metodo: 'EMPÍRICO',
   objetivo: 'obtenerProductosProveedorInfoApp es un catálogo informativo completo — no debe excluir productos sin ubicación como sí hace obtenerProductosPorProveedorApp (que es para armar una OC)',
   ejecutar() {

@@ -8353,14 +8353,29 @@ function dibujarListaProveedores(lista){
     return;
   }
 
+  // Se usa siempre el total SIN filtrar (no la lista ya filtrada por nombre)
+  // para que el "% del total" no cambie de significado según lo que se
+  // esté buscando en el filtro.
+  const listaCompleta = window.listaProveedoresCompleta || lista;
+  const valorTotal = listaCompleta.reduce(function(s, p){ return s + (Number(p.valorInventario) || 0); }, 0);
+
   cont.innerHTML = `
+    <p style="font-size:12px;color:var(--text-muted);margin:-6px 0 12px">Ordenados de mayor a menor valor de inventario — valor total en catálogo: <b style="color:var(--text)">$${valorTotal.toLocaleString("es-MX",{minimumFractionDigits:2})}</b></p>
     <table class="tablaTop" style="font-size:13.5px">
-      <thead><tr><th>Nombre</th><th style="text-align:right">Artículos</th><th></th></tr></thead>
+      <thead><tr><th>Nombre</th><th style="text-align:right">Artículos</th><th style="text-align:right">Valor de inventario</th><th></th></tr></thead>
       <tbody>
-        ${lista.map(function(p){ return `
+        ${lista.map(function(p){
+          const porcentaje = valorTotal > 0 ? Math.round((p.valorInventario / valorTotal) * 1000) / 10 : 0;
+          return `
           <tr style="cursor:pointer" onclick="abrirDetalleProveedor('${p.proveedor.replace(/'/g,"\\'")}')">
             <td>${p.proveedor}</td>
             <td style="text-align:right">${p.totalProductos}</td>
+            <td style="text-align:right">
+              <div style="text-align:right">
+                <div style="font-weight:800;color:var(--guinda);white-space:nowrap">$${Number(p.valorInventario).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+                <div style="font-size:10.5px;color:var(--text-muted);white-space:nowrap">${porcentaje}% del total</div>
+              </div>
+            </td>
             <td style="text-align:right;color:var(--guinda);display:flex;align-items:center;justify-content:flex-end;gap:4px">Ver productos ${tgIcon("chevronDerecha",13)}</td>
           </tr>
         `; }).join("")}
@@ -8459,9 +8474,18 @@ function dibujarProductosDetalleProveedor(lista){
     return;
   }
 
+  const valorTotal = lista.reduce(function(s, p){ return s + (Number(p.valor) || 0); }, 0);
+
   cont.innerHTML = `
+    <div class="cardValorInventario" style="margin-top:0;margin-bottom:14px">
+      <div>
+        <div class="etiqueta">${tgIcon("dinero",14)} Valor de inventario con este proveedor</div>
+        <div class="valor">$${valorTotal.toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+      </div>
+      <div class="nota">${lista.length} producto(s) en catálogo</div>
+    </div>
     <table class="tablaTop" style="font-size:13.5px">
-      <thead><tr><th>Producto</th><th style="text-align:right">Presentación</th><th>UDM</th><th style="text-align:right">Existencia</th><th style="text-align:right">Precio</th><th></th></tr></thead>
+      <thead><tr><th>Producto</th><th style="text-align:right">Presentación</th><th>UDM</th><th style="text-align:right">Existencia</th><th style="text-align:right">Precio</th><th style="text-align:right">Valor</th><th></th></tr></thead>
       <tbody>
         ${lista.map(function(p){ return `
           <tr>
@@ -8470,6 +8494,7 @@ function dibujarProductosDetalleProveedor(lista){
             <td>${p.udm}</td>
             <td style="text-align:right">${p.existencia}</td>
             <td style="text-align:right;font-weight:700">$${Number(p.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+            <td style="text-align:right;font-weight:800;color:var(--guinda)">$${Number(p.valor).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
             <td style="text-align:right"><span class="boton secundario" style="width:auto;padding:6px 10px;margin:0;font-size:12px" onclick="abrirAjusteProductoProveedor('${p.codigo}','${String(window.proveedorActualDetalle).replace(/'/g,"\\'")}')">Ajustar</span></td>
           </tr>
         `; }).join("")}

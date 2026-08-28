@@ -15,6 +15,15 @@
  * obtenerProveedoresReabastecimientoApp para Centro de Reabastecimiento.
  */
 
+/**
+ * Lista de proveedores CON el valor de inventario que tienen en existencia
+ * ahora mismo (pedido del usuario: "qué proveedor es el que tengo más
+ * valor económico de inventario") — ordenada de mayor a menor valor por
+ * default, para que ese análisis se vea de un vistazo sin tener que
+ * ordenar nada. Usa calcularValorInventario_, la misma función central que
+ * ya usa el resto del proyecto para valorizar inventario (Dashboard,
+ * Reportes) — no se reinventa el cálculo aquí.
+ */
 function obtenerListaProveedoresApp(token){
 
   requerirSesionActivaApp_(token);
@@ -25,11 +34,23 @@ function obtenerListaProveedoresApp(token){
   datos.forEach(function(f){
     const proveedor = obtenerProveedorProducto_(f);
     const clave = normalizarProveedor_(proveedor);
-    if(!mapa[clave]) mapa[clave] = { proveedor: proveedor, totalProductos: 0 };
+    if(!mapa[clave]) mapa[clave] = { proveedor: proveedor, totalProductos: 0, valorInventario: 0 };
+
+    const existencia = Number(f[10]) || 0;
+    const costo = Number(f[17]) || 0;
+    const convertir = String(f[18] || "").trim().toUpperCase() === "SI";
+    const presentacion = Number(f[19]) || 0;
+
     mapa[clave].totalProductos++;
+    mapa[clave].valorInventario += calcularValorInventario_(existencia, costo, convertir, presentacion);
   });
 
-  return Object.values(mapa).sort(function(a, b){ return a.proveedor.localeCompare(b.proveedor); });
+  const lista = Object.values(mapa).map(function(p){
+    p.valorInventario = Math.round(p.valorInventario * 100) / 100;
+    return p;
+  });
+
+  return lista.sort(function(a, b){ return b.valorInventario - a.valorInventario; });
 
 }
 
@@ -49,18 +70,23 @@ function obtenerProductosProveedorInfoApp(proveedor, token){
   return datos
     .filter(function(f){ return normalizarProveedor_(obtenerProveedorProducto_(f)) === proveedorBuscado; })
     .map(function(f){
+      const existencia = Number(f[10]) || 0;
+      const precio = Number(f[17]) || 0;
+      const convertir = String(f[18] || "").trim().toUpperCase() === "SI";
+      const presentacion = Number(f[19]) || 0;
       return {
         codigo: String(f[4] || "").trim(),
         producto: f[0],
         udm: f[1],
         ubicacion: String(f[9] || "").trim(),
-        existencia: Number(f[10]) || 0,
-        precio: Number(f[17]) || 0,
-        convertir: String(f[18] || "").trim().toUpperCase() === "SI",
-        presentacion: Number(f[19]) || 0
+        existencia: existencia,
+        precio: precio,
+        convertir: convertir,
+        presentacion: presentacion,
+        valor: calcularValorInventario_(existencia, precio, convertir, presentacion)
       };
     })
-    .sort(function(a, b){ return String(a.producto).localeCompare(String(b.producto)); });
+    .sort(function(a, b){ return b.valor - a.valor; });
 
 }
 
