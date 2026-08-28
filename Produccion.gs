@@ -15,6 +15,25 @@ function obtenerHojaProduccion_(){
   return hoja;
 }
 
+// PROD-01: columnas O/P agregadas después — mismo patrón de encabezado
+// perezoso que DETALLE_OC (Presentación/Piezas) y ORDENES_COMPRA
+// (Descuento/IVA/Flete): no se reescribe obtenerHojaProduccion_ para no
+// afectar hojas PRODUCCION ya creadas por instalaciones existentes.
+function asegurarEncabezadosCosteoProduccion_(hoja){
+  if(hoja.getRange(1, 15).getValue() === ""){
+    hoja.getRange(1, 15, 1, 2).setValues([["Valor insumos consumidos", "Costo unitario producido"]]);
+    hoja.getRange(1, 15, 1, 2).setFontWeight("bold");
+  }
+}
+
+// PROD-02: columnas Q/R/S agregadas después, mismo patrón perezoso.
+function asegurarEncabezadosMermaProduccion_(hoja){
+  if(hoja.getRange(1, 17).getValue() === ""){
+    hoja.getRange(1, 17, 1, 3).setValues([["Rendimiento esperado", "Merma de producción", "Merma %"]]);
+    hoja.getRange(1, 17, 1, 3).setFontWeight("bold");
+  }
+}
+
 function generarFolioLote_(hoja, fecha){
   const fechaCodigo = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyyMMdd");
   let consecutivo = 1;
@@ -72,27 +91,60 @@ function registrarProduccionApp(datos, token){
   }
 
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const filaDatos = matriz.getRange(filaMatriz, 1, 1, 11).getValues()[0];
+  // ARQ-03: se lee hasta la columna R (18) para tener también el costo
+  // actual del producto terminado ANTES de esta producción — el resto de
+  // la función solo usaba hasta la K (11), aquí se amplía sin afectar
+  // nada de lo que ya leía (mismo criterio que buscarProductoEnMatrizPorNombre_).
+  const filaDatos = matriz.getRange(filaMatriz, 1, 1, 18).getValues()[0];
   const nombreProducto = filaDatos[0];
   const udm = String((datos && datos.udm) || "").trim() || filaDatos[1] || "";
   const ubicacionMatriz = filaDatos[9] || "";
+  const existenciaAntesProduccion = Number(filaDatos[10]) || 0;
+  const costoAntesProduccion = Number(filaDatos[17]) || 0;
 
   const usuario = obtenerNombreDesdeToken(token);
   const fecha = new Date();
   const hoja = obtenerHojaProduccion_();
   const fechaCaducidad = (datos && datos.fechaCaducidad) || "";
 
+  // PROD-01: costeo del lote — reutiliza calcularCostoRecetaApp_ (Recetas.gs),
+  // que ya reusa buscarProductoEnMatrizPorNombre_/factorConversionUDM_ de
+  // RequisicionesRecetas.gs, sin duplicar esa búsqueda. costoTotal es el
+  // costo de UNA tanda de la receta; se multiplica por las tandas
+  // solicitadas en la requisición (receta.cantidadSolicitada) para obtener
+  // el valor total de insumos consumidos en este lote, y se divide entre
+  // la cantidad realmente producida para el costo unitario del producto.
+  const costeo = calcularCostoRecetaApp_(receta.nombreReceta);
+  const valorInsumosConsumidos = Math.round(costeo.costoTotal * receta.cantidadSolicitada * 100) / 100;
+  const costoUnitarioProducido = Math.round((valorInsumosConsumidos / cantidadProducida) * 100) / 100;
+
+  // PROD-02: rendimiento teórico vs. real — reutiliza parsearRendimiento_
+  // (RequisicionesRecetas.gs), que ya interpreta el texto libre de
+  // RECETAS.Rendimiento (p. ej. "20 piezas") sin migrar esa columna a un
+  // esquema numérico. rendimientoEsperadoTotal = rendimiento de UNA tanda
+  // × las tandas solicitadas en la requisición; si el texto no trae un
+  // número reconocible, no se calcula merma (0/valores nulos) en vez de
+  // inventar un dato.
+  const rendimiento = parsearRendimiento_(receta.rendimiento);
+  const rendimientoEsperadoTotal = Math.round(rendimiento.valor * receta.cantidadSolicitada * 1000) / 1000;
+  const mermaProduccion = rendimientoEsperadoTotal > 0 ? Math.max(0, Math.round((rendimientoEsperadoTotal - cantidadProducida) * 1000) / 1000) : 0;
+  const mermaPorcentaje = rendimientoEsperadoTotal > 0 ? Math.round((mermaProduccion / rendimientoEsperadoTotal) * 10000) / 100 : 0;
+
   let folioLote;
 
   conBloqueoApp_(function(){
 
     folioLote = generarFolioLote_(hoja, fecha);
+    asegurarEncabezadosCosteoProduccion_(hoja);
+    asegurarEncabezadosMermaProduccion_(hoja);
 
     hoja.appendRow([
       folioLote, fecha, fechaCaducidad,
       receta.codigoReceta, receta.nombreReceta, codigoProducto, nombreProducto,
       folioRequisicion, cantidadProducida, udm,
-      cantidadProducida, "ACTIVO", usuario, (datos && datos.observaciones) || ""
+      cantidadProducida, "ACTIVO", usuario, (datos && datos.observaciones) || "",
+      valorInsumosConsumidos, costoUnitarioProducido,
+      rendimientoEsperadoTotal, mermaProduccion, mermaPorcentaje
     ]);
 
   });
@@ -115,6 +167,20 @@ function registrarProduccionApp(datos, token){
 
   registrarAuditoria(usuario, "PRODUCCION", "LOTE REGISTRADO", folioLote, "", "", 0, cantidadProducida,
     receta.nombreReceta + " — " + cantidadProducida + " " + udm + " (Requisición " + folioRequisicion + ")");
+
+  // PROD-01/ARQ-03: solo se actualiza el costo del producto terminado en
+  // MATRIZ (mismo mecanismo que usa la recepción de OC, ver
+  // procesarCambioPrecioProducto_) cuando TODOS los ingredientes de la
+  // receta tuvieron costo/conversión conocidos — con datos incompletos se
+  // guarda el costeo del lote para referencia, pero no se sobreescribe el
+  // costo maestro del producto. El costo que se escribe en MATRIZ es el
+  // PROMEDIO PONDERADO entre lo que ya había en existencia (a su costo
+  // actual) y este lote (a su costoUnitarioProducido) — no el costo del
+  // lote solo, que sigue guardado tal cual en PRODUCCION para referencia.
+  if(costeo.ingredientesSinCosto === 0 && costoUnitarioProducido > 0){
+    const costoPromedio = calcularCostoPromedioPonderado_(existenciaAntesProduccion, costoAntesProduccion, cantidadProducida, costoUnitarioProducido);
+    procesarCambioPrecioProducto_(codigoProducto, nombreProducto, "PRODUCCIÓN INTERNA", costoPromedio, usuario, folioLote);
+  }
 
   return { folio: folioLote, producto: nombreProducto, cantidadProducida: cantidadProducida };
 
@@ -162,7 +228,12 @@ function obtenerLotesProduccionApp(filtros, token){
   const hoja = obtenerHojaProduccion_();
   if(hoja.getLastRow() < 2) return [];
 
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 14).getValues();
+  // PROD-01/PROD-02: las columnas O..S (costeo/merma) pueden no existir
+  // todavía en hojas PRODUCCION con lotes registrados antes de estas fases
+  // — se lee solo hasta donde exista la hoja (mismo patrón que
+  // obtenerTipoRequisicionApp).
+  const ancho = Math.min(hoja.getLastColumn(), 19);
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, ancho).getValues();
   const codigoFiltro = (filtros && filtros.codigoProducto) ? String(filtros.codigoProducto).trim() : "";
   const estadoFiltro = (filtros && filtros.estado) ? String(filtros.estado).trim().toUpperCase() : "";
 
@@ -178,10 +249,115 @@ function obtenerLotesProduccionApp(filtros, token){
         fechaCaducidad: f[2] instanceof Date ? Utilities.formatDate(f[2], Session.getScriptTimeZone(), "dd/MM/yyyy") : f[2],
         codigoReceta: f[3], receta: f[4], codigoProducto: f[5], producto: f[6],
         requisicionOrigen: f[7], cantidadProducida: Number(f[8])||0, udm: f[9],
-        cantidadDisponible: Number(f[10])||0, estado: f[11], usuario: f[12], observaciones: f[13]
+        cantidadDisponible: Number(f[10])||0, estado: f[11], usuario: f[12], observaciones: f[13],
+        valorInsumosConsumidos: Number(f[14])||0, costoUnitarioProducido: Number(f[15])||0,
+        rendimientoEsperadoTotal: Number(f[16])||0, mermaProduccion: Number(f[17])||0, mermaPorcentaje: Number(f[18])||0
       };
     })
     .reverse();
+}
+
+/**
+ * Fase 3e (auditoría comparativa vs. MarketMan): costo real por receta —
+ * agrega los lotes de PRODUCCION en el periodo, ponderando el costo por
+ * unidad (valorInsumosConsumidos/cantidadProducida) por cuánto se produjo
+ * en cada lote. No se calcula "margen" porque TAGERS WMS no captura un
+ * precio de venta en ningún lado todavía — inventar ese dato aquí sería
+ * scope creep de este módulo (analítica), no de costeo.
+ */
+function obtenerCostoPorRecetaApp(dias, token){
+
+  requerirSesionActivaApp_(token);
+
+  const rangoDias = Number(dias) || 30;
+  const desde = new Date();
+  desde.setDate(desde.getDate() - rangoDias);
+
+  const hoja = obtenerHojaProduccion_();
+  if(hoja.getLastRow() < 2) return [];
+
+  const ancho = Math.min(hoja.getLastColumn(), 19);
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, ancho).getValues();
+
+  const acumReceta = {}; // receta -> { lotes, cantidadTotal, valorTotal }
+
+  datos.forEach(function(f){
+
+    const fecha = f[1] instanceof Date ? f[1] : new Date(f[1]);
+    if(isNaN(fecha.getTime()) || fecha < desde) return;
+
+    const receta = String(f[4]||"").trim();
+    const cantidadProducida = Number(f[8]) || 0;
+    if(!receta || cantidadProducida <= 0) return;
+
+    const valorInsumosConsumidos = Number(f[14]) || 0;
+
+    if(!acumReceta[receta]) acumReceta[receta] = { lotes: 0, cantidadTotal: 0, valorTotal: 0 };
+    acumReceta[receta].lotes++;
+    acumReceta[receta].cantidadTotal += cantidadProducida;
+    acumReceta[receta].valorTotal += valorInsumosConsumidos;
+
+  });
+
+  return Object.keys(acumReceta).map(function(receta){
+    const d = acumReceta[receta];
+    return {
+      receta: receta,
+      lotes: d.lotes,
+      cantidadTotalProducida: Math.round(d.cantidadTotal * 1000) / 1000,
+      valorTotalInsumos: Math.round(d.valorTotal * 100) / 100,
+      costoPromedioPorUnidad: d.cantidadTotal > 0 ? Math.round((d.valorTotal / d.cantidadTotal) * 100) / 100 : 0
+    };
+  }).sort(function(a,b){ return b.valorTotalInsumos - a.valorTotalInsumos; });
+
+}
+
+/**
+ * Fase 3e: valor perdido por merma — junta las dos fuentes de merma que
+ * ya existen por separado (Mermas.gs para producto dañado/caducado/etc.,
+ * y PRODUCCION.MermaProduccion de PROD-02 para rendimiento no alcanzado)
+ * en un solo total, sin recalcular ninguna de las dos por su cuenta. La
+ * merma de producción se valoriza al costoUnitarioProducido DE CADA LOTE
+ * (no al costo promedio actual de MATRIZ) porque es el costo real de ESE
+ * lote específico.
+ */
+function obtenerValorPerdidoPorMermaApp(dias, token){
+
+  requerirSesionActivaApp_(token);
+
+  const rangoDias = Number(dias) || 30;
+  const desde = new Date();
+  desde.setDate(desde.getDate() - rangoDias);
+
+  const desdeStr = Utilities.formatDate(desde, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  const mermaRegular = obtenerResumenMermasApp(desdeStr, "", token);
+
+  const hoja = obtenerHojaProduccion_();
+  let valorMermaProduccion = 0;
+  let lotesConMerma = 0;
+
+  if(hoja.getLastRow() >= 2){
+    const ancho = Math.min(hoja.getLastColumn(), 19);
+    const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, ancho).getValues();
+    datos.forEach(function(f){
+      const fecha = f[1] instanceof Date ? f[1] : new Date(f[1]);
+      if(isNaN(fecha.getTime()) || fecha < desde) return;
+      const mermaProduccion = Number(f[17]) || 0;
+      if(mermaProduccion <= 0) return;
+      const costoUnitarioProducido = Number(f[15]) || 0;
+      valorMermaProduccion += mermaProduccion * costoUnitarioProducido;
+      lotesConMerma++;
+    });
+  }
+
+  valorMermaProduccion = Math.round(valorMermaProduccion * 100) / 100;
+
+  return {
+    mermaRegular: mermaRegular,
+    mermaProduccion: { lotesConMerma: lotesConMerma, valorTotal: valorMermaProduccion },
+    valorTotalPerdido: Math.round((mermaRegular.valorTotal + valorMermaProduccion) * 100) / 100
+  };
+
 }
 
 function cerrarLoteProduccionApp(folioLote, token){

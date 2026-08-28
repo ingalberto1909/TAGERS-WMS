@@ -180,13 +180,17 @@ function buscarProductoEnMatrizPorNombre_(nombre){
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(hoja.getLastRow() < 2) return null;
 
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 11).getValues(); // A..K
+  // PROD-01: se amplía de 11 a 18 columnas (hasta R=Costo Unitario) para
+  // que el costeo de recetas (Recetas.gs) pueda reusar esta misma
+  // búsqueda por nombre sin duplicar la lectura de MATRIZ — costoUnitario
+  // es un campo aditivo, ningún llamador existente lo leía antes.
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 18).getValues(); // A..R
 
   for(let i=0;i<datos.length;i++){
     const ubicacion = String(datos[i][9]||"").trim();
     if(ubicacionVacia_(ubicacion)) continue;
     if(normalizarTexto_(datos[i][0]) === buscado){
-      return { codigo: datos[i][4], producto: datos[i][0], udm: datos[i][1], existencia: Number(datos[i][10])||0 };
+      return { codigo: datos[i][4], producto: datos[i][0], udm: datos[i][1], existencia: Number(datos[i][10])||0, costoUnitario: Number(datos[i][17])||0 };
     }
   }
 

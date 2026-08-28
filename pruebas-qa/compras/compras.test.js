@@ -155,22 +155,23 @@ prueba({
 });
 
 prueba({
-  id: 'COM-008', grupo: 'compras', nombre: 'Cambio de precio en recepción queda en HISTORIAL_PRECIOS', metodo: 'EMPÍRICO',
-  objetivo: 'Si el precio de factura llega distinto al de MATRIZ, se actualiza el costo y se registra el histórico',
+  id: 'COM-008', grupo: 'compras', nombre: 'ARQ-03: cambio de precio en recepción actualiza MATRIZ al costo PROMEDIO PONDERADO y queda en HISTORIAL_PRECIOS', metodo: 'EMPÍRICO',
+  objetivo: 'Si el precio de factura llega distinto al de MATRIZ, el nuevo costo maestro debe ser el promedio ponderado entre la existencia ya en MATRIZ (a su costo actual) y lo recién recibido (al precio de esta factura) — no simplemente el último precio facturado — y debe quedar registrado en el histórico',
   ejecutar() {
     const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
     entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    // COD-001 (fixture estándar): existencia=100, costo=10 ANTES de recibir.
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10, precioFactura: 18 }], token);
     const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[17];
     const historial = entorno.leerHoja('HISTORIAL_PRECIOS').length - 1;
     return {
-      datos: 'MATRIZ tenía costo=10, llega factura con precio=18',
-      esperado: 'MATRIZ.CostoUnitario=18, 1 fila en HISTORIAL_PRECIOS',
+      datos: 'MATRIZ tenía existencia=100 a costo=10, llegan 10 KG más facturados a $18 c/u',
+      esperado: 'MATRIZ.CostoUnitario=10.73 ((100×10 + 10×18) / 110), 1 fila en HISTORIAL_PRECIOS',
       obtenido: `costoMatriz=${costoMatriz}, filasHistorial=${historial}`,
-      pasa: costoMatriz === 18 && historial === 1,
+      pasa: costoMatriz === 10.73 && historial === 1,
     };
   },
 });
@@ -594,6 +595,139 @@ prueba({
       esperado: 'bloqueado',
       obtenido: bloqueadoSegunda ? 'bloqueado' : 'PERMITIDO',
       pasa: bloqueadoSegunda,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-026', grupo: 'compras', nombre: 'COM-05: gasto por proveedor agrega el total y ordena de mayor a menor', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerGastoPorProveedorApp debe sumar el Total de cada OC (no CANCELADA) agrupado por proveedor, y ordenar el resultado de mayor a menor gasto',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // PROVEEDOR A: 2 OC (100 + 50 = 150). PROVEEDOR B: 1 OC (30).
+    entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 10 }], token);
+    entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 }], token);
+    entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR B', '', [{ codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 3, udm: 'KG', precio: 10 }], token);
+
+    const gasto = entorno.invocar('obtenerGastoPorProveedorApp', 6, token);
+
+    return {
+      datos: 'PROVEEDOR A: OC de $100 + OC de $50 ($150 total, 2 órdenes). PROVEEDOR B: OC de $30 (1 orden)',
+      esperado: 'proveedores[0]=PROVEEDOR A ($150, 2 órdenes, promedio $75), proveedores[1]=PROVEEDOR B ($30, 1 orden)',
+      obtenido: JSON.stringify(gasto.proveedores.map(p => ({ p: p.proveedor, t: p.totalGastado, n: p.totalOrdenes, prom: p.promedioPorOrden }))),
+      pasa: gasto.proveedores.length === 2 &&
+        gasto.proveedores[0].proveedor === 'PROVEEDOR A' && gasto.proveedores[0].totalGastado === 150 &&
+        gasto.proveedores[0].totalOrdenes === 2 && gasto.proveedores[0].promedioPorOrden === 75 &&
+        gasto.proveedores[1].proveedor === 'PROVEEDOR B' && gasto.proveedores[1].totalGastado === 30,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-027', grupo: 'compras', nombre: 'COM-05: una OC cancelada no cuenta como gasto', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerGastoPorProveedorApp debe excluir las OC en estado CANCELADA — nunca representaron un gasto real',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const ocViva = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 10 }], token);
+    const ocCancelada = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 }], token);
+    entorno.invocar('cancelarOrdenCompraApp', ocCancelada.folio, token);
+
+    const gasto = entorno.invocar('obtenerGastoPorProveedorApp', 6, token);
+    const proveedorA = gasto.proveedores.find(p => p.proveedor === 'PROVEEDOR A');
+
+    return {
+      datos: `OC viva de $100 (${ocViva.folio}) + OC cancelada de $50 (${ocCancelada.folio}, mismo proveedor)`,
+      esperado: 'totalGastado=100, totalOrdenes=1 (la cancelada no cuenta)',
+      obtenido: proveedorA ? `totalGastado=${proveedorA.totalGastado}, totalOrdenes=${proveedorA.totalOrdenes}` : 'PROVEEDOR A no aparece',
+      pasa: !!proveedorA && proveedorA.totalGastado === 100 && proveedorA.totalOrdenes === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-028', grupo: 'compras', nombre: 'COM-05: una OC fuera del rango de meses no se cuenta, y sí aparece en la serie mensual dentro del rango', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerGastoPorProveedorApp debe filtrar por rangoMeses y agrupar lo que sí cae en la ventana en su serie mensual (mes "yyyy-MM")',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const ocReciente = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 10 }], token);
+    const ocVieja = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 }], token);
+
+    // Se empuja la OC "vieja" 8 meses atrás directamente en la hoja — igual
+    // que prepararRequisicionEntregada en produccion.test.js mutando la fila
+    // ya escrita, en vez de reinventar el flujo de creación con otra fecha.
+    const filaVieja = entorno.leerHoja('ORDENES_COMPRA').find(f => f[0] === ocVieja.folio);
+    filaVieja[1] = entorno.crearFechaDesdeHoy(-240);
+
+    const gasto = entorno.invocar('obtenerGastoPorProveedorApp', 6, token);
+    const proveedorA = gasto.proveedores.find(p => p.proveedor === 'PROVEEDOR A');
+    const mesHoy = new Date().toISOString().slice(0, 7);
+
+    return {
+      datos: `OC reciente de $100 (${ocReciente.folio}) + OC de $50 movida a hace 240 días (${ocVieja.folio}), rangoMeses=6`,
+      esperado: `totalGastado=100 (solo la reciente), serie mensual con exactamente 1 mes (${mesHoy}) por $100`,
+      obtenido: proveedorA ? `totalGastado=${proveedorA.totalGastado}, series=${JSON.stringify(proveedorA.series)}` : 'PROVEEDOR A no aparece',
+      pasa: !!proveedorA && proveedorA.totalGastado === 100 && proveedorA.series.length === 1 &&
+        proveedorA.series[0].mes === mesHoy && proveedorA.series[0].total === 100,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-029', grupo: 'compras', nombre: 'ARQ-03: calcularCostoPromedioPonderado_ mezcla existencia y entrada, y no inventa nada con existencia/cantidad en 0', metodo: 'EMPÍRICO',
+  objetivo: 'La función pura de costo promedio ponderado debe: (a) mezclar existencia+entrada correctamente, (b) devolver el costo nuevo tal cual cuando no había existencia previa (producto agotado o nuevo), (c) devolver el costo anterior sin cambios cuando la cantidad nueva es 0 — nunca dividir entre cero',
+  ejecutar() {
+    const { entorno } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    const mezcla = entorno.invocar('calcularCostoPromedioPonderado_', 100, 10, 10, 18); // (100×10 + 10×18)/110 = 10.7272...
+    const sinExistenciaPrevia = entorno.invocar('calcularCostoPromedioPonderado_', 0, 10, 5, 20); // producto agotado: el nuevo costo entra directo
+    const sinCantidadNueva = entorno.invocar('calcularCostoPromedioPonderado_', 100, 10, 0, 999); // nada que mezclar: se queda igual
+
+    return {
+      datos: 'mezcla(100,10,10,18) / sinExistenciaPrevia(0,10,5,20) / sinCantidadNueva(100,10,0,999)',
+      esperado: 'mezcla=10.73, sinExistenciaPrevia=20 (el nuevo costo, no un promedio con 0), sinCantidadNueva=10 (sin cambio)',
+      obtenido: `mezcla=${mezcla}, sinExistenciaPrevia=${sinExistenciaPrevia}, sinCantidadNueva=${sinCantidadNueva}`,
+      pasa: mezcla === 10.73 && sinExistenciaPrevia === 20 && sinCantidadNueva === 10,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-030', grupo: 'compras', nombre: 'ARQ-03: primera recepción de un producto sin existencia previa toma el precio de factura tal cual', metodo: 'EMPÍRICO',
+  objetivo: 'Cuando el producto llega a MATRIZ con existencia=0 (nunca se había comprado, o se agotó), el promedio ponderado colapsa al costo de esta entrada — el comportamiento visible debe seguir siendo el mismo que antes de ARQ-03 para este caso',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // COD-005 (fixture estándar): existencia=0.
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-005', producto: 'PRODUCTO SIN UBICACION', cantidad: 10, udm: 'PZ', precio: 15 },
+    ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-005', cantidadRecibida: 10, precioFactura: 22 }], token);
+    const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-005')[17];
+    return {
+      datos: 'COD-005 con existencia=0 antes de recibir, factura llega a $22',
+      esperado: 'MATRIZ.CostoUnitario=22 (sin existencia previa que promediar)',
+      obtenido: `costoMatriz=${costoMatriz}`,
+      pasa: costoMatriz === 22,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-031', grupo: 'compras', nombre: 'ARQ-03: el ajuste manual de precio en Proveedores sigue sobreescribiendo directo, sin promediar', metodo: 'EMPÍRICO',
+  objetivo: 'ajustarProductoProveedorApp es una CORRECCIÓN del costo maestro (p. ej. se había capturado el precio de una caja completa por error), no una entrada de inventario — debe seguir llamando a procesarCambioPrecioProducto_ directo, nunca pasar por el promedio ponderado (que perpetuaría el precio incorrecto)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // COD-001: existencia=100, costo=10. Si esto promediara, el resultado
+    // sería (100×10 + ?×50)/... — pero un ajuste manual no tiene "cantidad",
+    // así que promediar aquí no tendría ni sentido matemático: debe quedar
+    // exactamente en 50, el valor capturado.
+    entorno.invocar('ajustarProductoProveedorApp', 'COD-001', { precioNuevo: 50 }, token);
+    const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[17];
+    return {
+      datos: 'COD-001 con costo=10 y existencia=100, se corrige manualmente a $50 desde Proveedores',
+      esperado: 'MATRIZ.CostoUnitario=50 exacto (no un promedio con el costo viejo)',
+      obtenido: `costoMatriz=${costoMatriz}`,
+      pasa: costoMatriz === 50,
     };
   },
 });

@@ -6846,6 +6846,10 @@ function abrirLotesProduccion(){
     <div class="vista-animada">
     <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("paquete",20)} Lotes de Producción</h2>
 
+    <div id="kpisCostoMermaProduccion" class="cardProducto" style="text-align:center;padding:30px">
+      <div class="spinnerCentro"><div class="spinner"></div></div>
+    </div>
+
     <div class="gridFormulario" style="margin-bottom:6px">
       <div class="campo">
         <label>Código de producto</label>
@@ -6865,9 +6869,9 @@ function abrirLotesProduccion(){
     <div class="cardProducto" style="max-width:none;margin-top:16px">
       <table class="tablaActividad">
         <thead>
-          <tr><th>Lote</th><th>Receta</th><th>Producto</th><th>Producido</th><th>Disponible</th><th>Estado</th><th></th></tr>
+          <tr><th>Lote</th><th>Receta</th><th>Producto</th><th>Producido</th><th>Disponible</th><th>Costo/unidad</th><th>Estado</th><th></th></tr>
         </thead>
-        <tbody id="tablaLotesProduccion">${filasSkeleton(7,4)}</tbody>
+        <tbody id="tablaLotesProduccion">${filasSkeleton(8,4)}</tbody>
       </table>
     </div>
 
@@ -6875,6 +6879,69 @@ function abrirLotesProduccion(){
   `;
 
   filtrarLotesProduccion();
+  cargarKpisCostoMermaProduccion();
+
+}
+
+// Fase 3e (auditoría comparativa vs. MarketMan): costo por receta y valor
+// perdido por merma de los últimos 30 días — ambos ya calculados en el
+// backend (obtenerCostoPorRecetaApp/obtenerValorPerdidoPorMermaApp), aquí
+// solo se pintan. No hay "margen" porque el sistema no captura precio de
+// venta en ningún lado todavía.
+function cargarKpisCostoMermaProduccion(){
+
+  const cont = document.getElementById("kpisCostoMermaProduccion");
+  if(!cont) return;
+
+  google.script.run
+    .withSuccessHandler(function(costos){
+
+      google.script.run
+        .withSuccessHandler(function(perdida){
+
+          cont.style.padding = "0";
+          cont.style.textAlign = "left";
+
+          const filasCosto = costos.slice(0, 5).map(c => `
+            <tr>
+              <td>${c.receta}</td>
+              <td class="num">${c.lotes}</td>
+              <td class="num">${formatearCantidadJS(c.cantidadTotalProducida)}</td>
+              <td class="num">$${formatearCantidadJS(c.costoPromedioPorUnidad)}</td>
+            </tr>
+          `).join("");
+
+          cont.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+              <div class="cardProducto" style="margin:0">
+                <h3 style="margin-top:0">Costo por receta (30 días)</h3>
+                ${costos.length ? `
+                  <table class="tablaTop" style="font-size:12.5px">
+                    <thead><tr><th>Receta</th><th class="num">Lotes</th><th class="num">Producido</th><th class="num">$/unidad</th></tr></thead>
+                    <tbody>${filasCosto}</tbody>
+                  </table>
+                ` : `<p style="color:var(--text-muted);font-size:13px">Sin lotes registrados en este periodo.</p>`}
+              </div>
+              <div class="cardProducto" style="margin:0">
+                <h3 style="margin-top:0">Valor perdido por merma (30 días)</h3>
+                <div style="font-size:26px;font-weight:800;color:var(--terracota)">$${Number(perdida.valorTotalPerdido).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Merma regular: $${Number(perdida.mermaRegular.valorTotal).toLocaleString("es-MX",{minimumFractionDigits:2})} (${perdida.mermaRegular.totalRegistros} registro(s))</div>
+                <div style="font-size:11.5px;color:var(--text-muted)">Merma de producción: $${Number(perdida.mermaProduccion.valorTotal).toLocaleString("es-MX",{minimumFractionDigits:2})} (${perdida.mermaProduccion.lotesConMerma} lote(s))</div>
+              </div>
+            </div>
+          `;
+
+        })
+        .withFailureHandler(function(e){
+          cont.innerHTML = tgEmptyState("alertaTriangulo", e.message);
+        })
+        .obtenerValorPerdidoPorMermaApp(30, obtenerTokenSesion());
+
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerCostoPorRecetaApp(30, obtenerTokenSesion());
 
 }
 
@@ -6900,7 +6967,7 @@ function dibujarLotesProduccion(lista){
   if(!tbody) return;
 
   if(!lista || !lista.length){
-    tbody.innerHTML = `<tr><td colspan="7">${tgEmptyState("fabrica", "Sin lotes de producción registrados")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">${tgEmptyState("fabrica", "Sin lotes de producción registrados")}</td></tr>`;
     return;
   }
 
@@ -6909,8 +6976,9 @@ function dibujarLotesProduccion(lista){
       <td><b>${l.folio}</b><br><span style="font-size:10.5px;color:var(--text-muted)">${l.fechaElaboracion}${l.fechaCaducidad ? " · caduca " + l.fechaCaducidad : ""}</span></td>
       <td>${l.receta}</td>
       <td>${l.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${l.codigoProducto}</span></td>
-      <td class="num">${formatearCantidadJS(l.cantidadProducida)} ${l.udm}</td>
+      <td class="num">${formatearCantidadJS(l.cantidadProducida)} ${l.udm}${l.mermaProduccion > 0 ? `<br><span style="font-size:10.5px;color:var(--color-danger)">merma ${formatearCantidadJS(l.mermaProduccion)} (${formatearCantidadJS(l.mermaPorcentaje)}%)</span>` : ""}</td>
       <td class="num">${formatearCantidadJS(l.cantidadDisponible)} ${l.udm}</td>
+      <td class="num">${l.costoUnitarioProducido ? "$" + formatearCantidadJS(l.costoUnitarioProducido) : "—"}</td>
       <td><span class="badgeEstado ${l.estado}">${l.estado}</span></td>
       <td style="white-space:nowrap">
         ${l.estado === "ACTIVO" ? `<span style="cursor:pointer;color:var(--color-danger);font-weight:600;font-size:12px" onclick="cerrarLoteDesdeApp('${l.folio}')">${tgIcon("xCirculo",14)} Cerrar</span>` : ""}
@@ -7785,11 +7853,96 @@ function abrirAnalisisCostos(){
     </div>
   </div>
 
+  <div class="cardProducto">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h3 style="margin:0">Gasto por proveedor</h3>
+      <select id="selectRangoMesesGasto" onchange="cargarGastoPorProveedor()" style="width:auto;max-width:220px;margin:0;padding:8px 12px">
+        <option value="3">Últimos 3 meses</option>
+        <option value="6" selected>Últimos 6 meses</option>
+        <option value="12">Último año</option>
+      </select>
+    </div>
+    <canvas id="chartGastoProveedor" style="max-height:240px;margin-top:14px"></canvas>
+    <div id="tablaGastoProveedor" style="overflow:auto;max-height:40vh;margin-top:14px">
+      <div class="skeleton skeletonLinea" style="width:70%"></div>
+      <div class="skeleton skeletonLinea" style="width:55%"></div>
+    </div>
+  </div>
+
   </div>
 
   `;
 
   cargarAnalisisCostos();
+  cargarGastoPorProveedor();
+
+}
+
+function cargarGastoPorProveedor(){
+
+  const meses = document.getElementById("selectRangoMesesGasto") ? document.getElementById("selectRangoMesesGasto").value : 6;
+
+  google.script.run
+    .withSuccessHandler(function(gasto){
+
+      const tablaCont = document.getElementById("tablaGastoProveedor");
+      if(!tablaCont) return;
+
+      if(!gasto || !gasto.proveedores || !gasto.proveedores.length){
+        tablaCont.innerHTML = tgEmptyState("dinero", "Sin órdenes de compra registradas en este periodo");
+        if(window.chartGastoProveedorInstancia){ window.chartGastoProveedorInstancia.destroy(); window.chartGastoProveedorInstancia = null; }
+        return;
+      }
+
+      tablaCont.innerHTML = `
+        <table class="tablaTop" style="font-size:13px">
+          <thead><tr><th>Proveedor</th><th style="text-align:right">Total gastado</th><th style="text-align:right">Órdenes</th><th style="text-align:right">Promedio/orden</th></tr></thead>
+          <tbody>
+            ${gasto.proveedores.map(p => `
+              <tr>
+                <td>${p.proveedor}</td>
+                <td style="text-align:right;font-weight:700;color:var(--guinda)">$${Number(p.totalGastado).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+                <td style="text-align:right">${p.totalOrdenes}</td>
+                <td style="text-align:right">$${Number(p.promedioPorOrden).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+
+      // Mismo criterio que dibujarChartHistorialComprasProducto: la tabla ya
+      // quedó pintada arriba, así que si el CDN de Chart.js no cargó (red
+      // lenta/bloqueada), solo se pierde la gráfica — nunca la tabla.
+      dibujarChartGastoProveedor(gasto.proveedores);
+
+    })
+    .withFailureHandler(function(e){
+      const tablaCont = document.getElementById("tablaGastoProveedor");
+      if(tablaCont) tablaCont.innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerGastoPorProveedorApp(meses, obtenerTokenSesion());
+
+}
+
+function dibujarChartGastoProveedor(proveedores){
+
+  const ctx = document.getElementById("chartGastoProveedor");
+  if(!ctx) return;
+
+  if(window.chartGastoProveedorInstancia){
+    window.chartGastoProveedorInstancia.destroy();
+  }
+
+  const top = proveedores.slice(0, 10);
+
+  window.chartGastoProveedorInstancia = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: top.map(p => p.proveedor),
+      datasets: [{ label: "Gasto total", data: top.map(p => p.totalGastado), backgroundColor: "#6B2737" }]
+    },
+    options: { plugins: { legend: { display: false } }, indexAxis: "y" }
+  });
 
 }
 

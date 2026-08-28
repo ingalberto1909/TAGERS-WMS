@@ -3123,6 +3123,17 @@ function registrarRecepcionOCApp(oc, recepciones, token){
       (infoRecepcion.lote ? (" — Lote: " + infoRecepcion.lote) : "") +
       (infoRecepcion.caducidad ? (" — Caduca: " + infoRecepcion.caducidad) : "");
 
+    // ARQ-03: se lee la existencia/costo actuales ANTES de la entrada
+    // (registrarEntradaInterna_ ya modifica la existencia de MATRIZ), para
+    // poder mezclarlos con lo recién recibido — ver calcularCostoPromedioPonderado_.
+    const filaMatrizProducto = buscarFilaMatrizPorCodigo_(codigo);
+    const existenciaAntesRecepcion = filaMatrizProducto !== -1
+      ? Number(ss.getSheetByName("MATRIZ").getRange(filaMatrizProducto, 11).getValue()) || 0
+      : 0;
+    const costoAntesRecepcion = filaMatrizProducto !== -1
+      ? Number(ss.getSheetByName("MATRIZ").getRange(filaMatrizProducto, 18).getValue()) || 0
+      : 0;
+
     // Reusa la MISMA lógica de una entrada manual: escribe en ENTRADA y KARDEX.
     registrarEntradaInterna_(
       { codigo: codigo, producto: producto, cantidad: cantidadAplicar, udm: udm, ubicacion: "", lote: infoRecepcion.lote, caducidad: infoRecepcion.caducidad },
@@ -3137,11 +3148,12 @@ function registrarRecepcionOCApp(oc, recepciones, token){
     totalRecibidoEsteMovimiento += cantidadAplicar;
     productosRecibidos++;
 
-    // Si el precio de factura vino distinto al que ya tenía MATRIZ,
-    // actualizamos el precio del producto y dejamos rastro en
-    // HISTORIAL_PRECIOS.
+    // ARQ-03: el nuevo costo maestro es el PROMEDIO PONDERADO entre lo que
+    // ya había en existencia (a su costo actual) y lo recién recibido (al
+    // precio de esta factura) — no simplemente el último precio facturado.
     if(infoRecepcion.precioFactura > 0){
-      procesarCambioPrecioProducto_(codigo, producto, proveedorOC, infoRecepcion.precioFactura, usuario, oc);
+      const costoPromedio = calcularCostoPromedioPonderado_(existenciaAntesRecepcion, costoAntesRecepcion, cantidadAplicar, infoRecepcion.precioFactura);
+      procesarCambioPrecioProducto_(codigo, producto, proveedorOC, costoPromedio, usuario, oc);
     }
 
   }
@@ -4197,6 +4209,44 @@ function obtenerHojaHistorialPrecios_(){
 }
 
 /**
+ * ARQ-03 (auditoría comparativa vs. MarketMan): costo promedio ponderado.
+ * Pura y sin efectos secundarios a propósito, para poder probarla sola —
+ * mezcla la existencia YA en MATRIZ (a su costo actual) con la cantidad
+ * que se está agregando (a su costo de esta entrada) y regresa el nuevo
+ * costo por unidad. Con existencia previa en 0 (primera entrada de un
+ * producto nuevo, o que llegó a agotarse) regresa directo el costo nuevo
+ * — no hay nada que promediar. Con cantidadNueva en 0 regresa el costo
+ * anterior sin cambios — nunca divide entre cero.
+ *
+ * A propósito esta función NO reemplaza a procesarCambioPrecioProducto_
+ * ni cambia lo que esa función hace (seguir escribiendo el costo que se
+ * le pase y dejar rastro en HISTORIAL_PRECIOS) — solo cambia QUÉ costo le
+ * pasan las dos entradas reales de inventario (recepción de OC y
+ * producción, ver registrarRecepcionOCApp/registrarProduccionApp). El
+ * ajuste manual de Proveedores.gs (ajustarProductoProveedorApp) sigue
+ * llamando a procesarCambioPrecioProducto_ directo con el precio
+ * capturado, sin pasar por aquí — ese ajuste es una CORRECCIÓN del costo
+ * maestro (p. ej. se había capturado el precio de una caja completa en
+ * vez de una unidad), no una nueva entrada de inventario, así que
+ * promediarlo con el costo viejo (posiblemente incorrecto) perpetuaría el
+ * error en vez de corregirlo.
+ */
+function calcularCostoPromedioPonderado_(existenciaAnterior, costoAnterior, cantidadNueva, costoNuevo){
+
+  const existencia = Math.max(0, Number(existenciaAnterior) || 0);
+  const cantidad = Math.max(0, Number(cantidadNueva) || 0);
+  const costoViejo = Number(costoAnterior) || 0;
+  const costoRecibido = Number(costoNuevo) || 0;
+
+  if(cantidad <= 0) return Math.round(costoViejo * 100) / 100;
+  if(existencia <= 0) return Math.round(costoRecibido * 100) / 100;
+
+  const valorTotal = (existencia * costoViejo) + (cantidad * costoRecibido);
+  return Math.round((valorTotal / (existencia + cantidad)) * 100) / 100;
+
+}
+
+/**
  * Si precioFactura es distinto al precio que YA tiene el producto en
  * MATRIZ (columna R), actualiza MATRIZ con el nuevo precio y deja un
  * renglón en HISTORIAL_PRECIOS. No hace nada si el precio no cambió,
@@ -4358,6 +4408,75 @@ function obtenerAnalisisCostosApp(periodoDias, token){
     impactoEconomico: Math.round(impactoEconomico * 100) / 100,
     proveedorMejoresPrecios: proveedorMejor ? { proveedor: proveedorMejor, promedioPct: Math.round(mejorPromedio * 100) / 100 } : null,
     movimientos: movimientos.slice(0, 50)
+  };
+
+}
+
+/**
+ * COM-05 (auditoría comparativa vs. MarketMan): gasto por proveedor a lo
+ * largo del tiempo — agrega ORDENES_COMPRA.Total (con impuestos/flete si
+ * COM-02 ya los capturó, ver obtenerOrdenesCompraApp) por proveedor,
+ * excluyendo únicamente las OC CANCELADA (una orden cancelada nunca
+ * representó gasto real, sin importar si ya tenía Total capturado).
+ * rangoMeses: cuántos meses hacia atrás considerar (por defecto 6).
+ */
+function obtenerGastoPorProveedorApp(rangoMeses, token){
+
+  requerirSesionActivaApp_(token);
+
+  const meses = Number(rangoMeses) || 6;
+  const desde = new Date();
+  desde.setMonth(desde.getMonth() - meses);
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("ORDENES_COMPRA");
+  if(!hoja || hoja.getLastRow() < 2){
+    return { desde: Utilities.formatDate(desde, Session.getScriptTimeZone(), "dd/MM/yyyy"), proveedores: [] };
+  }
+
+  const anchoHoja = Math.min(Math.max(hoja.getLastColumn(), 7), 11);
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, anchoHoja).getValues();
+
+  const acumProveedor = {}; // proveedor -> { totalGastado, totalOrdenes, mesesMap: { "yyyy-MM": total } }
+
+  datos.forEach(f=>{
+
+    const estado = String(f[4]||"").trim().toUpperCase();
+    if(estado === "CANCELADA") return;
+
+    const fecha = f[1] instanceof Date ? f[1] : new Date(f[1]);
+    if(isNaN(fecha.getTime()) || fecha < desde) return;
+
+    const proveedor = String(f[2]||"").trim() || "Sin proveedor";
+    const totalConImpuestos = Number(f[10]) || Number(f[5]) || 0;
+    const mesClave = Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyy-MM");
+
+    if(!acumProveedor[proveedor]){
+      acumProveedor[proveedor] = { totalGastado: 0, totalOrdenes: 0, mesesMap: {} };
+    }
+
+    acumProveedor[proveedor].totalGastado += totalConImpuestos;
+    acumProveedor[proveedor].totalOrdenes++;
+    acumProveedor[proveedor].mesesMap[mesClave] = (acumProveedor[proveedor].mesesMap[mesClave] || 0) + totalConImpuestos;
+
+  });
+
+  const proveedores = Object.keys(acumProveedor).map(proveedor=>{
+    const datosProveedor = acumProveedor[proveedor];
+    const totalGastado = Math.round(datosProveedor.totalGastado * 100) / 100;
+    return {
+      proveedor: proveedor,
+      totalGastado: totalGastado,
+      totalOrdenes: datosProveedor.totalOrdenes,
+      promedioPorOrden: Math.round((totalGastado / datosProveedor.totalOrdenes) * 100) / 100,
+      series: Object.keys(datosProveedor.mesesMap).sort().map(mes=>({
+        mes: mes, total: Math.round(datosProveedor.mesesMap[mes] * 100) / 100
+      }))
+    };
+  }).sort((a,b)=> b.totalGastado - a.totalGastado);
+
+  return {
+    desde: Utilities.formatDate(desde, Session.getScriptTimeZone(), "dd/MM/yyyy"),
+    proveedores: proveedores
   };
 
 }

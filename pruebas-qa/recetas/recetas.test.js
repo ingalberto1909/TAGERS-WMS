@@ -146,3 +146,48 @@ prueba({
     return { datos: 'receta INACTIVA', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO', pasa: bloqueado };
   },
 });
+
+prueba({
+  id: 'REC-008', grupo: 'recetas', nombre: 'Costeo de receta suma el costo de cada ingrediente convertido a la UDM de MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'PROD-01: obtenerCostoRecetaApp debe reutilizar buscarProductoEnMatrizPorNombre_/factorConversionUDM_ para calcular el costo total de una tanda de receta, incluso cuando un ingrediente está capturado en una UDM distinta a la de MATRIZ',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // HARINA DE TRIGO (COD-001): costo=10/KG. SAL DE MESA (COD-003): costo=10/KG.
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [
+        { nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }, // 0.5 KG × 10 = 5
+        { nombre: 'SAL DE MESA', cantidad: 1, udm: 'KG' },      // 1 KG × 10 = 10
+      ],
+    }, token);
+    const costeo = entorno.invocar('obtenerCostoRecetaApp', 'SALSA X', token);
+    return {
+      datos: '500 G de harina (0.5 KG × $10) + 1 KG de sal ($10) — ambos ingredientes existen en MATRIZ',
+      esperado: 'costoTotal=15, ingredientesSinCosto=0, totalIngredientes=2',
+      obtenido: `costoTotal=${costeo.costoTotal}, sinCosto=${costeo.ingredientesSinCosto}, total=${costeo.totalIngredientes}`,
+      pasa: costeo.costoTotal === 15 && costeo.ingredientesSinCosto === 0 && costeo.totalIngredientes === 2,
+    };
+  },
+});
+
+prueba({
+  id: 'REC-009', grupo: 'recetas', nombre: 'Costeo de receta marca ingredientes sin coincidencia en MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'PROD-01: un ingrediente que no existe en el catálogo (o con UDM incompatible) no debe romper el cálculo — se excluye del costoTotal y se cuenta en ingredientesSinCosto',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA Y', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [
+        { nombre: 'HARINA DE TRIGO', cantidad: 1, udm: 'KG' }, // costo=10, sí existe
+        { nombre: 'INGREDIENTE FANTASMA', cantidad: 1, udm: 'KG' }, // no existe en MATRIZ
+      ],
+    }, token);
+    const costeo = entorno.invocar('obtenerCostoRecetaApp', 'SALSA Y', token);
+    return {
+      datos: '1 ingrediente con costo conocido (=10) + 1 ingrediente inexistente en MATRIZ',
+      esperado: 'costoTotal=10 (solo el ingrediente conocido), ingredientesSinCosto=1, totalIngredientes=2',
+      obtenido: `costoTotal=${costeo.costoTotal}, sinCosto=${costeo.ingredientesSinCosto}, total=${costeo.totalIngredientes}`,
+      pasa: costeo.costoTotal === 10 && costeo.ingredientesSinCosto === 1 && costeo.totalIngredientes === 2,
+    };
+  },
+});
