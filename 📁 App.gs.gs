@@ -2377,7 +2377,9 @@ function buscarProductoCatalogoApp(texto, token){
       minimo: Number(f[11]) || 0,
       maximo: Number(f[12]) || 0,
       precio: Number(f[17]) || 0,
-      proveedor: obtenerProveedorProducto_(f)
+      proveedor: obtenerProveedorProducto_(f),
+      convertir: String(f[18]||"").trim().toUpperCase() === "SI",
+      presentacion: Number(f[19]) || 0
     });
 
     if(resultados.length >= 15) break;

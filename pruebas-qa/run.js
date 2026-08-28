@@ -39,6 +39,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'notificaciones/notificaciones.test.js',
   'notificaciones/notificaciones-correo.test.js',
   'usuarios/usuarios.test.js',
+  'proveedores/proveedores.test.js',
   'reportes/reportes.test.js',
   'inteligencia/inteligencia.test.js',
   'fefo/fefo.test.js',

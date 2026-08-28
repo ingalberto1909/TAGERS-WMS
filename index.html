@@ -8280,9 +8280,310 @@ async function confirmarRecepcion(){
 
 }
 
+// ===============================
+// PROVEEDORES — informativo (no genera orden de compra).
+// Qué le compro a quién, en qué presentación/UDM, existencia y precio
+// actuales, y permite corregir precio o presentación/convertir desde ahí.
+// Para armar una OC sigue existiendo Centro de Reabastecimiento — esta
+// pantalla es para consultar y corregir catálogo, no para comprar.
+// ===============================
+
 function abrirProveedores(){
-  abrirVistaProximamente("btnProveedores", "Proveedores", tgIcon("fabrica",22),
-    "Aquí vas a administrar tu catálogo de proveedores.");
+
+  marcarActivo("btnProveedores");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("fabrica",20)} Proveedores</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Consulta qué le compras a cada proveedor y corrige precio o presentación — esto no genera ninguna orden de compra.</p>
+
+    <div class="cardProducto">
+      <label>¿Dónde compro este producto?</label>
+      <div style="position:relative;max-width:500px;margin:6px 0 0">
+        <input id="buscarDondeCompro" placeholder="Nombre o código del producto..." oninput="buscarDondeComproProducto()" autocomplete="off">
+      </div>
+      <div id="resultadosDondeCompro" style="margin-top:10px"></div>
+    </div>
+
+    <div class="cardProducto">
+      <label>Proveedores</label>
+      <div style="position:relative;max-width:500px;margin:6px 0 14px">
+        <input id="filtroListaProveedores" placeholder="Buscar proveedor..." oninput="filtrarListaProveedoresRenderizada()" autocomplete="off">
+      </div>
+      <div id="listaProveedores">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+        <div class="skeleton skeletonLinea" style="width:65%"></div>
+      </div>
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      window.listaProveedoresCompleta = lista || [];
+      dibujarListaProveedores(window.listaProveedoresCompleta);
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("listaProveedores").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerListaProveedoresApp(obtenerTokenSesion());
+
+}
+
+function filtrarListaProveedoresRenderizada(){
+  const texto = document.getElementById("filtroListaProveedores").value.trim().toLowerCase();
+  const lista = (window.listaProveedoresCompleta || []).filter(function(p){
+    return p.proveedor.toLowerCase().includes(texto);
+  });
+  dibujarListaProveedores(lista);
+}
+
+function dibujarListaProveedores(lista){
+
+  const cont = document.getElementById("listaProveedores");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("fabrica", "No hay proveedores capturados todavía");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Nombre</th><th style="text-align:right">Artículos</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(function(p){ return `
+          <tr style="cursor:pointer" onclick="abrirDetalleProveedor('${p.proveedor.replace(/'/g,"\\'")}')">
+            <td>${p.proveedor}</td>
+            <td style="text-align:right">${p.totalProductos}</td>
+            <td style="text-align:right;color:var(--guinda);display:flex;align-items:center;justify-content:flex-end;gap:4px">Ver productos ${tgIcon("chevronDerecha",13)}</td>
+          </tr>
+        `; }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+let temporizadorDondeCompro_;
+function buscarDondeComproProducto(){
+  clearTimeout(temporizadorDondeCompro_);
+  const texto = document.getElementById("buscarDondeCompro").value.trim();
+  const cont = document.getElementById("resultadosDondeCompro");
+  if(!texto){ cont.innerHTML = ""; return; }
+  temporizadorDondeCompro_ = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(dibujarResultadosDondeCompro)
+      .withFailureHandler(function(e){ cont.innerHTML = tgEmptyState("alertaTriangulo", e.message); })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+  }, 250);
+}
+
+function dibujarResultadosDondeCompro(lista){
+  const cont = document.getElementById("resultadosDondeCompro");
+  if(!cont) return;
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("buscar", "Sin coincidencias");
+    return;
+  }
+  cont.innerHTML = lista.map(function(p){
+    return `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:var(--bg)">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700">${p.producto}</div>
+            <div style="font-size:11.5px;color:var(--text-muted)">${p.codigo} · ${p.udm}${p.convertir && p.presentacion ? " · presentación: " + p.presentacion + " " + p.udm + "/pieza" : ""}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.3px">Proveedor</div>
+            <div style="font-weight:700;color:var(--guinda)">${p.proveedor}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:18px;margin-top:8px;font-size:12.5px">
+          <div>Existencia: <b>${p.existencia}</b> ${p.udm}</div>
+          <div>Precio: <b>$${Number(p.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}</b></div>
+        </div>
+        <span class="boton secundario" style="width:auto;padding:6px 12px;margin-top:8px;font-size:12px" onclick="abrirAjusteProductoProveedor('${p.codigo}','${String(p.proveedor).replace(/'/g,"\\'")}')">Ajustar precio / presentación</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function abrirDetalleProveedor(proveedor){
+
+  marcarActivo("btnProveedores");
+  window.proveedorActualDetalle = proveedor;
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirProveedores()">${tgIcon("chevronIzquierda",15)} Proveedores</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("fabrica",18)} ${proveedor}</h2>
+    </div>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-4px">Productos que le compras a este proveedor — información de catálogo, no una orden de compra.</p>
+
+    <div class="cardProducto">
+      <div id="productosDetalleProveedor">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+      </div>
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarProductosDetalleProveedor)
+    .withFailureHandler(function(e){
+      document.getElementById("productosDetalleProveedor").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerProductosProveedorInfoApp(proveedor, obtenerTokenSesion());
+
+}
+
+function dibujarProductosDetalleProveedor(lista){
+
+  const cont = document.getElementById("productosDetalleProveedor");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("paquete", "Este proveedor no tiene productos capturados en el catálogo");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Producto</th><th style="text-align:right">Presentación</th><th>UDM</th><th style="text-align:right">Existencia</th><th style="text-align:right">Precio</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(function(p){ return `
+          <tr>
+            <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span></td>
+            <td style="text-align:right">${p.convertir && p.presentacion ? p.presentacion : "—"}</td>
+            <td>${p.udm}</td>
+            <td style="text-align:right">${p.existencia}</td>
+            <td style="text-align:right;font-weight:700">$${Number(p.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+            <td style="text-align:right"><span class="boton secundario" style="width:auto;padding:6px 10px;margin:0;font-size:12px" onclick="abrirAjusteProductoProveedor('${p.codigo}','${String(window.proveedorActualDetalle).replace(/'/g,"\\'")}')">Ajustar</span></td>
+          </tr>
+        `; }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function abrirAjusteProductoProveedor(codigo, proveedor){
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirDetalleProveedor('${proveedor.replace(/'/g,"\\'")}')">${tgIcon("chevronIzquierda",15)} ${proveedor}</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("editar",18)} Ajustar producto</h2>
+    </div>
+
+    <div class="cardProducto" style="max-width:520px" id="cardAjusteProductoProveedor">
+      <div class="spinnerCentro"><div class="spinner"></div></div>
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(function(lista){
+      const datos = (lista || []).find(function(p){ return p.codigo === codigo; });
+      if(!datos){
+        document.getElementById("cardAjusteProductoProveedor").innerHTML = tgEmptyState("alertaTriangulo", "No se encontró el producto.");
+        return;
+      }
+      dibujarFormularioAjusteProducto(datos, proveedor);
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("cardAjusteProductoProveedor").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerProductosProveedorInfoApp(proveedor, obtenerTokenSesion());
+
+}
+
+function dibujarFormularioAjusteProducto(datos, proveedor){
+
+  window.ajusteProductoCodigo = datos.codigo;
+  window.ajusteProductoProveedor = proveedor;
+
+  document.getElementById("cardAjusteProductoProveedor").innerHTML = `
+    <h3 style="margin:0 0 2px">${datos.producto}</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">${datos.codigo} · Existencia actual: <b>${datos.existencia} ${datos.udm}</b></p>
+
+    <label>Precio actual: <b>$${Number(datos.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}</b> por ${datos.udm} — nuevo precio por ${datos.udm} (deja en blanco para no cambiarlo)</label>
+    <input id="ajusteFormPrecio" type="number" min="0" step="0.01" placeholder="Ej. 45.50">
+    <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
+      Este precio siempre debe ser por <b>1 ${datos.udm}</b>, no por caja/paquete completo — es lo que usa el sistema para valorizar tu inventario. Si capturaste, por ejemplo, $850 pensando en una caja de 18 ${datos.udm}, el precio correcto por ${datos.udm} es 850 ÷ 18 ≈ $47.22 — corrígelo aquí directamente.
+    </p>
+
+    <div class="gridFormulario" style="margin-top:10px">
+      <div class="campo">
+        <label>UDM (no editable aquí)</label>
+        <input value="${datos.udm}" disabled>
+      </div>
+      <div class="campo">
+        <label>Presentación — ${datos.udm} por pieza/caja comprada (informativo)</label>
+        <input id="ajusteFormPresentacion" type="number" min="0" step="0.001" value="${datos.presentacion || ''}" placeholder="Ej. 18">
+      </div>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer">
+      <input type="checkbox" id="ajusteFormConvertir" ${datos.convertir ? "checked" : ""} style="width:auto;margin:0">
+      Se compra en presentaciones (cajas/paquetes), no suelto
+    </label>
+    <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
+      Esto NO cambia el precio guardado — solo alimenta el "precio por presentación" que se muestra al recibir una orden de compra. Para corregir un precio inflado, ajusta el campo de Precio de arriba.
+    </p>
+
+    <div id="mensajeAjusteProducto" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirDetalleProveedor('${proveedor.replace(/'/g,"\\'")}')">Cancelar</div>
+      <div class="boton" id="btnGuardarAjusteProducto" onclick="guardarAjusteProductoProveedor()">💾 Guardar</div>
+    </div>
+  `;
+
+}
+
+function guardarAjusteProductoProveedor(){
+
+  const precioTexto = document.getElementById("ajusteFormPrecio").value.trim();
+  const presentacionTexto = document.getElementById("ajusteFormPresentacion").value.trim();
+  const convertir = document.getElementById("ajusteFormConvertir").checked;
+
+  const datos = {
+    precioNuevo: precioTexto === "" ? undefined : Number(precioTexto),
+    presentacionNueva: presentacionTexto === "" ? 0 : Number(presentacionTexto),
+    convertirNuevo: convertir
+  };
+
+  activarCargaBoton("btnGuardarAjusteProducto", true);
+
+  google.script.run
+    .withSuccessHandler(function(){
+      activarCargaBoton("btnGuardarAjusteProducto", false);
+      alert("✓ Producto actualizado correctamente");
+      abrirDetalleProveedor(window.ajusteProductoProveedor);
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnGuardarAjusteProducto", false);
+      mostrarMensajeTemporal("mensajeAjusteProducto", "⚠️ " + e.message, "error");
+    })
+    .ajustarProductoProveedorApp(window.ajusteProductoCodigo, datos, obtenerTokenSesion());
+
 }
 
 // --- Inventario Mensual ---
