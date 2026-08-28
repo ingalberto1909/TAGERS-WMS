@@ -2657,7 +2657,7 @@ const ICONOS_MENU = {
   btnAnalisisCompras:"buscar", btnProveedores:"fabrica", btnGenerarInventarioMensual:"documento",
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
   btnHistorialInventarioMensual:"reloj", btnDashboardInventarioMensual:"tendenciaSube",
-  btnDashboard:"tendenciaSube", btnRecetas:"receta",
+  btnDashboard:"tendenciaSube", btnRecetas:"receta", btnUsuarios:"usuarios",
   btnRegistrarProduccion:"fabrica", btnLotesProduccion:"paquete"
 };
 
@@ -5884,6 +5884,239 @@ function guardarReceta(){
       .withSuccessHandler(handlerExito)
       .withFailureHandler(handlerError)
       .crearRecetaApp(datos, obtenerTokenSesion());
+  }
+
+}
+
+// ===============================
+// USUARIOS (solo ADMIN) — alta, edición de rol, baja/reactivación.
+// El backend (Usuarios.gs) exige ADMIN en cada función — este frontend
+// nunca es la única protección, solo la conveniencia de no editar la hoja
+// a mano.
+// ===============================
+
+function abrirUsuarios(){
+
+  marcarActivo("btnUsuarios");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("usuarios",20)} Usuarios</h2>
+      <div class="boton" style="width:auto;padding:10px 16px;margin:0" onclick="abrirFormularioUsuario()">${tgIcon("mas",16)} Nuevo Usuario</div>
+    </div>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-4px">Solo visible y editable por administradores.</p>
+
+    <div class="cardProducto">
+      <div id="listaUsuarios">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+        <div class="skeleton skeletonLinea" style="width:65%"></div>
+      </div>
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarListaUsuarios)
+    .withFailureHandler(function(e){
+      document.getElementById("listaUsuarios").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerUsuariosApp(obtenerTokenSesion());
+
+}
+
+function dibujarListaUsuarios(lista){
+
+  const cont = document.getElementById("listaUsuarios");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("usuarios", "No hay usuarios registrados todavía");
+    return;
+  }
+
+  const correoPropio = String((USUARIO_ACTUAL && USUARIO_ACTUAL.correo) || "").toLowerCase();
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Correo</th><th>Nombre</th><th>Rol</th><th>Área / Sucursal</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(u => {
+          const esUno = String(u.correo).toLowerCase() === correoPropio;
+          const activo = String(u.estado).toUpperCase() === "ACTIVO";
+          return `
+            <tr>
+              <td>${u.correo}${esUno ? ' <span style="font-size:10.5px;color:var(--text-muted)">(tú)</span>' : ""}</td>
+              <td>${u.nombre}</td>
+              <td>${u.rol}</td>
+              <td>${[u.area, u.sucursal].filter(Boolean).join(" — ") || "—"}</td>
+              <td><span class="badgeEstado ${u.estado}">${u.estado}</span></td>
+              <td style="text-align:right;white-space:nowrap">
+                <span class="boton secundario" style="width:auto;padding:6px 10px;margin:0 4px 0 0;font-size:12px" onclick="abrirFormularioUsuario('${u.correo.replace(/'/g,"\\'")}')">Editar</span>
+                ${esUno ? "" : `<span class="boton ${activo ? "danger" : "success"}" style="width:auto;padding:6px 10px;margin:0;font-size:12px" onclick="cambiarEstadoUsuarioAccion('${u.correo.replace(/'/g,"\\'")}', '${u.estado}')">${activo ? "Desactivar" : "Reactivar"}</span>`}
+              </td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function cambiarEstadoUsuarioAccion(correo, estadoActual){
+
+  const activo = String(estadoActual).toUpperCase() === "ACTIVO";
+  const nuevoEstado = activo ? "INACTIVO" : "ACTIVO";
+
+  tgConfirmar(
+    activo
+      ? `¿Desactivar a ${correo}? No podrá iniciar sesión hasta que lo reactives.`
+      : `¿Reactivar a ${correo}? Podrá volver a iniciar sesión de inmediato.`,
+    { titulo: activo ? "Desactivar usuario" : "Reactivar usuario", textoConfirmar: activo ? "Desactivar" : "Reactivar", peligroso: activo }
+  ).then(function(confirmado){
+    if(!confirmado) return;
+    google.script.run
+      .withSuccessHandler(function(){ abrirUsuarios(); })
+      .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+      .cambiarEstadoUsuarioApp(correo, nuevoEstado, obtenerTokenSesion());
+  });
+
+}
+
+function abrirFormularioUsuario(correoExistente){
+
+  window.usuarioFormEsEdicion = !!correoExistente;
+  window.usuarioFormCorreoOriginal = correoExistente || null;
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirUsuarios()">${tgIcon("chevronIzquierda",15)} Usuarios</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${correoExistente ? tgIcon("editar",18) + " Editar Usuario" : tgIcon("mas",18) + " Nuevo Usuario"}</h2>
+    </div>
+
+    <div class="cardProducto" style="max-width:520px">
+
+      <label>Correo</label>
+      <input id="usuarioFormCorreo" placeholder="nombre@tagers.com" ${correoExistente ? "disabled" : ""}>
+
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Nombre</label>
+          <input id="usuarioFormNombre" placeholder="Nombre completo">
+        </div>
+        <div class="campo">
+          <label>Rol</label>
+          <select id="usuarioFormRol">
+            <option value="ADMIN">Admin</option>
+            <option value="SUPERVISOR">Supervisor</option>
+            <option value="OPERADOR">Operador</option>
+            <option value="CONSULTA">Consulta</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Área (opcional)</label>
+          <input id="usuarioFormArea" placeholder="Ej. Cocina, Almacén...">
+        </div>
+        <div class="campo">
+          <label>Sucursal (opcional)</label>
+          <input id="usuarioFormSucursal" placeholder="Ej. S01, TODAS...">
+        </div>
+      </div>
+
+      <label style="margin-top:6px">${correoExistente ? "Nueva contraseña (dejar en blanco para no cambiarla)" : "Contraseña"}</label>
+      <input id="usuarioFormPassword" type="password" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+
+      <div id="mensajeFormUsuario" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirUsuarios()">Cancelar</div>
+        <div class="boton" id="btnGuardarUsuario" onclick="guardarUsuario()">💾 Guardar</div>
+      </div>
+
+    </div>
+
+    </div>
+  `;
+
+  if(correoExistente){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        const datos = lista.find(function(u){ return u.correo === correoExistente; });
+        if(!datos) return;
+        document.getElementById("usuarioFormCorreo").value = datos.correo;
+        document.getElementById("usuarioFormNombre").value = datos.nombre;
+        document.getElementById("usuarioFormRol").value = datos.rol;
+        document.getElementById("usuarioFormArea").value = datos.area || "";
+        document.getElementById("usuarioFormSucursal").value = datos.sucursal || "";
+      })
+      .withFailureHandler(function(e){
+        mostrarMensajeTemporal("mensajeFormUsuario", "⚠️ " + e.message, "error");
+      })
+      .obtenerUsuariosApp(obtenerTokenSesion());
+  }
+
+}
+
+function guardarUsuario(){
+
+  const datos = {
+    correo: document.getElementById("usuarioFormCorreo").value.trim(),
+    nombre: document.getElementById("usuarioFormNombre").value.trim(),
+    rol: document.getElementById("usuarioFormRol").value,
+    area: document.getElementById("usuarioFormArea").value.trim(),
+    sucursal: document.getElementById("usuarioFormSucursal").value.trim(),
+    password: document.getElementById("usuarioFormPassword").value,
+  };
+
+  if(!window.usuarioFormEsEdicion && !datos.correo){
+    mostrarMensajeTemporal("mensajeFormUsuario", "Captura el correo", "error");
+    return;
+  }
+  if(!datos.nombre){
+    mostrarMensajeTemporal("mensajeFormUsuario", "Captura el nombre", "error");
+    return;
+  }
+  if(!window.usuarioFormEsEdicion && datos.password.length < 6){
+    mostrarMensajeTemporal("mensajeFormUsuario", "La contraseña debe tener al menos 6 caracteres", "error");
+    return;
+  }
+
+  const handlerExito = function(){
+    activarCargaBoton("btnGuardarUsuario", false);
+    alert("✓ Usuario " + (window.usuarioFormEsEdicion ? "actualizado" : "creado") + " correctamente");
+    abrirUsuarios();
+  };
+
+  const handlerError = function(e){
+    activarCargaBoton("btnGuardarUsuario", false);
+    mostrarMensajeTemporal("mensajeFormUsuario", "⚠️ " + e.message, "error");
+  };
+
+  activarCargaBoton("btnGuardarUsuario", true);
+
+  if(window.usuarioFormEsEdicion){
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .editarUsuarioApp(window.usuarioFormCorreoOriginal, datos, obtenerTokenSesion());
+  } else {
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .crearUsuarioApp(datos, obtenerTokenSesion());
   }
 
 }
@@ -12647,6 +12880,15 @@ function aplicarFiltros(){
 
 <button class="menuLateralBtn" id="btnRecetas" onclick="abrirRecetas()" title="Recetas">
 <span class="icono">📖</span><span class="textoMenu">Recetas</span>
+</button>
+
+<!-- Solo ADMIN (PERMISOS_ROL.ADMIN = null = ve todo); no se lista en el
+     arreglo de SUPERVISOR/OPERADOR/CONSULTA a propósito, así que
+     aplicarPermisosPorRol() lo oculta solo para ellos. El backend también
+     exige ADMIN en cada función (requerirAccesoAdminApp_) — el botón oculto
+     nunca es la única protección. -->
+<button class="menuLateralBtn" id="btnUsuarios" onclick="abrirUsuarios()" title="Usuarios">
+<span class="icono">👤</span><span class="textoMenu">Usuarios</span>
 </button>
 
 <div class="grupoMenu">

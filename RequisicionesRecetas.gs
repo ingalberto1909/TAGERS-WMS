@@ -195,8 +195,18 @@ function buscarProductoEnMatrizPorNombre_(nombre){
 }
 
 function obtenerCalculoIngredientesRequisicionApp(folio, token){
-
   requerirSesionActivaApp_(token);
+  return obtenerCalculoIngredientesRequisicionApp_(folio, token);
+}
+
+// Versión interna sin sesión — la usa construirHtmlRequisicionReceta_ (PDF),
+// que corre DESPUÉS de que confirmarEntregaRequisicionRecetaApp/
+// obtenerPDFRequisicionRecetaApp ya validaron acceso de Almacén; llamarla sin
+// token (como hacía antes la función pública, causando el error "Tu sesión
+// expiró" en cualquier PDF de receta) se evita del todo. token sigue siendo
+// opcional aquí a propósito, igual que en obtenerDetalleRequisicionRecetaApp_:
+// si viene (llamada pública), se preserva el filtro por área.
+function obtenerCalculoIngredientesRequisicionApp_(folio, token){
 
   const detalleReceta = obtenerDetalleRequisicionRecetaApp_(folio, token);
 
@@ -322,7 +332,7 @@ function confirmarEntregaRequisicionRecetaApp(folio, entregas, token){
 
 function construirHtmlRequisicionReceta_(folio){
 
-  const datos = obtenerCalculoIngredientesRequisicionApp(folio);
+  const datos = obtenerCalculoIngredientesRequisicionApp_(folio);
 
   const filasRecetas = datos.recetas.map(r => `
     <tr>
