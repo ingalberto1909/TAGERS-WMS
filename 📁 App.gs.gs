@@ -976,23 +976,65 @@ function obtenerResumenDashboard(){
   };
 }
 
-function buscarProductoApp(codigo, token){
-  requerirSesionActivaApp_(token);
+// Escáner de códigos de barras (Fase 5): TODAS las coincidencias exactas
+// de un código en MATRIZ — normalmente 0 o 1, pero si por un error de
+// captura dos productos quedaron con el mismo Código, esta es la única
+// función de todo el proyecto que se entera y lo reporta (buscarFilaMatrizPorCodigo_
+// y buscarProductoApp, más abajo, solo devuelven/usan la primera coincidencia,
+// ocultando el duplicado en silencio). No modifica MATRIZ ni decide nada —
+// solo informa, para que el escáner (o cualquier otro llamador) decida qué
+// hacer con más de una coincidencia.
+function buscarProductosEnMatrizPorCodigoExacto_(codigo){
+
+  const buscado = String(codigo||"").trim();
+  if(!buscado) return [];
+
   const datos = obtenerFilasHojaCacheadas_("MATRIZ");
+  const coincidencias = [];
 
   for(let i=1;i<datos.length;i++){
-    if(String(datos[i][4]) == String(codigo)){
-      return {
+    if(String(datos[i][4]||"").trim() === buscado){
+      coincidencias.push({
+        codigo: datos[i][4],
         producto: datos[i][0],
         udm: datos[i][1],
         ubicacion: datos[i][9],
-        existencia: datos[i][10],
+        existencia: Number(datos[i][10]) || 0,
+        minimo: Number(datos[i][11]) || 0,
+        maximo: Number(datos[i][12]) || 0,
         presentacion: datos[i][19]
-      };
+      });
     }
   }
 
-  return null;
+  return coincidencias;
+
+}
+
+/**
+ * Escáner de códigos de barras (Fase 5): versión pública de
+ * buscarProductosEnMatrizPorCodigoExacto_ — el punto de entrada ÚNICO que
+ * usa el servicio de escaneo reutilizable (ver TgScanner en index.html)
+ * para resolver un código recién escaneado, sin duplicar esta búsqueda en
+ * cada pantalla. Regresa un arreglo: vacío si no hay coincidencias, con
+ * más de un elemento si el código está duplicado — nunca elige uno al
+ * azar, eso lo decide el usuario en la interfaz.
+ */
+function buscarProductosPorCodigoApp(codigo, token){
+  requerirSesionActivaApp_(token);
+  return buscarProductosEnMatrizPorCodigoExacto_(codigo);
+}
+
+function buscarProductoApp(codigo, token){
+  requerirSesionActivaApp_(token);
+  const coincidencias = buscarProductosEnMatrizPorCodigoExacto_(codigo);
+  if(!coincidencias.length) return null;
+  // Mismo comportamiento de siempre: la primera coincidencia. Los
+  // llamadores existentes (Entradas/Salidas manuales, etc.) no cambian —
+  // el manejo explícito de duplicados vive en buscarProductosPorCodigoApp,
+  // usado por el escáner.
+  const c = coincidencias[0];
+  return { producto: c.producto, udm: c.udm, ubicacion: c.ubicacion, existencia: c.existencia, presentacion: c.presentacion };
 }
 
 /**

@@ -1713,6 +1713,192 @@ color:var(--guinda);
 margin-top:0;
 }
 
+/* ESCÁNER DE CÓDIGOS DE BARRAS — pantalla completa real, no una ventanita
+   perdida dentro de la página. Solo #modalEscaner lleva la segunda clase
+   (.escanerPantallaCompleta): #modalConfirmar sigue usando .modalEscaner
+   tal cual (fondo translúcido, caja centrada chica) para el reemplazo de
+   confirm() nativo — estas reglas nunca lo tocan. */
+.modalEscaner.escanerPantallaCompleta{
+background:#000;
+align-items:stretch;
+justify-content:stretch;
+}
+
+.escanerPantalla{
+display:flex;
+flex-direction:column;
+width:100%;
+height:100%;
+}
+
+.escanerHeader{
+display:flex;
+align-items:center;
+gap:12px;
+padding:14px 16px;
+padding-top:calc(14px + env(safe-area-inset-top));
+background:rgba(0,0,0,.55);
+position:relative;
+z-index:2;
+flex-shrink:0;
+}
+
+.escanerHeader h3{
+margin:0;
+font-size:15.5px;
+font-weight:700;
+color:#fff;
+flex:1;
+}
+
+.escanerBotonCerrar{
+background:rgba(255,255,255,.15);
+border:none;
+color:#fff;
+width:40px;
+height:40px;
+min-width:40px;
+border-radius:50%;
+display:flex;
+align-items:center;
+justify-content:center;
+cursor:pointer;
+font-size:20px;
+flex-shrink:0;
+}
+
+.escanerVisor{
+flex:1;
+position:relative;
+overflow:hidden;
+background:#000;
+display:flex;
+align-items:center;
+justify-content:center;
+}
+
+.escanerVisor #lectorQr{
+width:100%;
+height:100%;
+}
+
+.escanerVisor #lectorQr video{
+width:100% !important;
+height:100% !important;
+object-fit:cover;
+}
+
+.escanerMarco{
+position:absolute;
+inset:0;
+display:flex;
+align-items:center;
+justify-content:center;
+pointer-events:none;
+z-index:1;
+}
+
+.escanerMarcoCaja{
+width:min(74vw,300px);
+aspect-ratio:1;
+position:relative;
+box-shadow:0 0 0 2000px rgba(0,0,0,.45);
+border-radius:20px;
+transition:box-shadow .2s ease;
+}
+
+.escanerMarcoCaja::before,
+.escanerMarcoCaja::after,
+.escanerMarcoCaja span::before,
+.escanerMarcoCaja span::after{
+content:"";
+position:absolute;
+width:34px;
+height:34px;
+border-color:#fff;
+border-style:solid;
+transition:border-color .2s ease;
+}
+
+.escanerMarcoCaja::before{ top:0; left:0; border-width:5px 0 0 5px; border-top-left-radius:16px; }
+.escanerMarcoCaja::after{ top:0; right:0; border-width:5px 5px 0 0; border-top-right-radius:16px; }
+.escanerMarcoCaja span::before{ bottom:0; left:0; border-width:0 0 5px 5px; border-bottom-left-radius:16px; }
+.escanerMarcoCaja span::after{ bottom:0; right:0; border-width:0 5px 5px 0; border-bottom-right-radius:16px; }
+
+.escanerMarcoCaja.detectado::before,
+.escanerMarcoCaja.detectado::after,
+.escanerMarcoCaja.detectado span::before,
+.escanerMarcoCaja.detectado span::after{
+border-color:var(--oliva);
+}
+
+.escanerMensajeOverlay{
+position:absolute;
+inset:0;
+z-index:2;
+display:none;
+align-items:center;
+justify-content:center;
+padding:24px;
+background:rgba(10,10,10,.94);
+overflow-y:auto;
+}
+
+.escanerErrorPanel{
+width:100%;
+max-width:360px;
+text-align:center;
+color:#fff;
+}
+
+.escanerErrorPanel input{
+background:rgba(255,255,255,.08);
+border:1px solid rgba(255,255,255,.25);
+color:#fff;
+}
+
+.escanerErrorPanel input::placeholder{
+color:rgba(255,255,255,.5);
+}
+
+.escanerFooter{
+padding:16px 18px calc(18px + env(safe-area-inset-bottom));
+background:rgba(0,0,0,.55);
+flex-shrink:0;
+display:flex;
+flex-direction:column;
+gap:10px;
+}
+
+.escanerInstruccion{
+margin:0;
+text-align:center;
+font-size:13px;
+color:rgba(255,255,255,.8);
+}
+
+.escanerEstado{
+min-height:18px;
+text-align:center;
+font-size:13.5px;
+font-weight:700;
+color:rgba(255,255,255,.9);
+}
+
+.escanerEstado.ok{ color:#8fd19e; }
+.escanerEstado.error{ color:#f2a0a0; }
+
+.escanerBotonesFooter{
+display:flex;
+gap:10px;
+}
+
+.escanerBotonesFooter .boton{
+margin:0;
+flex:1;
+min-height:46px;
+}
+
 /* MODAL CONFIRMAR — reemplaza confirm() nativo, mismo look que los demás modales */
 
 .modalConfirmarCaja{
@@ -6727,9 +6913,10 @@ function cerrarSidebarMovilSiAplica(){
 // TAGERS WMS 2.0 — Fase 5: Mobile operativo (acciones de piso)
 // El FAB solo abre/cierra una lista de atajos — cada atajo llama
 // exactamente a la misma función que ya usa el menú de escritorio para
-// esa pantalla (abrirEntradas, abrirSalidas, abrirCapturarConteo) o al
-// mismo flujo de escaneo (abrirEscaner) y búsqueda (buscadorGlobalHeader)
-// que ya existen. Ninguna lógica de negocio nueva.
+// esa pantalla (abrirEntradas, abrirSalidas, abrirCapturarConteo), al
+// servicio de escáner con identificación de producto (abrirEscanerProducto)
+// o a la búsqueda (buscadorGlobalHeader) que ya existen. Ninguna lógica
+// de negocio nueva.
 // ===============================
 
 function toggleFabAccionesMoviles(){
@@ -6753,7 +6940,7 @@ function ejecutarAccionRapidaMovil_(tipo){
       setTimeout(() => input.focus(), 80);
     }
   } else if(tipo === "escanear"){
-    abrirEscaner("entradaEscaneoRapidoMovil");
+    abrirEscanerProducto(function(producto){ abrirDetalleProducto(producto.codigo); }, { titulo: "Escanear producto" });
   } else if(tipo === "recibir"){
     abrirEntradas();
   } else if(tipo === "surtir"){
@@ -6763,21 +6950,6 @@ function ejecutarAccionRapidaMovil_(tipo){
   }
 
 }
-
-// El escaneo rápido del FAB no llena un formulario — abre directamente
-// la ficha del producto escaneado (mismo modal #modalDetalle que ya usa
-// el resto del sistema), porque desde el FAB no hay ningún formulario
-// abierto todavía al momento de escanear.
-document.addEventListener("DOMContentLoaded", function(){
-  const entradaRapida = document.getElementById("entradaEscaneoRapidoMovil");
-  if(entradaRapida){
-    entradaRapida.addEventListener("change", function(){
-      const codigo = this.value;
-      this.value = "";
-      if(codigo) abrirDetalleProducto(codigo);
-    });
-  }
-});
 
 // Fija el sidebar expandido en escritorio (independiente del hover), se recuerda entre sesiones.
 function toggleAnclarSidebar(){
@@ -10601,82 +10773,362 @@ function cerrarModalDetalle(){
 // ESCANER DE CAMARA (QR / BARRAS)
 // ===============================
 
-async function abrirEscaner(inputId){
+// ===============================
+// ESCÁNER DE CÓDIGOS DE BARRAS — servicio reutilizable (Fase 5)
+// ===============================
+// Un solo motor de cámara (Html5Qrcode, ya usado por el proyecto — cubre
+// EAN-13/EAN-8/UPC/Code128/Code39/QR sin configuración extra, así que no
+// hace falta ninguna librería adicional) compartido por TODAS las
+// pantallas. Dos formas de usarlo:
+//
+//   abrirEscaner(inputId)               — modo simple, igual que antes:
+//                                          llena un <input> y dispara "change".
+//   abrirEscanerProducto(onResuelto, opciones) — modo producto: busca el
+//                                          código en MATRIZ (buscarProductosPorCodigoApp),
+//                                          resuelve "no encontrado"/"duplicado" en
+//                                          la propia pantalla del escáner, y solo
+//                                          entrega un producto ya identificado.
+//                                          opciones.continuo=true no cierra el
+//                                          escáner al resolver — le pasa a
+//                                          onResuelto(producto, reanudar) una
+//                                          función para volver a escanear sin
+//                                          reabrir la cámara (Conteos).
+//
+// Ningún llamador debe repetir la lógica de permisos/errores de cámara,
+// ni la búsqueda de producto — todo vive aquí una sola vez.
 
-  window.escanerDestino = inputId;
+window.tgEscanerActivo = false;
+window.tgEscanerCallbackActual = null;
+window.tgEscanerUltimoCallback = null;
 
+function vibrarEscaner_(patron){
+  try{ if(navigator.vibrate) navigator.vibrate(patron || 80); }catch(e){ /* no crítico */ }
+}
+
+function reproducirBeepEscaner_(){
+  try{
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+    osc.onended = function(){ ctx.close(); };
+  }catch(e){ /* sin audio, no es crítico */ }
+}
+
+function abrirModalEscaner_(titulo){
+  const tituloEl = document.getElementById("escanerTitulo");
+  if(tituloEl) tituloEl.textContent = titulo || "Escanear código";
+  ocultarMensajeEscaner_();
+  const estado = document.getElementById("escanerEstado");
+  if(estado){ estado.textContent = ""; estado.className = "escanerEstado"; }
   document.getElementById("modalEscaner").classList.add("mostrar");
+}
+
+function mostrarMensajeEscaner_(html){
+  const overlay = document.getElementById("escanerMensajeOverlay");
+  const marco = document.getElementById("escanerMarco");
+  if(overlay){ overlay.innerHTML = html; overlay.style.display = "flex"; }
+  if(marco) marco.style.display = "none";
+}
+
+function ocultarMensajeEscaner_(){
+  const overlay = document.getElementById("escanerMensajeOverlay");
+  const marco = document.getElementById("escanerMarco");
+  if(overlay){ overlay.style.display = "none"; overlay.innerHTML = ""; }
+  if(marco) marco.style.display = "flex";
+}
+
+function construirPanelErrorEscaner_(titulo, detalle, conReintentar){
+  return `
+    <div class="escanerErrorPanel">
+      <div style="font-size:40px;margin-bottom:10px">⚠️</div>
+      <h3 style="color:#fff;margin:0 0 8px;font-size:16px">${titulo}</h3>
+      <p style="color:rgba(255,255,255,.75);font-size:13.5px;margin:0 0 18px">${detalle}</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${conReintentar ? `<div class="boton" onclick="reintentarEscaner_()">Intentar de nuevo</div>` : ""}
+        <div class="boton secundario" onclick="abrirEntradaManualEscaner_()">⌨️ Introducir código manualmente</div>
+        <div class="boton danger" onclick="cerrarEscaner()">Cancelar</div>
+      </div>
+    </div>
+  `;
+}
+
+function manejarErrorCamaraEscaner_(e){
+
+  const texto = String((e && (e.name || e.message || e)) || "").toLowerCase();
+  let titulo = "No pudimos abrir la cámara.";
+  let detalle = "Intenta de nuevo o introduce el código manualmente.";
+
+  if(texto.includes("notallowed") || texto.includes("permission") || texto.includes("denied")){
+    titulo = "No podemos acceder a la cámara.";
+    detalle = "Revisa los permisos de cámara de tu navegador para TAGERS WMS (ícono de candado en la barra de direcciones) y vuelve a intentar.";
+  } else if(texto.includes("notfound") || texto.includes("no cameras") || texto.includes("no se encontró")){
+    titulo = "No se encontró ninguna cámara en este dispositivo.";
+    detalle = "Introduce el código manualmente.";
+  } else if(texto.includes("notreadable") || texto.includes("track start") || texto.includes("busy") || texto.includes("ocupad")){
+    titulo = "La cámara está siendo usada por otra aplicación.";
+    detalle = "Cierra otras apps que usen la cámara (videollamadas, otra pestaña) e intenta de nuevo.";
+  } else if(texto.includes("overconstrained")){
+    titulo = "La cámara de este dispositivo no es compatible con este modo.";
+    detalle = "Introduce el código manualmente.";
+  }
+
+  const estado = document.getElementById("escanerEstado");
+  if(estado){ estado.textContent = "⚠️ Error de cámara"; estado.className = "escanerEstado error"; }
+
+  mostrarMensajeEscaner_(construirPanelErrorEscaner_(titulo, detalle, true));
+
+}
+
+function reintentarEscaner_(){
+  ocultarMensajeEscaner_();
+  iniciarMotorEscaner_(window.tgEscanerUltimoCallback);
+}
+
+function abrirEntradaManualEscaner_(){
+  mostrarMensajeEscaner_(`
+    <div class="escanerErrorPanel">
+      <h3 style="color:#fff;margin:0 0 14px;font-size:16px">Introducir código</h3>
+      <input id="escanerCodigoManual" placeholder="Código del producto" style="margin:0 0 14px;text-align:center;font-size:16px" onkeydown="if(event.key==='Enter') confirmarEntradaManualEscaner_()">
+      <div class="escanerBotonesFooter">
+        <div class="boton secundario" onclick="ocultarMensajeEscaner_()">Cancelar</div>
+        <div class="boton" onclick="confirmarEntradaManualEscaner_()">Buscar</div>
+      </div>
+    </div>
+  `);
+  setTimeout(function(){
+    const el = document.getElementById("escanerCodigoManual");
+    if(el) el.focus();
+  }, 50);
+}
+
+function confirmarEntradaManualEscaner_(){
+  const el = document.getElementById("escanerCodigoManual");
+  const codigo = el ? el.value.trim() : "";
+  if(!codigo) return;
+  const callback = window.tgEscanerUltimoCallback;
+  ocultarMensajeEscaner_();
+  if(callback) callback(codigo);
+}
+
+function detenerMotorEscaner_(){
+  window.tgEscanerCallbackActual = null;
+  if(window.html5QrCode && window.tgEscanerActivo){
+    window.tgEscanerActivo = false;
+    return window.html5QrCode.stop().catch(function(){});
+  }
+  window.tgEscanerActivo = false;
+  return Promise.resolve();
+}
+
+/**
+ * Motor único de cámara. Si ya está corriendo, solo re-arma el callback
+ * para el siguiente código detectado (sin reiniciar el stream — así el
+ * modo continuo de Conteos no parpadea entre un escaneo y el siguiente).
+ * onDetectado(codigoTexto) se llama UNA sola vez por código (se
+ * desarma automáticamente hasta que alguien vuelva a llamar esta función).
+ */
+async function iniciarMotorEscaner_(onDetectado){
+
+  window.tgEscanerCallbackActual = onDetectado;
+  window.tgEscanerUltimoCallback = onDetectado;
+  ocultarMensajeEscaner_();
+
+  const estado = document.getElementById("escanerEstado");
+  if(estado){ estado.textContent = ""; estado.className = "escanerEstado"; }
+
+  if(window.tgEscanerActivo){
+    return; // cámara ya corriendo — solo se re-armó el callback arriba
+  }
+
+  if(typeof Html5Qrcode === "undefined"){
+    mostrarMensajeEscaner_(construirPanelErrorEscaner_(
+      "Tu navegador no es compatible con el escáner de cámara.",
+      "Actualiza el navegador o introduce el código manualmente.", false
+    ));
+    return;
+  }
+
+  if(!navigator.mediaDevices || !window.isSecureContext){
+    mostrarMensajeEscaner_(construirPanelErrorEscaner_(
+      "No se puede acceder a la cámara desde esta conexión.",
+      "TAGERS WMS necesita abrirse con https:// para usar la cámara.", false
+    ));
+    return;
+  }
 
   if(!window.html5QrCode){
-    window.html5QrCode = new Html5Qrcode("lectorQr");
+    window.html5QrCode = new Html5Qrcode("lectorQr", false);
   }
 
   try{
 
-    const cameras = await Html5Qrcode.getCameras();
-
-    if(cameras.length===0){
-      throw "No se encontró ninguna cámara.";
-    }
-
-    let camara = cameras.find(c =>
-      c.label.toLowerCase().includes("back")
-    );
-
-    if(!camara){
-      camara = cameras[cameras.length-1];
-    }
-
     await window.html5QrCode.start(
 
-      camara.id,
+      { facingMode: "environment" },
 
-      {
-        fps:10,
-        qrbox:{width:250,height:250}
-      },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
 
       function(decodedText){
 
-        const campo=document.getElementById(window.escanerDestino);
+        const callback = window.tgEscanerCallbackActual;
+        if(!callback) return; // ya se procesó este mismo código, se ignoran repeticiones del frame
+        window.tgEscanerCallbackActual = null;
 
-        if(campo){
-          campo.value=decodedText;
-          campo.dispatchEvent(new Event("change"));
-        }
+        vibrarEscaner_(80);
+        reproducirBeepEscaner_();
 
-        cerrarEscaner();
+        const estadoEl = document.getElementById("escanerEstado");
+        if(estadoEl){ estadoEl.textContent = "✅ Código detectado: " + decodedText; estadoEl.className = "escanerEstado ok"; }
+
+        const marcoCaja = document.querySelector("#escanerMarco .escanerMarcoCaja");
+        if(marcoCaja) marcoCaja.classList.add("detectado");
+
+        setTimeout(function(){
+          if(marcoCaja) marcoCaja.classList.remove("detectado");
+          callback(decodedText);
+        }, 350);
 
       }
 
     );
 
+    window.tgEscanerActivo = true;
+
   }catch(e){
-
-    alert("No se pudo acceder a la cámara.\n\n"+e);
-
-    cerrarEscaner();
-
+    window.tgEscanerActivo = false;
+    manejarErrorCamaraEscaner_(e);
   }
 
 }
 
-function cerrarEscaner(){
+/** Modo simple (compatibilidad): llena un <input> y dispara "change" — exactamente como antes. */
+function abrirEscaner(inputId){
+  abrirModalEscaner_("Escanear código");
+  iniciarMotorEscaner_(function(codigo){
+    const campo = document.getElementById(inputId);
+    if(campo){
+      campo.value = codigo;
+      campo.dispatchEvent(new Event("change"));
+    }
+    cerrarEscaner();
+  });
+}
 
-  if(window.html5QrCode){
+function mostrarProductoNoEncontradoEscaner_(codigo, onReintentar){
+  window.tgEscanerCallbackActual = null; // no seguir aceptando más códigos hasta que el usuario decida
+  mostrarMensajeEscaner_(`
+    <div class="escanerErrorPanel">
+      <div style="font-size:40px;margin-bottom:10px">⚠️</div>
+      <h3 style="color:#fff;margin:0 0 6px;font-size:16px">Producto no encontrado</h3>
+      <p style="color:rgba(255,255,255,.7);font-size:12.5px;margin:0 0 2px">Código escaneado</p>
+      <p style="color:#fff;font-weight:700;font-size:16px;margin:0 0 18px">${codigo}</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="boton" onclick="ocultarMensajeEscaner_(); iniciarMotorEscaner_(window.tgEscanerUltimoCallback)">Intentar de nuevo</div>
+        <div class="boton secundario" onclick="abrirEntradaManualEscaner_()">Buscar manualmente</div>
+        <div class="boton danger" onclick="cerrarEscaner()">Cancelar</div>
+      </div>
+    </div>
+  `);
+}
 
-    window.html5QrCode.stop()
-    .then(function(){
-      document.getElementById("modalEscaner").classList.remove("mostrar");
-    })
-    .catch(function(){
-      document.getElementById("modalEscaner").classList.remove("mostrar");
-    });
+function mostrarCodigoDuplicadoEscaner_(coincidencias, onSeleccionar){
+  window.tgEscanerCallbackActual = null;
+  window.tgEscanerCoincidencias_ = coincidencias;
+  window.tgEscanerOnSeleccionar_ = onSeleccionar;
+  mostrarMensajeEscaner_(`
+    <div class="escanerErrorPanel" style="max-width:400px">
+      <div style="font-size:36px;margin-bottom:8px">⚠️</div>
+      <h3 style="color:#fff;margin:0 0 6px;font-size:16px">Código duplicado</h3>
+      <p style="color:rgba(255,255,255,.75);font-size:12.5px;margin:0 0 16px">Este código está asociado a varios productos. Selecciona el correcto:</p>
+      <div style="display:flex;flex-direction:column;gap:8px;text-align:left;max-height:44vh;overflow-y:auto">
+        ${coincidencias.map((p,i) => `
+          <div style="background:rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;cursor:pointer" onclick="seleccionarCoincidenciaEscaner_(${i})">
+            <div style="color:#fff;font-weight:700;font-size:14px">${p.producto}</div>
+            <div style="color:rgba(255,255,255,.6);font-size:11.5px;margin-top:2px">${p.codigo} — Existencia: ${p.existencia} ${p.udm||""} — ${p.ubicacion||"sin ubicación"}</div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="boton danger" style="margin-top:16px" onclick="cerrarEscaner()">Cancelar</div>
+    </div>
+  `);
+}
 
-  } else {
-    document.getElementById("modalEscaner").classList.remove("mostrar");
+function seleccionarCoincidenciaEscaner_(indice){
+  const producto = (window.tgEscanerCoincidencias_ || [])[indice];
+  const onSeleccionar = window.tgEscanerOnSeleccionar_;
+  if(producto && onSeleccionar) onSeleccionar(producto);
+}
+
+/**
+ * Modo producto: escanea → busca en MATRIZ (buscarProductosPorCodigoApp,
+ * la MISMA búsqueda para cualquier pantalla, ver 📁 App.gs.gs) → resuelve
+ * 0/1/varias coincidencias sin salir del escáner → entrega un producto ya
+ * identificado a onResuelto. opciones.titulo personaliza el encabezado;
+ * opciones.continuo mantiene la cámara abierta después de resolver (ver
+ * comentario del bloque de arriba) para escanear varios productos seguidos
+ * sin reabrir nada — Conteos lo usa así.
+ */
+function abrirEscanerProducto(onResuelto, opciones){
+
+  opciones = opciones || {};
+  abrirModalEscaner_(opciones.titulo || "Escanear producto");
+
+  function manejarCodigoEscaneado(codigo){
+
+    const estado = document.getElementById("escanerEstado");
+    if(estado){ estado.textContent = "Buscando " + codigo + "…"; estado.className = "escanerEstado"; }
+
+    google.script.run
+      .withSuccessHandler(function(coincidencias){
+
+        if(!coincidencias || !coincidencias.length){
+          mostrarProductoNoEncontradoEscaner_(codigo, manejarCodigoEscaneado);
+          return;
+        }
+
+        if(coincidencias.length > 1){
+          mostrarCodigoDuplicadoEscaner_(coincidencias, entregarProducto);
+          return;
+        }
+
+        entregarProducto(coincidencias[0]);
+
+      })
+      .withFailureHandler(function(e){
+        mostrarMensajeEscaner_(construirPanelErrorEscaner_("No se pudo buscar el producto.", e.message, true));
+      })
+      .buscarProductosPorCodigoApp(codigo, obtenerTokenSesion());
+
   }
 
+  function entregarProducto(producto){
+    if(opciones.continuo){
+      ocultarMensajeEscaner_();
+      onResuelto(producto, function reanudarEscaneo(){ iniciarMotorEscaner_(manejarCodigoEscaneado); });
+    } else {
+      cerrarEscaner();
+      onResuelto(producto);
+    }
+  }
+
+  iniciarMotorEscaner_(manejarCodigoEscaneado);
+
+}
+
+function cerrarEscaner(){
+  window.tgEscanerUltimoCallback = null;
+  window.tgConteoContinuo = false; // Cancelar sale también del modo continuo de Conteos
+  detenerMotorEscaner_().then(function(){
+    document.getElementById("modalEscaner").classList.remove("mostrar");
+  });
 }
 
 // ===============================
@@ -12860,6 +13312,7 @@ function generarConteoDesdeApp(){
 function abrirCapturarConteo(){
 
   marcarActivo("btnCapturarConteo");
+  window.tgConteoContinuo = false;
 
   const contenedor=document.querySelector(".contenedor");
 
@@ -12883,6 +13336,8 @@ function abrirCapturarConteo(){
   </div>
   <button type="button" class="btnEscaner" onclick="abrirEscaner('codigoConteo')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
+
+  <div class="boton" onclick="iniciarEscaneoContinuoConteo_()">${tgIcon("camara",17)} Escaneo continuo</div>
 
   <div class="boton success" onclick="cargarSiguientePendiente()">${tgIcon("chevronDerecha",17)} Siguiente pendiente</div>
 
@@ -12928,6 +13383,7 @@ function cargarFoliosAbiertosConteo(){
 
 function cambiarFolioConteo(){
   window.folioConteoActual = document.getElementById("folioConteoActual").value;
+  window.tgConteoContinuo = false;
   document.getElementById("codigoConteo").value = "";
   document.getElementById("detalleConteo").innerHTML = "";
   document.getElementById("codigoConteo").focus();
@@ -13088,7 +13544,11 @@ function guardarFisicoConteo(){
     mostrarMensajeTemporal("mensajeConteo", "✅ Conteo guardado — listo para escanear el siguiente", "ok");
     document.getElementById("codigoConteo").value="";
     document.getElementById("detalleConteo").innerHTML="";
-    document.getElementById("codigoConteo").focus();
+    if(window.tgConteoContinuo){
+      iniciarEscaneoContinuoConteo_();
+    } else {
+      document.getElementById("codigoConteo").focus();
+    }
   })
 
   .withFailureHandler(function(e){
@@ -13098,6 +13558,87 @@ function guardarFisicoConteo(){
 
   .guardarConteoFisico(window.conteoActual.fila, fisico, obtenerTokenSesion());
 
+}
+
+/**
+ * Escaneo continuo de Conteo Cíclico (MUY IMPORTANTE, ver especificación):
+ * escanea → identifica el producto DENTRO de este folio (buscarCodigoConteo,
+ * misma función que ya usa la captura manual) → cierra la cámara y muestra
+ * el formulario normal de captura de cantidad → al guardar, reabre la
+ * cámara automáticamente para el siguiente producto, sin más toques.
+ * El escaneo solo identifica — nunca guarda nada por sí mismo.
+ */
+function iniciarEscaneoContinuoConteo_(){
+
+  if(!window.folioConteoActual){
+    mostrarMensajeTemporal("mensajeConteo", "Selecciona primero un conteo abierto", "error");
+    return;
+  }
+
+  window.tgConteoContinuo = true;
+  abrirModalEscaner_("Conteo — " + window.folioConteoActual);
+  iniciarMotorEscaner_(manejarCodigoEscaneadoConteoContinuo_);
+
+}
+
+function manejarCodigoEscaneadoConteoContinuo_(codigo){
+
+  const estado = document.getElementById("escanerEstado");
+  if(estado){ estado.textContent = "Buscando " + codigo + "…"; estado.className = "escanerEstado"; }
+
+  google.script.run
+
+    .withSuccessHandler(function(item){
+
+      if(!item){
+        mostrarProductoNoEncontradoEscaner_(codigo, manejarCodigoEscaneadoConteoContinuo_);
+        return;
+      }
+
+      if(productoYaContadoEnConteo(item)){
+        window.tgConteoItemPendiente_ = item;
+        window.tgEscanerCallbackActual = null;
+        mostrarMensajeEscaner_(`
+          <div class="escanerErrorPanel">
+            <div style="font-size:36px;margin-bottom:8px">ℹ️</div>
+            <h3 style="color:#fff;margin:0 0 6px;font-size:16px">Este producto ya fue contado</h3>
+            <p style="color:rgba(255,255,255,.8);font-size:13.5px;margin:0 0 4px">${item.producto}</p>
+            <p style="color:rgba(255,255,255,.6);font-size:12px;margin:0 0 18px">Sistema: ${item.existencia} · Físico capturado: ${item.fisico}</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div class="boton" onclick="ocultarMensajeEscaner_(); iniciarMotorEscaner_(manejarCodigoEscaneadoConteoContinuo_)">Escanear siguiente</div>
+              <div class="boton secundario" onclick="continuarConteoDesdeEscaner_(window.tgConteoItemPendiente_)">Corregir de todas formas</div>
+              <div class="boton danger" onclick="cerrarEscaner()">Salir del escaneo</div>
+            </div>
+          </div>
+        `);
+        return;
+      }
+
+      continuarConteoDesdeEscaner_(item);
+
+    })
+
+    .withFailureHandler(function(e){
+      mostrarMensajeEscaner_(construirPanelErrorEscaner_("No se pudo buscar el producto.", e.message, true));
+    })
+
+    .buscarCodigoConteo(codigo, window.folioConteoActual, obtenerTokenSesion());
+
+}
+
+// Sale de la pantalla de cámara SIN apagar el modo continuo (a diferencia
+// de cerrarEscaner(), que sí lo apaga) — el modo continuo se reactiva solo
+// al guardar (ver guardarFisicoConteo).
+function continuarConteoDesdeEscaner_(item){
+  detenerMotorEscaner_().then(function(){
+    document.getElementById("modalEscaner").classList.remove("mostrar");
+    document.getElementById("codigoConteo").value = item.codigo;
+    if(productoYaContadoEnConteo(item)){
+      mostrarProductoYaContado(item);
+    } else {
+      mostrarDetalleConteo(item);
+    }
+  });
 }
 
 function abrirRevisarDiscrepancias(){
@@ -14142,7 +14683,12 @@ function mostrarInventario(datos){
 
   <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("paquete",20)} Inventario</h2>
 
+  <div class="filaConEscaner">
+  <div>
   <input id="buscar" placeholder="🔎 Buscar producto o código" onkeyup="filtrarInventario()">
+  </div>
+  <button type="button" class="btnEscaner" onclick="abrirEscanerProducto(function(producto){ abrirDetalleProducto(producto.codigo); }, { titulo: 'Escanear producto' })" title="Escanear código">${tgIcon("camara",18)}</button>
+  </div>
 
   <select id="filtroRack" onchange="aplicarFiltros()">
   <option value="">📍 Todos los racks</option>
@@ -14507,8 +15053,6 @@ function aplicarFiltros(){
   <button class="fabBoton" id="fabBotonPrincipal" onclick="toggleFabAccionesMoviles()" aria-label="Acciones rápidas" aria-expanded="false">+</button>
 </div>
 
-<input type="hidden" id="entradaEscaneoRapidoMovil">
-
 <nav class="navInferior" id="navInferior">
 <button class="navInferiorBtn" data-permiso-id="btnInicio" onclick="volverInicio()"><span class="navInferiorIcono" id="navInfIconoInicio"></span><span>Inicio</span></button>
 <button class="navInferiorBtn" data-permiso-id="btnInventarioLista" onclick="abrirInventario()"><span class="navInferiorIcono" id="navInfIconoInventario"></span><span>Inventario</span></button>
@@ -14517,15 +15061,29 @@ function aplicarFiltros(){
 <button class="navInferiorBtn" onclick="toggleSidebarMovil()"><span class="navInferiorIcono" id="navInfIconoMas"></span><span>Más</span></button>
 </nav>
 
-<div class="modalEscaner" id="modalEscaner">
+<div class="modalEscaner escanerPantallaCompleta" id="modalEscaner">
 
-<div class="modalEscanerCaja">
+<div class="escanerPantalla">
 
-<h3>📷 Escanear código</h3>
+  <div class="escanerHeader">
+    <button type="button" class="escanerBotonCerrar" onclick="cerrarEscaner()" aria-label="Cerrar escáner">←</button>
+    <h3 id="escanerTitulo">Escanear código</h3>
+  </div>
 
-<div id="lectorQr" style="width:280px;"></div>
+  <div class="escanerVisor" id="escanerVisor">
+    <div id="lectorQr"></div>
+    <div class="escanerMarco" id="escanerMarco"><div class="escanerMarcoCaja"><span></span></div></div>
+    <div class="escanerMensajeOverlay" id="escanerMensajeOverlay"></div>
+  </div>
 
-<div class="boton" onclick="cerrarEscaner()">Cerrar</div>
+  <div class="escanerFooter">
+    <p class="escanerInstruccion" id="escanerInstruccion">Coloca el código dentro del recuadro</p>
+    <div class="escanerEstado" id="escanerEstado"></div>
+    <div class="escanerBotonesFooter">
+      <div class="boton secundario" onclick="abrirEntradaManualEscaner_()">⌨️ Manual</div>
+      <div class="boton danger" onclick="cerrarEscaner()">Cancelar</div>
+    </div>
+  </div>
 
 </div>
 

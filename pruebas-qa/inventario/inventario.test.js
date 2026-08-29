@@ -329,3 +329,69 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'INV-012', grupo: 'inventario', nombre: 'Escáner: buscarProductosPorCodigoApp encuentra una coincidencia exacta', metodo: 'EMPÍRICO',
+  objetivo: 'El lookup que usa el servicio de escaneo debe regresar exactamente 1 coincidencia para un código único, con los datos necesarios para mostrar el producto sin otra llamada',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    const r = entorno.invocar('buscarProductosPorCodigoApp', 'COD-001', token);
+    return {
+      datos: 'COD-001 = HARINA DE TRIGO, existencia=100 (fixture estándar)',
+      esperado: '1 coincidencia: producto=HARINA DE TRIGO, existencia=100',
+      obtenido: `coincidencias=${r.length}, producto=${r[0] && r[0].producto}, existencia=${r[0] && r[0].existencia}`,
+      pasa: r.length === 1 && r[0].producto === 'HARINA DE TRIGO' && r[0].existencia === 100,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-013', grupo: 'inventario', nombre: 'Escáner: código inexistente regresa arreglo vacío, sin inventar ni tronar', metodo: 'EMPÍRICO',
+  objetivo: 'Un código escaneado que no existe en MATRIZ debe regresar [] — la pantalla decide mostrar "producto no encontrado" a partir de un arreglo vacío, no de un error',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    const r = entorno.invocar('buscarProductosPorCodigoApp', '7501234567890', token);
+    return {
+      datos: 'código "7501234567890" nunca capturado en MATRIZ',
+      esperado: 'arreglo vacío ([])',
+      obtenido: `coincidencias=${r.length}`,
+      pasa: Array.isArray(r) && r.length === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-014', grupo: 'inventario', nombre: 'Escáner: un código duplicado en MATRIZ regresa TODAS las coincidencias, sin elegir una', metodo: 'EMPÍRICO',
+  objetivo: 'Si dos productos quedaron con el mismo Código (error de captura), buscarProductosPorCodigoApp debe regresar ambos — nunca elegir el primero en silencio, para que el usuario decida en la interfaz',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    // Se duplica el código de COD-002 al de COD-001 a propósito.
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[4] = 'COD-001';
+
+    const r = entorno.invocar('buscarProductosPorCodigoApp', 'COD-001', token);
+    const productos = r.map(p => p.producto).sort();
+
+    return {
+      datos: 'COD-001 asignado por error a HARINA DE TRIGO y AZUCAR ESTANDAR',
+      esperado: '2 coincidencias: HARINA DE TRIGO y AZUCAR ESTANDAR',
+      obtenido: `coincidencias=${r.length}, productos=${JSON.stringify(productos)}`,
+      pasa: r.length === 2 && productos[0] === 'AZUCAR ESTANDAR' && productos[1] === 'HARINA DE TRIGO',
+    };
+  },
+});
+
+prueba({
+  id: 'INV-015', grupo: 'inventario', nombre: 'Escáner: buscarProductoApp (manual, ya existente) sigue devolviendo la primera coincidencia igual que antes', metodo: 'EMPÍRICO',
+  objetivo: 'El refactor que reutiliza buscarProductosEnMatrizPorCodigoExacto_ dentro de buscarProductoApp no debe cambiar su contrato ni comportamiento actual para Entradas/Salidas manuales — mismo objeto, sin campo "codigo", sin arreglo',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    const r = entorno.invocar('buscarProductoApp', 'COD-001', token);
+    const noExiste = entorno.invocar('buscarProductoApp', 'NO-EXISTE', token);
+    return {
+      datos: 'mismo llamador que ya usan Entradas/Salidas manuales',
+      esperado: 'objeto único (no arreglo) con producto=HARINA DE TRIGO; null para un código que no existe',
+      obtenido: `tipo=${Array.isArray(r) ? 'arreglo' : 'objeto'}, producto=${r && r.producto}, noExiste=${noExiste}`,
+      pasa: !Array.isArray(r) && r.producto === 'HARINA DE TRIGO' && noExiste === null,
+    };
+  },
+});
