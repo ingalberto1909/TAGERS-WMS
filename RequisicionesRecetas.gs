@@ -87,9 +87,12 @@ function crearRequisicionRecetaApp(observaciones, items, token){
 
 }
 
-function obtenerTipoRequisicionApp(folio, token){
-
-  requerirSesionActivaApp_(token);
+// Versión interna sin guard propio — usada también por INV-06 (reserva de
+// Requisiciones de Área) para saber si un folio es de receta ANTES de
+// tocar la reserva de MATRIZ/EXISTENCIAS_SUCURSAL: el "código" de una fila
+// de receta es un código de receta (REC-0001), nunca un código de MATRIZ,
+// así que esa lógica debe saltarse por completo para estos folios.
+function obtenerTipoRequisicion_(folio){
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   if(detalle.getLastRow() < 2) return "PRODUCTO";
@@ -106,6 +109,11 @@ function obtenerTipoRequisicionApp(folio, token){
 
   return "PRODUCTO";
 
+}
+
+function obtenerTipoRequisicionApp(folio, token){
+  requerirSesionActivaApp_(token);
+  return obtenerTipoRequisicion_(folio);
 }
 
 // Versión interna sin guard propio — token sigue siendo opcional aquí,

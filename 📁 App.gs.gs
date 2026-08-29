@@ -3966,6 +3966,30 @@ function ajustarExistenciaMatrizPorDeltaValidado_(codigo, delta, sucursal){
 }
 
 /**
+ * INV-06 (auditoría comparativa vs. MarketMan, Fase 4): extiende a las
+ * Requisiciones de Área el MISMO libro de reservas que ya usa el pipeline
+ * de Requisiciones por Sucursal (columna Reservado de EXISTENCIAS_SUCURSAL
+ * — ver resolverAjusteExistencia_, que ya documentaba "incluida S01" desde
+ * que se creó). No se inventa ningún esquema nuevo: Área siempre reserva
+ * contra S01/CEDIS, la misma sucursal donde ya vive su existencia física
+ * (MATRIZ), así que se reutiliza tal cual el núcleo existente.
+ *
+ * delta positivo = reservar (al crear una requisición nueva, valida que no
+ * se reserve más de lo disponible). delta negativo = liberar (al cancelar
+ * o al cerrar por entrega, sin volver a validar disponible — liberar nunca
+ * puede dejar la reserva por encima de la existencia).
+ */
+function ajustarReservaRequisicionAreaPorDelta_(codigo, delta, validarDisponible){
+  return conBloqueoApp_(function(){
+    return resolverAjusteExistencia_(codigo, SUCURSAL_DEFAULT_, {
+      deltaReserva: delta,
+      validarDisponible: !!validarDisponible,
+      validarReserva: true
+    });
+  });
+}
+
+/**
  * Escritor de EXISTENCIAS_SUCURSAL con su propio lock — envoltorio sobre
  * resolverAjusteExistencia_. `nuevaExistencia` (valor absoluto) tiene
  * prioridad sobre `delta` si ambos llegan; `validar` exige que el
@@ -5838,10 +5862,23 @@ function requerirNoConsultaLegadoApp_(token){
   }
 }
 
-function generarFolioRequisicion_(){
-  const hoja = obtenerHojaRequisiciones_();
+/**
+ * ARQ-01 (auditoría comparativa vs. MarketMan, Fase 4): folio consecutivo
+ * genérico por CONTEO DE FILAS — mismo cálculo que antes tenían
+ * duplicado, palabra por palabra, generarFolioRequisicion_ (Área) y
+ * generarFolioRequisicionSucursal_ (RequisicionesSucursal.gs). Solo sirve
+ * para hojas donde cada folio ocupa EXACTAMENTE una fila de encabezado —
+ * por eso no se usa para folios con detalle en hoja aparte que necesitan
+ * otro criterio (Recetas escanea el máximo ya emitido porque comparte
+ * hoja con Área; OC/Lotes de Producción numeran por fecha, no por total).
+ */
+function generarFolioConsecutivoPorFilas_(hoja, prefijo){
   const total = hoja.getLastRow() > 1 ? hoja.getLastRow() - 1 : 0;
-  return "RI-" + Utilities.formatString("%04d", total + 1);
+  return prefijo + "-" + Utilities.formatString("%04d", total + 1);
+}
+
+function generarFolioRequisicion_(){
+  return generarFolioConsecutivoPorFilas_(obtenerHojaRequisiciones_(), "RI");
 }
 
 /**
@@ -5867,7 +5904,17 @@ function buscarProductoParaRequisicionApp(texto, token){
     const coincide = normalizarTexto_(f[0]).indexOf(busqueda) !== -1 || normalizarTexto_(f[4]).indexOf(busqueda) !== -1;
     if(!coincide) continue;
 
-    resultados.push({ codigo: f[4], producto: f[0], udm: f[1], existencia: Number(f[10]) || 0 });
+    // INV-06: se expone "disponible" (existencia menos lo ya reservado
+    // por otras requisiciones de Área/Sucursal pendientes) además de la
+    // existencia física — así quien está armando la requisición ve de
+    // una vez cuánto puede pedir sin que se le rechace al enviar.
+    const existencia = Number(f[10]) || 0;
+    const reservado = obtenerReservaSucursal_(f[4], SUCURSAL_DEFAULT_);
+    resultados.push({
+      codigo: f[4], producto: f[0], udm: f[1],
+      existencia: existencia, reservado: reservado,
+      disponible: Math.round((existencia - reservado) * 1000) / 1000
+    });
 
     if(resultados.length >= 15) break;
   }
@@ -5900,6 +5947,24 @@ function crearRequisicionApp(observaciones, items, token, fechaRequerida){
   const validos = (items||[]).filter(it => Number(it.solicitado) > 0);
   if(!validos.length){
     throw new Error("Captura al menos una cantidad solicitada.");
+  }
+
+  // INV-06: se reserva ANTES de crear el folio — si algún producto no
+  // tiene suficiente disponible (existencia menos lo ya reservado por
+  // otras requisiciones de Área/Sucursal pendientes), se rechaza toda la
+  // requisición completa y se revierte lo ya reservado en esta misma
+  // llamada, en vez de dejar un folio a medio reservar.
+  const reservasAplicadas = [];
+  try{
+    validos.forEach(function(it){
+      ajustarReservaRequisicionAreaPorDelta_(it.codigo, Number(it.solicitado), true);
+      reservasAplicadas.push({ codigo: it.codigo, cantidad: Number(it.solicitado) });
+    });
+  }catch(e){
+    reservasAplicadas.forEach(function(r){
+      ajustarReservaRequisicionAreaPorDelta_(r.codigo, -r.cantidad, false);
+    });
+    throw e;
   }
 
   const fecha = new Date();
@@ -6062,6 +6127,24 @@ function cancelarRequisicionApp(folio, motivo, token){
     throw new Error("Esta requisición ya está cancelada.");
   }
 
+  // INV-06: al cancelar una requisición de Área que seguía PENDIENTE, se
+  // libera exactamente lo que se reservó al crearla. Nunca aplica a
+  // folios de Receta (su "código" es de receta, no de MATRIZ — nunca
+  // pasaron por ajustarReservaRequisicionAreaPorDelta_ al crearse).
+  if(obtenerTipoRequisicion_(folio) !== "RECETA"){
+    const detalleCancelacion = obtenerHojaDetalleRequisiciones_();
+    if(detalleCancelacion.getLastRow() > 1){
+      const datosDetalleCancelacion = detalleCancelacion.getRange(2, 1, detalleCancelacion.getLastRow()-1, 6).getValues();
+      datosDetalleCancelacion.forEach(function(f){
+        if(String(f[0]) !== String(folio)) return;
+        const solicitado = Number(f[4]) || 0;
+        if(solicitado > 0){
+          ajustarReservaRequisicionAreaPorDelta_(String(f[1]).trim(), -solicitado, false);
+        }
+      });
+    }
+  }
+
   const nota = "[CANCELADA por " + usuario + (motivo ? " — " + motivo : "") + "]";
   const observacionesNuevas = (observacionesActuales ? observacionesActuales + " " : "") + nota;
 
@@ -6127,8 +6210,15 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
     udmPorCodigo[codigo] = f[1];
   });
 
+  // PROD-04: lote es opcional — si Almacén sabe de qué lote de producción
+  // está entregando (mismo campo/UX ya usado en la pantalla de Salidas
+  // manual), se etiqueta en SALIDA para poder rastrearlo después con
+  // obtenerTrazabilidadLoteApp. Sin lote, el comportamiento es idéntico a
+  // como funcionaba antes de esto existir.
   const mapaEntregas = {};
-  (entregas||[]).forEach(e => { mapaEntregas[String(e.codigo).trim()] = Number(e.cantidadEntregada) || 0; });
+  (entregas||[]).forEach(e => {
+    mapaEntregas[String(e.codigo).trim()] = { cantidad: Number(e.cantidadEntregada) || 0, lote: String(e.lote||"").trim() };
+  });
 
   let productosEntregados = 0;
   const codigosOriginales = {};
@@ -6148,7 +6238,7 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
 
     const producto = f[2];
     const unidad = f[3];
-    const cantidadEntregar = mapaEntregas[codigo] || 0;
+    const cantidadEntregar = mapaEntregas[codigo] ? mapaEntregas[codigo].cantidad : 0;
 
     if(cantidadEntregar <= 0) return;
 
@@ -6162,6 +6252,7 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
       udm: unidad,
       area: areaReq,
       ubicacion: ubicacionPorCodigo[codigo] || "",
+      lote: mapaEntregas[codigo] ? mapaEntregas[codigo].lote : "",
       folio: folio,
       observacion: "Requisición interna " + folio + " — Área " + areaReq
     }, usuario);
@@ -6185,7 +6276,7 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
 
     if(codigosOriginales[codigo]) return; // ya se procesó en el loop de arriba
 
-    const cantidadEntregar = mapaEntregas[codigo];
+    const cantidadEntregar = mapaEntregas[codigo].cantidad;
     if(cantidadEntregar <= 0) return;
 
     const producto = productoPorCodigo[codigo];
@@ -6202,6 +6293,7 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
       udm: unidad,
       area: areaReq,
       ubicacion: ubicacionPorCodigo[codigo] || "",
+      lote: mapaEntregas[codigo].lote,
       folio: folio,
       observacion: "Requisición interna " + folio + " — Área " + areaReq + " (extra agregado al entregar)"
     }, usuario);
@@ -6217,6 +6309,22 @@ function confirmarEntregaRequisicionApp(folio, entregas, token){
 
   if(productosEntregados === 0){
     throw new Error("Captura al menos una cantidad a entregar.");
+  }
+
+  // INV-06: al cerrar la requisición (entregada, aunque sea parcial) se
+  // libera TODA la reserva hecha al crearla — el modelo de Área no tiene
+  // un estado "parcialmente pendiente"; una vez confirmada la entrega el
+  // compromiso original ya terminó. Nunca aplica a folios de Receta (su
+  // "código" es de receta, no de MATRIZ) ni a los códigos extra agregados
+  // aquí mismo (esos nunca se reservaron, ver comentario de la función).
+  if(obtenerTipoRequisicion_(folio) !== "RECETA"){
+    datosDetalle.forEach(function(f){
+      if(String(f[0]) !== String(folio)) return;
+      const solicitado = Number(f[4]) || 0;
+      if(solicitado > 0){
+        ajustarReservaRequisicionAreaPorDelta_(String(f[1]).trim(), -solicitado, false);
+      }
+    });
   }
 
   const fechaEntrega = new Date();

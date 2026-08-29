@@ -389,3 +389,58 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'PROD-013', grupo: 'produccion', nombre: 'PROD-04: trazabilidad de lote hacia adelante rastrea solo las entregas donde SÍ se anotó el lote', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerTrazabilidadLoteApp debe listar las salidas de la requisición de Área que anotaron el folio del lote, sumar unidadesRastreadas, y reportar el resto como unidadesSinRastrear en vez de inventarlo — una entrega sin lote anotado no debe aparecer como rastreada',
+  ejecutar() {
+    const matriz = hojaMatrizEstandar();
+    matriz.push(filaProducto({ producto: 'PAN DE MUERTO', udm: 'PZ', codigo: 'COD-010', existencia: 0, ubicacion: 'C-01' }));
+    const entorno = crearEntorno({ hojas: hojasBase({
+      MATRIZ: matriz,
+      RECETAS: [
+        ['Receta', 'Ingrediente', 'CantidadNeta', 'UDM', 'Rendimiento', 'Categoría', 'Estado'],
+        ['PAN DE MUERTO', 'HARINA DE TRIGO', 1, 'KG', '20 piezas', 'GENERAL', 'ACTIVA'],
+      ],
+    }) });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const folioReqReceta = prepararRequisicionEntregada(entorno, tokenAdmin);
+    const lote = entorno.invocar('registrarProduccionApp', { folioRequisicion: folioReqReceta, nombreReceta: 'PAN DE MUERTO', codigoProducto: 'COD-010', cantidadProducida: 20, udm: 'PZ' }, tokenAdmin);
+
+    // Se entrega el lote a Cocina en 2 movimientos: uno CON lote anotado (15) y otro SIN anotar (5).
+    const tokenCocina = entorno.invocar('crearSesion_', 'cocina@tagers.com', 'Cocina', 'OPERADOR');
+    const reqArea = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-010', producto: 'PAN DE MUERTO', unidad: 'PZ', solicitado: 20 }], tokenCocina);
+    entorno.invocar('confirmarEntregaRequisicionApp', reqArea.folio, [{ codigo: 'COD-010', cantidadEntregada: 15, lote: lote.folio }], tokenAdmin);
+
+    const reqArea2 = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-010', producto: 'PAN DE MUERTO', unidad: 'PZ', solicitado: 5 }], tokenCocina);
+    entorno.invocar('confirmarEntregaRequisicionApp', reqArea2.folio, [{ codigo: 'COD-010', cantidadEntregada: 5 }], tokenAdmin); // sin lote
+
+    const trazabilidad = entorno.invocar('obtenerTrazabilidadLoteApp', lote.folio, tokenAdmin);
+
+    return {
+      datos: `lote ${lote.folio}: 20 PZ producidas, 15 entregadas CON el lote anotado, 5 entregadas SIN anotar`,
+      esperado: 'movimientos=1 (solo la entrega anotada), unidadesRastreadas=15, unidadesSinRastrear=5',
+      obtenido: `movimientos=${trazabilidad.movimientos.length}, rastreadas=${trazabilidad.unidadesRastreadas}, sinRastrear=${trazabilidad.unidadesSinRastrear}, cantidadPrimerMovimiento=${trazabilidad.movimientos[0] && trazabilidad.movimientos[0].cantidad}`,
+      pasa: trazabilidad.movimientos.length === 1 && trazabilidad.unidadesRastreadas === 15 &&
+        trazabilidad.unidadesSinRastrear === 5 && trazabilidad.movimientos[0].cantidad === 15,
+    };
+  },
+});
+
+prueba({
+  id: 'PROD-014', grupo: 'produccion', nombre: 'PROD-04: un folio de lote inexistente da un error claro', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerTrazabilidadLoteApp no debe inventar datos para un folio que no existe en PRODUCCION',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('obtenerTrazabilidadLoteApp', 'PROD-NO-EXISTE', tokenAdmin); }
+    catch (e) { bloqueado = true; mensaje = e.message; }
+    return {
+      datos: 'folio "PROD-NO-EXISTE" nunca se registró',
+      esperado: 'bloqueado ("No se encontró el lote")',
+      obtenido: bloqueado ? mensaje : 'PERMITIDO',
+      pasa: bloqueado && /no se encontró el lote/i.test(mensaje),
+    };
+  },
+});

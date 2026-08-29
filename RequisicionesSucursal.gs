@@ -89,10 +89,11 @@ function obtenerHojaDetalleRequisicionesSucursal_(){
   return hoja;
 }
 
+// ARQ-01: reutiliza generarFolioConsecutivoPorFilas_ (📁 App.gs.gs) — antes
+// esta función duplicaba, palabra por palabra, el mismo cálculo que
+// generarFolioRequisicion_ (Área).
 function generarFolioRequisicionSucursal_(){
-  const hoja = obtenerHojaRequisicionesSucursal_();
-  const total = hoja.getLastRow() > 1 ? hoja.getLastRow() - 1 : 0;
-  return "RS-" + Utilities.formatString("%04d", total + 1);
+  return generarFolioConsecutivoPorFilas_(obtenerHojaRequisicionesSucursal_(), "RS");
 }
 
 /**

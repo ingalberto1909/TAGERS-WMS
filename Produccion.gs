@@ -258,6 +258,90 @@ function obtenerLotesProduccionApp(filtros, token){
 }
 
 /**
+ * PROD-04 (auditoría comparativa vs. MarketMan, Fase 4): trazabilidad de
+ * lote HACIA ADELANTE — dado un folio de lote de producción, muestra a
+ * dónde salieron sus unidades. Se apoya en la columna Lote de SALIDA, que
+ * registrarSalidaInterna_ ya sabía escribir desde siempre (la usa la
+ * pantalla de Salidas manual) pero que confirmarEntregaRequisicionApp
+ * nunca llenaba — ahora acepta un lote opcional por línea (mismo
+ * campo/UX que Salidas manual), así que esas entregas también quedan
+ * enlazadas al lote real cuando Almacén lo anota.
+ *
+ * No es trazabilidad completa/obligatoria (MATRIZ sigue siendo existencia
+ * agregada por código, no un libro por lote) — es la mejor información
+ * disponible con lo que el sistema ya captura: toda salida donde SÍ se
+ * anotó el lote aparece aquí; lo que salió sin anotarlo se reporta aparte
+ * como "sin rastrear" en vez de inventarse a qué lote perteneció.
+ */
+function obtenerTrazabilidadLoteApp(folioLote, token){
+
+  requerirSesionActivaApp_(token);
+
+  folioLote = String(folioLote||"").trim();
+  if(!folioLote){
+    throw new Error("Indica el folio del lote.");
+  }
+
+  const hojaProduccion = obtenerHojaProduccion_();
+  if(hojaProduccion.getLastRow() < 2){
+    throw new Error("No se encontró el lote " + folioLote);
+  }
+
+  const datosProduccion = hojaProduccion.getRange(2, 1, hojaProduccion.getLastRow()-1, 12).getValues();
+  let lote = null;
+
+  for(let i=0;i<datosProduccion.length;i++){
+    if(String(datosProduccion[i][0]) === folioLote){
+      lote = {
+        folio: datosProduccion[i][0],
+        codigoProducto: String(datosProduccion[i][5]||"").trim(),
+        producto: datosProduccion[i][6],
+        cantidadProducida: Number(datosProduccion[i][8]) || 0,
+        udm: datosProduccion[i][9],
+        estado: datosProduccion[i][11]
+      };
+      break;
+    }
+  }
+
+  if(!lote){
+    throw new Error("No se encontró el lote " + folioLote);
+  }
+
+  const salida = SpreadsheetApp.getActive().getSheetByName("SALIDA");
+  const movimientos = [];
+  let unidadesRastreadas = 0;
+
+  if(salida && salida.getLastRow() > 1){
+    const datosSalida = salida.getRange(2, 1, salida.getLastRow()-1, 11).getValues();
+    datosSalida.forEach(function(f){
+      const codigoFila = String(f[3]||"").trim();
+      const loteFila = String(f[8]||"").trim();
+      if(codigoFila !== lote.codigoProducto || loteFila !== folioLote) return;
+      const cantidad = Number(f[5]) || 0;
+      unidadesRastreadas += cantidad;
+      movimientos.push({
+        fecha: f[2] instanceof Date ? Utilities.formatDate(f[2], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : String(f[2]||""),
+        cantidad: cantidad,
+        udm: f[6],
+        area: f[7] || "",
+        ubicacion: f[10] || ""
+      });
+    });
+  }
+
+  unidadesRastreadas = Math.round(unidadesRastreadas * 1000) / 1000;
+
+  return {
+    lote: lote,
+    movimientos: movimientos.sort(function(a,b){ return a.fecha < b.fecha ? 1 : -1; }),
+    unidadesRastreadas: unidadesRastreadas,
+    unidadesSinRastrear: Math.max(0, Math.round((lote.cantidadProducida - unidadesRastreadas) * 1000) / 1000)
+  };
+
+}
+
+/**
  * Fase 3e (auditoría comparativa vs. MarketMan): costo real por receta —
  * agrega los lotes de PRODUCCION en el periodo, ponderando el costo por
  * unidad (valorInsumosConsumidos/cantidadProducida) por cuánto se produjo
