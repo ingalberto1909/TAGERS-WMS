@@ -160,7 +160,21 @@ function crearCacheServiceEmulado() {
           }
           almacen.set(clave, { valor, expira: Date.now() + (ttlSegundos || 600) * 1000 });
         },
+        putAll(mapaValores, ttlSegundos) {
+          // Mismo límite por valor que put() — real GAS lo aplica igual
+          // dentro de un putAll(), entrada por entrada.
+          Object.keys(mapaValores).forEach(clave => {
+            const valor = mapaValores[clave];
+            if (Buffer.byteLength(String(valor), 'utf8') > 100 * 1024) {
+              throw new Error('Argument too large: value');
+            }
+          });
+          Object.keys(mapaValores).forEach(clave => {
+            almacen.set(clave, { valor: mapaValores[clave], expira: Date.now() + (ttlSegundos || 600) * 1000 });
+          });
+        },
         remove(clave) { almacen.delete(clave); },
+        removeAll(claves) { claves.forEach(clave => almacen.delete(clave)); },
       };
     },
     _almacenCrudo: almacen,

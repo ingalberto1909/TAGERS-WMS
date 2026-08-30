@@ -35,13 +35,34 @@ function ubicacionVacia_(valor){
  * nuevo, así que cada llamador puede hacerle .shift()/.sort() sin
  * afectar a los demás que lean la misma caché dentro de esos 20s.
  */
+// CacheService rechaza cualquier valor de más de 100KB ("Argument too
+// large: value") — con un catálogo (MATRIZ) ya grande, JSON.stringify de
+// la hoja completa fácilmente pasa de eso, y cache.put() tronaba en
+// silencio (atrapado por el try/catch de abajo): la caché de 20s nunca
+// llegaba a guardarse, y CADA lectura —búsqueda del header, Inicio,
+// detalle de producto, escáner, etc.— volvía a leer la hoja completa de
+// Sheets desde cero. Por eso la app se sentía cada vez más lenta según
+// crecía el catálogo. Se trocea el JSON en varias llaves de caché, cada
+// una bajo el límite, para que cachear no dependa de qué tan grande sea
+// la hoja.
+const TAMANO_PARTE_CACHE_HOJA_ = 90000;
+
 function obtenerFilasHojaCacheadas_(nombreHoja){
   const cache = CacheService.getScriptCache();
-  const clave = "TAGERS_HOJA_" + nombreHoja + "_V1";
+  const clave = "TAGERS_HOJA_" + nombreHoja + "_V2_";
 
   try{
-    const cacheado = cache.get(clave);
-    if(cacheado) return JSON.parse(cacheado);
+    const numPartesTexto = cache.get(clave + "META");
+    if(numPartesTexto){
+      const numPartes = Number(numPartesTexto);
+      const partes = [];
+      for(let i=0;i<numPartes;i++){
+        const parte = cache.get(clave + i);
+        if(parte === null){ partes.length = 0; break; } // una parte expiró/faltó: no hay dato completo, se relee
+        partes.push(parte);
+      }
+      if(partes.length === numPartes) return JSON.parse(partes.join(""));
+    }
   }catch(e){
     // si algo sale mal leyendo/parseando la caché, se sigue como si no hubiera caché
   }
@@ -50,11 +71,17 @@ function obtenerFilasHojaCacheadas_(nombreHoja){
   const datos = hoja ? hoja.getDataRange().getValues() : [];
 
   try{
-    cache.put(clave, JSON.stringify(datos), 20);
+    const texto = JSON.stringify(datos);
+    const numPartes = Math.max(1, Math.ceil(texto.length / TAMANO_PARTE_CACHE_HOJA_));
+    const valoresCache = {};
+    for(let i=0;i<numPartes;i++){
+      valoresCache[clave + i] = texto.substr(i*TAMANO_PARTE_CACHE_HOJA_, TAMANO_PARTE_CACHE_HOJA_);
+    }
+    valoresCache[clave + "META"] = String(numPartes);
+    cache.putAll(valoresCache, 20);
   }catch(e){
-    // CacheService tiene un límite de 100KB por valor — si la hoja es
-    // demasiado grande para caber, simplemente no se cachea esta vez,
-    // sin romper la lectura actual.
+    // si por cualquier otra razón no se puede cachear, no se rompe la
+    // lectura actual — solo se pierde el ahorro de la caché esta vez.
   }
 
   return datos;
@@ -71,7 +98,13 @@ function obtenerFilasHojaCacheadas_(nombreHoja){
  */
 function invalidarCacheHoja_(nombreHoja){
   try{
-    CacheService.getScriptCache().remove("TAGERS_HOJA_" + nombreHoja + "_V1");
+    const cache = CacheService.getScriptCache();
+    const clave = "TAGERS_HOJA_" + nombreHoja + "_V2_";
+    const numPartesTexto = cache.get(clave + "META");
+    const clavesAQuitar = [clave + "META"];
+    const numPartes = numPartesTexto ? Number(numPartesTexto) : 20; // sin META (p.ej. de una versión anterior), se limpia un rango generoso por si acaso
+    for(let i=0;i<numPartes;i++) clavesAQuitar.push(clave + i);
+    cache.removeAll(clavesAQuitar);
   }catch(e){
     // nunca debe tronar un guardado real por un problema de caché
   }

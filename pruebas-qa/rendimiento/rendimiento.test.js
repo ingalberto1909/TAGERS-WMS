@@ -19,7 +19,7 @@
 
 const { prueba } = require('../lib/runner');
 const { crearEntorno } = require('../lib/cargar-backend');
-const { hojasBase } = require('../lib/datos-prueba');
+const { hojasBase, filaProducto } = require('../lib/datos-prueba');
 
 prueba({
   id: 'REND-001', grupo: 'rendimiento', nombre: 'Caché de 20s evita relecturas repetidas de MATRIZ', metodo: 'EMPÍRICO',
@@ -80,6 +80,56 @@ prueba({
       esperado: 'la lectura cacheada refleja la existencia real inmediatamente después de escribir (120), no la existencia vieja cacheada (100)',
       obtenido: `MATRIZ real actualizada=${huboEntradaReal}, lectura cacheada devuelve existencia=${despues.existencia}`,
       pasa: huboEntradaReal && dashboardActualizado,
+    };
+  },
+});
+
+prueba({
+  id: 'REND-008', grupo: 'rendimiento', nombre: 'La caché de 20s sigue funcionando con un catálogo grande (>100KB en JSON)', metodo: 'EMPÍRICO',
+  objetivo: 'CacheService rechaza cualquier valor de más de 100KB — con un MATRIZ grande, cache.put() del valor completo tronaba en silencio y la caché de 20s nunca se guardaba, así que CADA lectura (búsqueda del header, Inicio, escáner, etc.) volvía a leer la hoja completa. obtenerFilasHojaCacheadas_ debe trocear el JSON en varias llaves para seguir cacheando sin importar el tamaño.',
+  ejecutar() {
+    const hojas = hojasBase();
+    // Genera suficientes filas para que JSON.stringify(MATRIZ) pase de 100KB
+    // (cada fila ronda ~150-200 bytes serializada) — 1200 productos ya es
+    // un catálogo realista para una operación con varios racks y meses de
+    // altas, y sobra margen para superar el límite con certeza.
+    for (let i = 0; i < 1200; i++) {
+      hojas.MATRIZ.push(filaProducto({
+        producto: 'PRODUCTO DE CATALOGO GRANDE NUMERO ' + i,
+        codigo: 'CAT-' + String(i).padStart(5, '0'),
+        rack: 'R' + (i % 20),
+        ubicacion: 'R' + (i % 20) + '-N01-P01',
+        existencia: i,
+        minimo: 5,
+        maximo: 50,
+        proveedor: 'PROVEEDOR ' + (i % 15),
+        costo: 12.5,
+      }));
+    }
+
+    const tamanoJson = JSON.stringify(hojas.MATRIZ).length;
+
+    const entorno = crearEntorno({ hojas });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    const hojaReal = entorno.hojas.MATRIZ;
+    let lecturasReales = 0;
+    const getDataRangeOriginal = hojaReal.getDataRange.bind(hojaReal);
+    hojaReal.getDataRange = function () { lecturasReales++; return getDataRangeOriginal(); };
+
+    // 3 búsquedas seguidas (misma función que usa el buscador del header) —
+    // dentro de los 20s de TTL, solo la primera debería tocar la hoja real.
+    entorno.invocar('busquedaGlobalHeaderApp', 'CAT-00500', token);
+    entorno.invocar('busquedaGlobalHeaderApp', 'CAT-00700', token);
+    const resultado = entorno.invocar('busquedaGlobalHeaderApp', 'CAT-00999', token);
+
+    const encontroElProducto = resultado.productos.some(p => p.codigo === 'CAT-00999');
+
+    return {
+      datos: `MATRIZ con 1200 productos extra, JSON.stringify=${(tamanoJson/1024).toFixed(1)}KB (excede el límite de 100KB por valor de CacheService)`,
+      esperado: '1 sola lectura real de MATRIZ (getDataRange) en las 3 búsquedas, y el resultado sigue siendo correcto',
+      obtenido: `lecturasReales=${lecturasReales}, encontroElProducto=${encontroElProducto}`,
+      pasa: tamanoJson > 100 * 1024 && lecturasReales === 1 && encontroElProducto,
     };
   },
 });
