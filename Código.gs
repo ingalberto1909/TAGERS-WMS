@@ -1417,6 +1417,56 @@ function aprobarDiscrepanciasLoteApp(lista, token){
   return { exitosas: exitosas, fallidas: fallidas };
 }
 
+/**
+ * Herramienta de verificación (no corrige nada, solo informa): busca en
+ * KARDEX si algún código quedó con más de un renglón "AJUSTE" para el
+ * mismo folio de conteo. Es la huella de una aprobación de discrepancias
+ * que se duplicó por una interrupción a medio proceso (ver
+ * aprobarDiscrepanciasLoteApp / aprobarTodasLasDiscrepancias en index.html
+ * — antes mandaba todo el folio en una sola ejecución, que podía tardar
+ * tanto que Apps Script la mataba a la mitad).
+ */
+function verificarDuplicadosAjusteFolioApp(folio, token){
+
+  requerirAccesoAlmacenLegadoApp_(token);
+
+  const folioBuscado = String(folio||"").trim();
+  if(!folioBuscado) throw new Error("Indica el folio del conteo a verificar.");
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("KARDEX");
+  const ultimaFila = hoja.getLastRow();
+  if(ultimaFila < 2) return { folio: folioBuscado, duplicados: [] };
+
+  const datos = hoja.getRange(2,1,ultimaFila-1,12).getValues();
+
+  const porCodigo = {};
+
+  datos.forEach((fila,index)=>{
+    const tipo = String(fila[2]||"").trim().toUpperCase();
+    const folioFila = String(fila[3]||"").trim();
+    if(tipo !== "AJUSTE" || folioFila !== folioBuscado) return;
+
+    const codigo = String(fila[4]||"").trim();
+    if(!porCodigo[codigo]){
+      porCodigo[codigo] = { codigo: codigo, producto: fila[5], veces: 0, filas: [] };
+    }
+    porCodigo[codigo].veces++;
+    porCodigo[codigo].filas.push({
+      fila: index+2,
+      fecha: fila[0],
+      entrada: fila[6],
+      salida: fila[7],
+      existenciaAnterior: fila[8],
+      existenciaNueva: fila[9]
+    });
+  });
+
+  const duplicados = Object.values(porCodigo).filter(p => p.veces > 1);
+
+  return { folio: folioBuscado, duplicados: duplicados };
+
+}
+
 function obtenerRacks(){
 
   const ss = SpreadsheetApp.getActive();

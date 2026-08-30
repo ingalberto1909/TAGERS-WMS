@@ -99,6 +99,71 @@ prueba({
 });
 
 prueba({
+  id: 'INV-016', grupo: 'inventario', nombre: 'verificarDuplicadosAjusteFolioApp detecta un código con dos ajustes en el mismo folio', metodo: 'EMPÍRICO',
+  objetivo: 'Si dos filas de KARDEX tipo=AJUSTE comparten folio y código (huella de una aprobación masiva interrumpida y reintentada), la verificación debe reportarlo',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const kardex = entorno.leerHoja('KARDEX');
+    kardex.push([new Date(), '10:00:00', 'AJUSTE', 'CC-DUP', 'COD-001', 'HARINA DE TRIGO', '', 10, 100, 90, 'Admin', 'Discrepancia aprobada — conteo CC-DUP: Merma']);
+    kardex.push([new Date(), '10:00:02', 'AJUSTE', 'CC-DUP', 'COD-001', 'HARINA DE TRIGO', '', 10, 90, 80, 'Admin', 'Discrepancia aprobada — conteo CC-DUP: Merma (reintento)']);
+    kardex.push([new Date(), '10:00:05', 'AJUSTE', 'CC-DUP', 'COD-002', 'AZUCAR ESTANDAR', 5, '', 20, 25, 'Admin', 'Discrepancia aprobada — conteo CC-DUP: Ajuste de sistema']);
+
+    const resultado = entorno.invocar('verificarDuplicadosAjusteFolioApp', 'CC-DUP', token);
+
+    const pasa = resultado.duplicados.length === 1
+      && resultado.duplicados[0].codigo === 'COD-001'
+      && resultado.duplicados[0].veces === 2;
+
+    return {
+      datos: 'KARDEX con COD-001 ajustado 2 veces en folio CC-DUP y COD-002 ajustado 1 vez en el mismo folio',
+      esperado: 'duplicados=[COD-001 x2], COD-002 no aparece',
+      obtenido: `duplicados=${JSON.stringify(resultado.duplicados.map(d => ({ codigo: d.codigo, veces: d.veces })))}`,
+      pasa,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-017', grupo: 'inventario', nombre: 'verificarDuplicadosAjusteFolioApp no reporta nada en un folio limpio', metodo: 'EMPÍRICO',
+  objetivo: 'Un folio donde cada código se ajustó una sola vez debe regresar duplicados=[]',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const kardex = entorno.leerHoja('KARDEX');
+    kardex.push([new Date(), '10:00:00', 'AJUSTE', 'CC-LIMPIO', 'COD-001', 'HARINA DE TRIGO', '', 10, 100, 90, 'Admin', 'Discrepancia aprobada — conteo CC-LIMPIO: Merma']);
+    kardex.push([new Date(), '10:00:05', 'AJUSTE', 'CC-LIMPIO', 'COD-002', 'AZUCAR ESTANDAR', 5, '', 20, 25, 'Admin', 'Discrepancia aprobada — conteo CC-LIMPIO: Ajuste de sistema']);
+    // Mismo código en OTRO folio no debe contaminar el resultado
+    kardex.push([new Date(), '10:00:10', 'AJUSTE', 'CC-OTRO', 'COD-001', 'HARINA DE TRIGO', '', 3, 90, 87, 'Admin', 'Discrepancia aprobada — conteo CC-OTRO: Merma']);
+
+    const resultado = entorno.invocar('verificarDuplicadosAjusteFolioApp', 'CC-LIMPIO', token);
+
+    return {
+      datos: 'KARDEX con un ajuste por código en CC-LIMPIO, más un ajuste de COD-001 en un folio distinto (CC-OTRO)',
+      esperado: 'duplicados=[] (el ajuste de COD-001 en CC-OTRO no cuenta para CC-LIMPIO)',
+      obtenido: `duplicados=${JSON.stringify(resultado.duplicados)}`,
+      pasa: resultado.duplicados.length === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-018', grupo: 'inventario', nombre: 'verificarDuplicadosAjusteFolioApp exige sesión activa y rol de almacén', metodo: 'EMPÍRICO',
+  objetivo: 'Un operador de área (sin acceso de almacén) no debe poder correr la verificación',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    let error = '';
+    try { entorno.invocar('verificarDuplicadosAjusteFolioApp', 'CC-DUP', token); }
+    catch (e) { error = e.message; }
+
+    return {
+      datos: 'token de OPERADOR de área (Cocina)',
+      esperado: 'lanza un error explícito, no regresa datos',
+      obtenido: `error=${error}`,
+      pasa: !!error,
+    };
+  },
+});
+
+prueba({
   id: 'INV-CASO4', grupo: 'inventario', nombre: 'Caso 4: la misma discrepancia aprobada dos veces no se duplica', metodo: 'EMPÍRICO',
   objetivo: '1ª aprobación: AJUSTE APLICADO. 2ª aprobación de la misma fila: NO APLICA NADA (MATRIZ sin cambio, KARDEX sin fila nueva, AUDITORIA sin fila nueva)',
   ejecutar() {

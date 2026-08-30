@@ -13708,6 +13708,16 @@ function abrirAprobarDiscrepancias(){
 
   <div id="mensajeAprobarLote" style="display:none;margin:10px 0;font-size:13.5px;font-weight:600"></div>
 
+  <div class="cardProducto" style="margin-bottom:14px">
+    <p style="margin:0 0 8px;font-weight:700;font-size:13.5px">${tgIcon("buscar",15)} Verificar si un conteo quedó con ajustes duplicados</p>
+    <p style="margin:0 0 10px;color:var(--text-muted);font-size:12.5px">Si una aprobación masiva se interrumpió a la mitad (p. ej. "Procesando..." se quedó pegado), usa esto para confirmar que ningún código quedó ajustado dos veces en ese folio.</p>
+    <div class="filaConEscaner" style="max-width:420px">
+      <div><input id="folioVerificarDuplicados" placeholder="Folio del conteo, ej. CC-20260830-001"></div>
+      <button type="button" class="btnEscaner" onclick="verificarDuplicadosFolio()" title="Verificar">${tgIcon("buscar",18)}</button>
+    </div>
+    <div id="resultadoVerificarDuplicados" style="margin-top:10px"></div>
+  </div>
+
   <div id="listaDiscrepancias">
     <div class="skeletonCard" style="margin-bottom:12px"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:70%"></div></div>
     <div class="skeletonCard"><div class="skeleton skeletonTitulo"></div><div class="skeleton skeletonLinea" style="width:60%"></div></div>
@@ -13724,6 +13734,47 @@ function abrirAprobarDiscrepancias(){
   .withFailureHandler(function(e){ alert(e.message); })
 
   .obtenerDiscrepanciasPendientes(obtenerTokenSesion());
+
+}
+
+function verificarDuplicadosFolio(){
+
+  const folio = document.getElementById("folioVerificarDuplicados").value.trim();
+  const resultado = document.getElementById("resultadoVerificarDuplicados");
+
+  if(!folio){
+    resultado.innerHTML = `<p style="color:var(--terracota);font-size:12.5px;margin:0">Escribe el folio del conteo a verificar.</p>`;
+    return;
+  }
+
+  resultado.innerHTML = `<p style="color:var(--text-muted);font-size:12.5px;margin:0">Buscando…</p>`;
+
+  google.script.run
+
+  .withSuccessHandler(function(r){
+
+    if(!r.duplicados.length){
+      resultado.innerHTML = `<p style="color:var(--oliva);font-weight:700;font-size:13px;margin:0">✅ Sin duplicados — ningún código quedó ajustado dos veces en el folio ${r.folio}.</p>`;
+      return;
+    }
+
+    resultado.innerHTML = `
+      <p style="color:var(--terracota);font-weight:700;font-size:13px;margin:0 0 8px">⚠️ ${r.duplicados.length} código(s) con más de un ajuste en el folio ${r.folio} — revísalos antes de seguir:</p>
+      ${r.duplicados.map(d => `
+        <div style="background:rgba(196,82,42,.08);border-left:3px solid var(--terracota);border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12.5px">
+          <b>${d.producto}</b> (${d.codigo}) — ${d.veces} veces:
+          ${d.filas.map(f => `<br>· Fila ${f.fila}: entrada ${f.entrada||"-"} / salida ${f.salida||"-"} (existencia ${f.existenciaAnterior} → ${f.existenciaNueva})`).join("")}
+        </div>
+      `).join("")}
+    `;
+
+  })
+
+  .withFailureHandler(function(e){
+    resultado.innerHTML = `<p style="color:var(--terracota);font-size:12.5px;margin:0">⚠️ ${e.message}</p>`;
+  })
+
+  .verificarDuplicadosAjusteFolioApp(folio, obtenerTokenSesion());
 
 }
 
@@ -13829,6 +13880,18 @@ function rechazarDiscrepanciaDesdeApp(fila, boton){
 
 }
 
+// Tamaño de lote por llamada al servidor. Cada discrepancia aprobada hace
+// varias operaciones de hoja (bloqueo, ajuste de existencia, Entrada/Salida,
+// Auditoría, Kardex) — mandar cientos de una sola vez puede tardar tanto
+// que Apps Script mata la ejecución a la mitad (límite ~6 min), dejando el
+// botón en "Procesando..." para siempre sin que el navegador se entere de
+// nada. Trocear en lotes chicos y secuenciales evita esto: cada llamada
+// termina en segundos, y si el usuario cierra/recarga a la mitad, lo único
+// pendiente es lo que faltaba — aprobarDiscrepancia ya es idempotente por
+// fila (ver Código.gs), así que reintentar solo re-procesa lo que de
+// verdad sigue pendiente.
+const TAMANO_LOTE_DISCREPANCIAS_ = 20;
+
 async function aprobarTodasLasDiscrepancias(){
 
   const lista = window.discrepanciasPendientes || [];
@@ -13846,33 +13909,68 @@ async function aprobarTodasLasDiscrepancias(){
   }
 
   const btn = document.getElementById("btnAprobarTodas");
-  if(btn){ btn.disabled = true; btn.innerText = "Procesando..."; }
+  if(btn){ btn.disabled = true; }
 
-  mostrarMensajeTemporal("mensajeAprobarLote", "Aprobando " + items.length + " discrepancia(s)...", "ok");
+  const lotes = [];
+  for(let i=0; i<items.length; i+=TAMANO_LOTE_DISCREPANCIAS_){
+    lotes.push(items.slice(i, i+TAMANO_LOTE_DISCREPANCIAS_));
+  }
 
-  google.script.run
+  let totalExitosas = 0;
+  const todasFallidas = [];
 
-  .withSuccessHandler(function(resultado){
+  for(let i=0; i<lotes.length; i++){
 
-    mostrarMensajeTemporal(
-      "mensajeAprobarLote",
-      "✅ " + resultado.exitosas + " aprobada(s)" +
-      (resultado.fallidas.length ? " — ⚠️ " + resultado.fallidas.length + " con error" : ""),
-      resultado.fallidas.length ? "error" : "ok"
-    );
+    if(btn) btn.innerText = "Procesando " + Math.min((i+1)*TAMANO_LOTE_DISCREPANCIAS_, items.length) + "/" + items.length + "...";
+    mostrarMensajeTemporal("mensajeAprobarLote", "Aprobando lote " + (i+1) + " de " + lotes.length + "…", "ok");
 
-    actualizarNotificaciones();
-    abrirAprobarDiscrepancias();
+    try{
+      const resultado = await aprobarLoteDiscrepanciasApp_(lotes[i]);
+      totalExitosas += resultado.exitosas;
+      todasFallidas.push(...resultado.fallidas);
+    }catch(e){
+      // Un lote falló (p.ej. se agotó el tiempo o hubo un error de red) —
+      // se detiene aquí en vez de seguir con los siguientes lotes a
+      // ciegas. Lo ya aprobado en lotes anteriores queda bien (cada fila
+      // se marcó "APROBADO" al terminar su propio lote), y lo que falta
+      // se puede reintentar dando clic de nuevo — es seguro, no duplica.
+      mostrarMensajeTemporal(
+        "mensajeAprobarLote",
+        "⚠️ Se detuvo en el lote " + (i+1) + " de " + lotes.length + ": " + e.message + " — lo ya aprobado quedó bien, vuelve a dar clic para continuar con el resto.",
+        "error"
+      );
+      if(btn){ btn.disabled = false; btn.innerText = "⚡ Aprobar todas las de este folio"; }
+      actualizarNotificaciones();
+      setTimeout(abrirAprobarDiscrepancias, 2500);
+      return;
+    }
 
-  })
+  }
 
-  .withFailureHandler(function(e){
-    mostrarMensajeTemporal("mensajeAprobarLote", "⚠️ " + e.message, "error");
-    if(btn){ btn.disabled = false; btn.innerText = "⚡ Aprobar todas las de este folio"; }
-  })
+  mostrarMensajeTemporal(
+    "mensajeAprobarLote",
+    "✅ " + totalExitosas + " aprobada(s)" +
+    (todasFallidas.length ? " — ⚠️ " + todasFallidas.length + " con error" : ""),
+    todasFallidas.length ? "error" : "ok"
+  );
 
-  .aprobarDiscrepanciasLoteApp(items, obtenerTokenSesion());
+  actualizarNotificaciones();
 
+  // Un pequeño respiro antes de refrescar la lista: abrirAprobarDiscrepancias()
+  // reconstruye toda la pantalla (incluido #mensajeAprobarLote), así que si se
+  // llama de inmediato el mensaje de arriba desaparece antes de que alguien
+  // alcance a leer cuántas se aprobaron de verdad.
+  setTimeout(abrirAprobarDiscrepancias, 1500);
+
+}
+
+function aprobarLoteDiscrepanciasApp_(lote){
+  return new Promise(function(resolve, reject){
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(function(e){ reject(e); })
+      .aprobarDiscrepanciasLoteApp(lote, obtenerTokenSesion());
+  });
 }
 
 function abrirCerrarConteo(){
