@@ -19,6 +19,16 @@ function prueba(def) {
   if (!def.id || !def.nombre || typeof def.ejecutar !== 'function') {
     throw new Error('prueba() requiere {id, nombre, ejecutar}');
   }
+  // Un ID repetido (p. ej. copiar/pegar una prueba como plantilla y olvidar
+  // renumerarla) antes pasaba desapercibido: ambas corrían sin queja y
+  // solo se notaba, si acaso, contando filas a mano en el reporte. Falla
+  // aquí, en el momento de cargar los archivos de prueba, para que el
+  // error se vea de inmediato en vez de quedar oculto entre cientos de
+  // resultados.
+  const existente = registro.find(p => p.id === def.id);
+  if (existente) {
+    throw new Error(`ID de prueba duplicado: "${def.id}" — ya lo usa "${existente.nombre}" (grupo ${existente.grupo || 'sin-grupo'}); esta nueva es "${def.nombre}" (grupo ${def.grupo || 'sin-grupo'})`);
+  }
   registro.push(def);
 }
 

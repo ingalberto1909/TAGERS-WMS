@@ -968,6 +968,15 @@ function obtenerNombreUsuario(){
 
 }
 
+// ⚠️ NO BORRAR — dependencia viva de 📁 App.gs.gs (auditoría de arquitectura,
+// Fase de evolución): pese a que este archivo es en su mayoría el sistema
+// legado de diálogos de Sheets (ya no alcanzable desde doGet()), Apps
+// Script comparte un único espacio de nombres entre archivos, y
+// requerirAccesoAlmacenLegadoApp_/requerirNoConsultaLegadoApp_ en
+// 📁 App.gs.gs SÍ llaman esta función en producción real (flujo activo
+// de aprobar/rechazar discrepancia sin token). Borrar o mover este
+// archivo sin antes mover esta función rompería ese flujo en silencio
+// (sin error visible al guardar, solo al ejecutarse).
 function obtenerUsuario(){
   return Session.getActiveUser().getEmail();
 }
@@ -1648,6 +1657,10 @@ function obtenerResumenRacks(token) {
   }));
 }
 
+// ⚠️ NO BORRAR — dependencia viva de 📁 App.gs.gs: generarConteoRacksApp
+// (el flujo REAL de "Generar Conteo Cíclico" desde la SPA) llama esta
+// función para registrar el folio en CONTROL_CONTEOS. No es código
+// muerto del sistema legado — es el único lugar que escribe esa hoja.
 function registrarControlConteo(
 folio,
 fecha,

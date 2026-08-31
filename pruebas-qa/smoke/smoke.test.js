@@ -345,3 +345,43 @@ prueba({
     };
   },
 });
+
+/*
+ * ARQ-002/ARQ-003: Código.gs se ve como "legado" (solo alcanzable desde el
+ * menú de Sheets) pero NO lo es del todo — la auditoría de arquitectura
+ * (evolución continua) confirmó que 📁 App.gs.gs llama en tiempo real
+ * obtenerUsuario() y registrarControlConteo(), ambas definidas SOLO en
+ * Código.gs. Si alguien archiva/borra Código.gs pensando que es código
+ * muerto, estas 2 pruebas deben reventar antes de que rompa producción.
+ */
+prueba({
+  id: 'ARQ-002', grupo: 'smoke', nombre: 'obtenerUsuario (Código.gs) sigue existiendo — dependencia real de requerirAccesoAlmacenLegadoApp_', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerUsuario() vive solo en Código.gs pero la sesiona activa legada (sin token) de 📁 App.gs.gs depende de ella; si se borra, aprobar/rechazar discrepancias sin token deja de funcionar en silencio',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase(), correoActivo: 'supervisor@tagers.com' });
+    const correo = entorno.invocar('obtenerUsuario');
+    return {
+      datos: 'Session.getActiveUser()=supervisor@tagers.com',
+      esperado: 'obtenerUsuario() existe y regresa ese correo',
+      obtenido: `correo=${correo}`,
+      pasa: correo === 'supervisor@tagers.com',
+    };
+  },
+});
+
+prueba({
+  id: 'ARQ-003', grupo: 'smoke', nombre: 'registrarControlConteo (Código.gs) sigue existiendo — dependencia real de generarConteoRacksApp', metodo: 'EMPÍRICO',
+  objetivo: 'registrarControlConteo() vive solo en Código.gs pero generarConteoRacksApp (flujo real de "Generar Conteo Cíclico" en la SPA) depende de ella para escribir CONTROL_CONTEOS; si se borra, generar un conteo deja de registrar su folio de control',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    entorno.invocar('registrarControlConteo', 'CC-ARQ-TEST', new Date(), 'Admin', ['A', 'B'], 5);
+    const control = entorno.leerHoja('CONTROL_CONTEOS');
+    const fila = control.find(f => f[0] === 'CC-ARQ-TEST');
+    return {
+      datos: 'registrarControlConteo("CC-ARQ-TEST", fecha, "Admin", ["A","B"], 5)',
+      esperado: 'agrega una fila a CONTROL_CONTEOS con Folio=CC-ARQ-TEST, Racks="A, B", Productos=5, Estado=ABIERTO',
+      obtenido: fila ? `racks=${fila[3]}, productos=${fila[4]}, estado=${fila[7]}` : 'SIN FILA — la función no existe o no escribió nada',
+      pasa: !!fila && fila[3] === 'A, B' && fila[4] === 5 && fila[7] === 'ABIERTO',
+    };
+  },
+});

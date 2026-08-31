@@ -107,10 +107,17 @@ function generarConteosDelDia() {
     // ESTA ES TU FUNCIÓN QUE YA TIENES
     generarConteoRacks(racksHoy);
 
-    // Registrar en auditoría
+    // Registrar en auditoría — registrarAuditoria(usuario, modulo, accion,
+    // folio, codigo, producto, cantidadAnterior, cantidadNueva, observacion),
+    // ver Código.gs. La llamada anterior pasaba solo 3 argumentos
+    // posicionales (quedaban usuario="CONTEO_PROGRAMADO", modulo=racks,
+    // accion=el mensaje, y el resto undefined/NaN) — nunca se notó porque
+    // esta función todavía no la dispara nada en producción (huérfana:
+    // sin trigger ni UI que la invoque). Se corrige aquí antes de que
+    // alguien la conecte y empiece a escribir filas de auditoría corruptas.
     registrarAuditoria(
-      "CONTEO_PROGRAMADO",
-      racksHoy.join(", "),
+      "Sistema (programación automática)", "CONTEO", "GENERACION CONTEO PROGRAMADA",
+      racksHoy.join(", "), "", "", 0, racksHoy.length,
       "Generación automática de conteos del día: " + obtenerDiaActual()
     );
 

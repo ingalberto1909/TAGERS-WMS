@@ -502,6 +502,30 @@ prueba({
 });
 
 prueba({
+  id: 'SEG-029', grupo: 'seguridad', nombre: 'Auditoría de arquitectura: un contador de intentos corrupto se autocorrige en vez de desbloquear en silencio', metodo: 'EMPÍRICO',
+  objetivo: 'Si el valor guardado en PropertiesService para el contador de intentos de login no es JSON válido (corrupción), obtenerEstadoIntentosLogin_ debe: (1) no tronar, (2) tratarlo como 0 intentos (única opción segura sin poder reconstruir el valor real), (3) borrar la clave corrupta para no repetir el fallo, y (4) dejar constancia en AUDITORIA — antes fallaba exactamente igual pero en silencio, sin el paso 3 ni el 4',
+  ejecutar() {
+    const entorno = entornoConPassword_('operador@tagers.com', 'clave123');
+    const clave = entorno.invocar('obtenerClaveIntentosLogin_', 'operador@tagers.com');
+    entorno.propiedades.getScriptProperties().setProperty(clave, '{esto no es json valido');
+
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    const res = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave123');
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const filasNuevas = auditoria.slice(auditoriaAntes);
+    const registroCorrupcion = filasNuevas.find(f => f[5] === 'ESTADO DE INTENTOS CORRUPTO');
+    const claveSigueGuardada = entorno.propiedades.getScriptProperties().getProperty(clave);
+
+    return {
+      datos: 'PropertiesService["' + clave + '"] = "{esto no es json valido" (corrupto), luego un login con la contraseña correcta',
+      esperado: 'el login funciona con normalidad (ok=true, no bloqueado), la clave corrupta se borra, y alguna fila nueva en AUDITORIA queda con acción "ESTADO DE INTENTOS CORRUPTO"',
+      obtenido: `ok=${res.ok}, claveSigueGuardada=${!!claveSigueGuardada}, filasNuevasAuditoria=${filasNuevas.length}, huboRegistroCorrupcion=${!!registroCorrupcion}`,
+      pasa: res.ok === true && !claveSigueGuardada && !!registroCorrupcion,
+    };
+  },
+});
+
+prueba({
   id: 'SEG-024', grupo: 'seguridad', nombre: 'AUD-01: un login exitoso limpia el contador de intentos fallidos previos', metodo: 'EMPÍRICO',
   objetivo: 'Si el usuario acierta la contraseña ANTES de llegar al umbral de bloqueo, el contador de fallos se reinicia — fallos viejos no se acumulan contra un futuro error',
   ejecutar() {

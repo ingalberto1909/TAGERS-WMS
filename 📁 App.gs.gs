@@ -1472,6 +1472,8 @@ function generarConteoRacksApp(racks, token){
 
   });
 
+  // registrarControlConteo vive en Código.gs (ver aviso "NO BORRAR" ahí) —
+  // es una dependencia real de este flujo activo, no una llamada a código legado.
   registrarControlConteo(folioConteo, fecha, usuario, racks, salida.length);
 
   registrarAuditoria(

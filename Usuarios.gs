@@ -32,9 +32,30 @@ function obtenerClaveIntentosLogin_(correo){
 }
 
 function obtenerEstadoIntentosLogin_(correo){
-  const raw = PropertiesService.getScriptProperties().getProperty(obtenerClaveIntentosLogin_(correo));
+  const clave = obtenerClaveIntentosLogin_(correo);
+  const raw = PropertiesService.getScriptProperties().getProperty(clave);
   if(!raw) return { intentos: 0, bloqueadoHasta: 0 };
-  try { return JSON.parse(raw); } catch(e){ return { intentos: 0, bloqueadoHasta: 0 }; }
+  try {
+    const estado = JSON.parse(raw);
+    if(estado && typeof estado.intentos === "number" && typeof estado.bloqueadoHasta === "number"){
+      return estado;
+    }
+  } catch(e){
+    // no es JSON válido — cae al mismo manejo de abajo
+  }
+  // Auditoría de evolución continua: un valor corrupto/con forma
+  // inesperada regresaba {intentos:0, bloqueadoHasta:0} en silencio, lo
+  // que en teoría podía desbloquear una cuenta que sí estaba bloqueada
+  // (fail-open). Ahora se autocorrige el valor guardado (para no repetir
+  // el mismo fallo de parseo en cada intento futuro) y queda registrado
+  // en AUDITORIA — la política de bloqueo no cambia, solo deja de fallar
+  // en silencio.
+  try { PropertiesService.getScriptProperties().deleteProperty(clave); } catch(e){ /* no crítico */ }
+  try {
+    registrarAuditoria(correo, "SEGURIDAD", "ESTADO DE INTENTOS CORRUPTO", "", "", "", 0, 0,
+      "El contador de intentos de login para este correo no se pudo leer (valor corrupto) — se reinició a 0.");
+  } catch(e){ /* nunca debe tronar el login por un problema de auditoría */ }
+  return { intentos: 0, bloqueadoHasta: 0 };
 }
 
 function guardarEstadoIntentosLogin_(correo, estado){

@@ -36,6 +36,7 @@ const ARCHIVOS_DE_PRUEBA = [
   'requisiciones-sucursal/requisiciones-sucursal.test.js',
   'legado/movimientos-dashboard.test.js',
   'legado/onedit-entrada-salida.test.js',
+  'legado/programacion-conteos.test.js',
   'notificaciones/notificaciones.test.js',
   'notificaciones/notificaciones-correo.test.js',
   'usuarios/usuarios.test.js',
