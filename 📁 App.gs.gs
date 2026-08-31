@@ -3028,22 +3028,52 @@ function obtenerOrdenesCompraApp(token){
   const anchoHoja = Math.min(Math.max(hoja.getLastColumn(), 7), 11);
   const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, anchoHoja).getValues();
 
-  return datos.map(f=>({
-    oc: f[0],
-    fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy") : String(f[1]||""),
-    proveedor: f[2],
-    usuario: f[3],
-    estado: f[4],
-    total: Number(f[5]) || 0,
-    observaciones: f[6] || "",
-    // COM-02: en blanco para cualquier OC generada antes de esta corrección
-    // (misma convención que Presentación/Piezas en DETALLE_OC) — se leen
-    // como 0, y totalConImpuestos cae de vuelta al Total de siempre.
-    descuento: Number(f[7]) || 0,
-    ivaPorcentaje: Number(f[8]) || 0,
-    flete: Number(f[9]) || 0,
-    totalConImpuestos: Number(f[10]) || Number(f[5]) || 0
-  })).reverse(); // más recientes primero
+  // COM-201: un solo pase por PAGOS_OC para las N órdenes, en vez de
+  // recalcular el resumen de pago por fila (que releería la hoja completa
+  // N veces) — misma idea que existenciaPorCodigo en otras funciones de lista.
+  const montoPagadoPorOC = {};
+  const hojaPagos = obtenerHojaPagosOC_();
+  if(hojaPagos.getLastRow() > 1){
+    hojaPagos.getRange(2, 1, hojaPagos.getLastRow() - 1, 3).getValues().forEach(p => {
+      const folio = String(p[0] || "").trim().toUpperCase();
+      if(!folio) return;
+      montoPagadoPorOC[folio] = (montoPagadoPorOC[folio] || 0) + (Number(p[2]) || 0);
+    });
+  }
+
+  return datos.map(f=>{
+
+    const oc = String(f[0] || "").trim().toUpperCase();
+    const totalConImpuestos = Number(f[10]) || Number(f[5]) || 0;
+    const montoPagado = Math.round((montoPagadoPorOC[oc] || 0) * 100) / 100;
+    const saldoPendiente = Math.max(Math.round((totalConImpuestos - montoPagado) * 100) / 100, 0);
+    let estadoPago = "PENDIENTE";
+    if(montoPagado > 0 && saldoPendiente > 0.01) estadoPago = "PARCIAL";
+    else if(saldoPendiente <= 0.01 && totalConImpuestos > 0) estadoPago = "PAGADA";
+
+    return {
+      oc: f[0],
+      fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy") : String(f[1]||""),
+      proveedor: f[2],
+      usuario: f[3],
+      estado: f[4],
+      total: Number(f[5]) || 0,
+      observaciones: f[6] || "",
+      // COM-02: en blanco para cualquier OC generada antes de esta corrección
+      // (misma convención que Presentación/Piezas en DETALLE_OC) — se leen
+      // como 0, y totalConImpuestos cae de vuelta al Total de siempre.
+      descuento: Number(f[7]) || 0,
+      ivaPorcentaje: Number(f[8]) || 0,
+      flete: Number(f[9]) || 0,
+      totalConImpuestos: totalConImpuestos,
+      // COM-201: estado de pago, para el área contable — nunca contra el
+      // subtotal, siempre contra el total real de la orden.
+      montoPagado: montoPagado,
+      saldoPendiente: saldoPendiente,
+      estadoPago: estadoPago
+    };
+
+  }).reverse(); // más recientes primero
 
 }
 
@@ -3126,6 +3156,148 @@ function obtenerDetalleOCApp_(oc){
 function obtenerDetalleOCApp(oc, token){
   requerirSesionActivaApp_(token);
   return obtenerDetalleOCApp_(oc);
+}
+
+// ============================================
+// COM-201 (auditoría de arquitectura, evolución continua): registro de
+// pago de Órdenes de Compra, para el área contable. El ciclo de compras
+// llegaba hasta la recepción física y se detenía ahí — no había forma de
+// saber qué se le debe a cada proveedor ni de prevenir un pago duplicado.
+//
+// Es un LIBRO DE PAGOS por folio (PAGOS_OC, hoja nueva, se crea sola la
+// primera vez) en vez de un campo único "pagado sí/no" — una OC se paga
+// seguido en más de una exhibición (anticipo + liquidación), y un libro
+// deja rastro de cada abono sin sobreescribir el anterior. El saldo
+// pendiente se calcula siempre contra totalConImpuestos (el total REAL
+// de la orden, con el 16% de IVA y cualquier descuento/flete ya
+// aplicados por calcularDesgloseOrdenCompra_ — COM-02) y nunca contra el
+// subtotal sin impuestos, para no reportar un saldo pendiente equivocado
+// cuando la orden sí tuvo IVA o descuento capturado.
+// ============================================
+
+function obtenerHojaPagosOC_(){
+  const ss = SpreadsheetApp.getActive();
+  let hoja = ss.getSheetByName("PAGOS_OC");
+  if(!hoja){
+    hoja = ss.insertSheet("PAGOS_OC");
+    hoja.appendRow(["Folio", "Fecha", "Monto", "Método", "Usuario", "Observaciones"]);
+  }
+  return hoja;
+}
+
+/** Suma los pagos ya registrados para un folio y deriva el estado de pago contra el total REAL (con impuestos) de la orden. */
+function calcularResumenPagoOC_(oc, totalConImpuestos){
+
+  const hoja = obtenerHojaPagosOC_();
+  let montoPagado = 0;
+
+  if(hoja.getLastRow() > 1){
+    const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues();
+    datos.forEach(f => {
+      if(String(f[0] || "").trim().toUpperCase() === oc){
+        montoPagado += Number(f[2]) || 0;
+      }
+    });
+  }
+
+  montoPagado = Math.round(montoPagado * 100) / 100;
+  const saldoPendiente = Math.round((totalConImpuestos - montoPagado) * 100) / 100;
+
+  let estadoPago = "PENDIENTE";
+  if(montoPagado > 0 && saldoPendiente > 0.01) estadoPago = "PARCIAL";
+  else if(saldoPendiente <= 0.01 && totalConImpuestos > 0) estadoPago = "PAGADA";
+
+  return { montoPagado: montoPagado, saldoPendiente: Math.max(saldoPendiente, 0), estadoPago: estadoPago };
+
+}
+
+/**
+ * Registra un abono a una OC — no cierra ni bloquea nada más del ciclo
+ * de compras (recepción/cancelación siguen su propio camino); es
+ * puramente informativo para conciliar con el proveedor. Solo ADMIN,
+ * mismo criterio que aprobarOrdenCompraApp: es dinero, no una operación
+ * de almacén.
+ */
+function registrarPagoOrdenCompraApp(oc, monto, metodo, observaciones, token){
+
+  requerirSesionActivaApp_(token);
+  const rol = String(obtenerRolDesdeToken(token) || "").toUpperCase();
+  if(rol !== "ADMIN"){
+    throw new Error("Solo un administrador puede registrar un pago de orden de compra.");
+  }
+
+  oc = String(oc || "").trim().toUpperCase();
+  monto = Number(monto) || 0;
+
+  if(!oc) throw new Error("Falta el folio de la orden de compra.");
+  if(monto <= 0) throw new Error("El monto del pago debe ser mayor a cero.");
+
+  const detalleOC = obtenerDetalleOCApp_(oc);
+  if(!detalleOC) throw new Error("No se encontró la orden de compra " + oc + ".");
+  if(detalleOC.estado === "CANCELADA") throw new Error("La orden " + oc + " está cancelada — no se le pueden registrar pagos.");
+
+  const resumenPrevio = calcularResumenPagoOC_(oc, detalleOC.totalConImpuestos);
+
+  // Margen de un centavo por redondeo, no para permitir sobrepagos reales.
+  if(monto > resumenPrevio.saldoPendiente + 0.01){
+    throw new Error(
+      "Ese monto excede el saldo pendiente de " + oc + " ($" +
+      resumenPrevio.saldoPendiente.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + ")."
+    );
+  }
+
+  const usuario = obtenerNombreDesdeToken(token);
+  const fecha = new Date();
+
+  obtenerHojaPagosOC_().appendRow([oc, fecha, monto, metodo || "", usuario, observaciones || ""]);
+
+  registrarAuditoria(
+    usuario, "COMPRAS", "REGISTRO DE PAGO", oc, "", detalleOC.proveedor,
+    resumenPrevio.montoPagado, resumenPrevio.montoPagado + monto,
+    "Pago de $" + monto.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + (metodo ? " (" + metodo + ")" : "") + (observaciones ? " — " + observaciones : "")
+  );
+
+  const resumenNuevo = calcularResumenPagoOC_(oc, detalleOC.totalConImpuestos);
+
+  return {
+    ok: true, oc: oc, montoPagado: resumenNuevo.montoPagado,
+    saldoPendiente: resumenNuevo.saldoPendiente, estadoPago: resumenNuevo.estadoPago
+  };
+
+}
+
+/** Historial de abonos de una OC + resumen — cualquier sesión activa puede consultarlo (mismo criterio que ver el total de la orden), solo registrar un pago exige ADMIN. */
+function obtenerPagosOrdenCompraApp(oc, token){
+
+  requerirSesionActivaApp_(token);
+
+  oc = String(oc || "").trim().toUpperCase();
+  const detalleOC = obtenerDetalleOCApp_(oc);
+  if(!detalleOC) throw new Error("No se encontró la orden de compra " + oc + ".");
+
+  const hoja = obtenerHojaPagosOC_();
+  const pagos = [];
+
+  if(hoja.getLastRow() > 1){
+    const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 6).getValues();
+    datos.forEach(f => {
+      if(String(f[0] || "").trim().toUpperCase() === oc){
+        pagos.push({
+          fecha: f[1] instanceof Date ? Utilities.formatDate(f[1], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : String(f[1] || ""),
+          monto: Number(f[2]) || 0, metodo: f[3] || "", usuario: f[4], observaciones: f[5] || ""
+        });
+      }
+    });
+  }
+
+  const resumen = calcularResumenPagoOC_(oc, detalleOC.totalConImpuestos);
+
+  return {
+    oc: oc, totalConImpuestos: detalleOC.totalConImpuestos,
+    montoPagado: resumen.montoPagado, saldoPendiente: resumen.saldoPendiente, estadoPago: resumen.estadoPago,
+    pagos: pagos.reverse() // más reciente primero
+  };
+
 }
 
 /**

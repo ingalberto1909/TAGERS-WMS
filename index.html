@@ -1024,7 +1024,8 @@ display:inline-block;
 .badgeEstado.RECIBIDO,
 .badgeEstado.RECIBIDA,
 .badgeEstado.CERRADO,
-.badgeEstado.CERRADA{ background:var(--color-success-bg); color:var(--color-success); }
+.badgeEstado.CERRADA,
+.badgeEstado.PAGADA{ background:var(--color-success-bg); color:var(--color-success); }
 
 .badgeEstado.INACTIVO,
 .badgeEstado.INACTIVA,
@@ -8669,7 +8670,7 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
-        <tr><th>OC</th><th>Proveedor</th><th>Fecha</th><th>Estado</th><th style="text-align:right">Total</th><th>PDF</th>${conAcciones?"<th></th>":""}</tr>
+        <tr><th>OC</th><th>Proveedor</th><th>Fecha</th><th>Estado</th><th style="text-align:right">Total</th><th>Pago</th><th>PDF</th>${conAcciones?"<th></th>":""}</tr>
       </thead>
       <tbody>
         ${lista.map(o=>`
@@ -8683,6 +8684,11 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
                 <div>$${Number(o.totalConImpuestos || o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>
                 ${o.totalConImpuestos && o.totalConImpuestos !== o.total ? `<div style="font-size:11px;color:var(--text-muted)">Subtotal $${Number(o.total).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>` : ""}
               </div>
+            </td>
+            <td>
+              <span class="badgeEstado ${o.estadoPago}">${o.estadoPago}</span>
+              ${o.estadoPago !== "PAGADA" ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Saldo $${Number(o.saldoPendiente).toLocaleString("es-MX",{minimumFractionDigits:2})}</div>` : ""}
+              ${USUARIO_ACTUAL.rol === "ADMIN" && o.estado !== "CANCELADA" && o.estadoPago !== "PAGADA" ? `<div class="boton secundario" style="width:auto;padding:4px 10px;font-size:11px;margin:4px 0 0" onclick="abrirRegistrarPagoOC('${o.oc}')">${tgIcon("dinero",13)} Registrar pago</div>` : ""}
             </td>
             <td style="white-space:nowrap;display:flex;gap:2px;align-items:center">
               <span class="iconoAccionTabla" title="Ver PDF" onclick="verPDFOrdenCompra('${o.oc}')">${tgIcon("documento",15)}</span>
@@ -8699,6 +8705,93 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
       </tbody>
     </table>
   `;
+
+}
+
+/**
+ * COM-201: registro de pagos de una OC, para el área contable. Solo
+ * abre/registra ADMIN (el backend también lo exige — el botón que llama
+ * a esto ya no se dibuja para otros roles, pero el guard real vive en
+ * registrarPagoOrdenCompraApp).
+ */
+function abrirRegistrarPagoOC(oc){
+
+  window.pagoOcFolioActual = oc;
+
+  document.getElementById("pagoOcFolio").innerText = "Registrar pago — " + oc;
+  document.getElementById("pagoOcResumen").innerText = "";
+  document.getElementById("pagoOcHistorial").innerText = "Cargando...";
+  document.getElementById("pagoOcMonto").value = "";
+  document.getElementById("pagoOcMetodo").value = "";
+  document.getElementById("pagoOcObservaciones").value = "";
+  document.getElementById("mensajePagoOC").style.display = "none";
+  document.getElementById("modalPagoOC").classList.add("mostrar");
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+
+      document.getElementById("pagoOcResumen").innerText =
+        "Total: $" + datos.totalConImpuestos.toLocaleString("es-MX",{minimumFractionDigits:2}) +
+        " — Pagado: $" + datos.montoPagado.toLocaleString("es-MX",{minimumFractionDigits:2}) +
+        " — Saldo: $" + datos.saldoPendiente.toLocaleString("es-MX",{minimumFractionDigits:2});
+
+      document.getElementById("pagoOcMonto").max = datos.saldoPendiente;
+
+      if(!datos.pagos.length){
+        document.getElementById("pagoOcHistorial").innerHTML = "Sin abonos registrados todavía.";
+        return;
+      }
+
+      document.getElementById("pagoOcHistorial").innerHTML =
+        "<b>Abonos registrados:</b><br>" +
+        datos.pagos.map(p =>
+          `${p.fecha} — $${Number(p.monto).toLocaleString("es-MX",{minimumFractionDigits:2})}${p.metodo ? " (" + p.metodo + ")" : ""} — ${p.usuario}${p.observaciones ? " — " + p.observaciones : ""}`
+        ).join("<br>");
+
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("pagoOcHistorial").innerHTML = "⚠️ " + e.message;
+    })
+    .obtenerPagosOrdenCompraApp(oc, obtenerTokenSesion());
+
+}
+
+function cerrarModalPagoOC(){
+  document.getElementById("modalPagoOC").classList.remove("mostrar");
+}
+
+function confirmarRegistrarPagoOC(){
+
+  const oc = window.pagoOcFolioActual;
+  if(!oc) return;
+
+  const monto = Number(document.getElementById("pagoOcMonto").value) || 0;
+  const metodo = document.getElementById("pagoOcMetodo").value.trim();
+  const observaciones = document.getElementById("pagoOcObservaciones").value.trim();
+
+  if(monto <= 0){
+    mostrarMensajeTemporal("mensajePagoOC", "Captura un monto mayor a cero", "error");
+    return;
+  }
+
+  activarCargaBoton("btnConfirmarPagoOC", true);
+
+  // El botón que abrió este modal solo vive en la lista de Órdenes de
+  // Compra o en Historial de Compras — se refresca la misma que esté
+  // activa, igual que ya hacen aprobarOC/cancelarOC con su propia lista.
+  const enHistorial = document.getElementById("btnHistorialCompras") && document.getElementById("btnHistorialCompras").classList.contains("activo");
+
+  google.script.run
+    .withSuccessHandler(function(){
+      activarCargaBoton("btnConfirmarPagoOC", false);
+      cerrarModalPagoOC();
+      if(enHistorial) abrirHistorialCompras(); else abrirOrdenesCompra();
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnConfirmarPagoOC", false);
+      mostrarMensajeTemporal("mensajePagoOC", "⚠️ " + e.message, "error");
+    })
+    .registrarPagoOrdenCompraApp(oc, monto, metodo, observaciones, obtenerTokenSesion());
 
 }
 
@@ -15470,6 +15563,40 @@ function aplicarFiltros(){
       </div>
 
     </div>
+
+  </div>
+
+</div>
+
+<!-- COM-201: mismo estilo de overlay+tarjeta que #modalDetalle (clases
+     compartidas), solo ADMIN llega a abrirlo (el botón que lo abre ya
+     no se dibuja para otros roles). -->
+<div class="modalDetalle" id="modalPagoOC" onclick="if(event.target===this) cerrarModalPagoOC()">
+
+  <div class="modalDetalleCaja">
+
+    <div class="modalDetalleHead">
+      <div>
+        <h3 id="pagoOcFolio">Registrar pago</h3>
+        <span id="pagoOcResumen"></span>
+      </div>
+      <button class="cerrarModalLista" onclick="cerrarModalPagoOC()">✕</button>
+    </div>
+
+    <div id="pagoOcHistorial" style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px"></div>
+
+    <label>Monto del abono</label>
+    <input id="pagoOcMonto" type="number" min="0" step="0.01" placeholder="0.00">
+
+    <label>Método (opcional)</label>
+    <input id="pagoOcMetodo" placeholder="Transferencia, cheque, efectivo...">
+
+    <label>Observaciones (opcional)</label>
+    <input id="pagoOcObservaciones" placeholder="Anticipo, liquidación...">
+
+    <div id="mensajePagoOC" style="display:none;margin-top:10px;font-size:13px;font-weight:600"></div>
+
+    <div class="boton success" id="btnConfirmarPagoOC" style="margin-top:14px" onclick="confirmarRegistrarPagoOC()">💰 Registrar pago</div>
 
   </div>
 

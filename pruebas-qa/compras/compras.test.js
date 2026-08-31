@@ -731,3 +731,144 @@ prueba({
     };
   },
 });
+
+function generarOcConImpuestos_(entorno, token){
+  // subtotal=150, descuento=20, IVA=16%, flete=50 -> totalConImpuestos=200.8
+  // (mismo caso que COM-020) — el saldo pendiente de pago SIEMPRE debe
+  // calcularse contra este total real, nunca contra el subtotal de 150.
+  return entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+    { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+  ], token, { descuento: 20, ivaPorcentaje: 16, flete: 50 });
+}
+
+prueba({
+  id: 'COM-201', grupo: 'compras', nombre: 'COM-201: registrar un pago calcula el saldo contra el TOTAL CON IMPUESTOS, no el subtotal', metodo: 'EMPÍRICO',
+  objetivo: 'Con descuento/IVA/flete capturados (totalConImpuestos=200.8, no el subtotal de 150), un abono de 100 debe dejar saldoPendiente=100.8 y estadoPago=PARCIAL',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+
+    const resultado = entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 100, 'Transferencia', 'Anticipo', token);
+
+    return {
+      datos: `OC ${r.folio} con totalConImpuestos=200.8 (subtotal=150 + IVA/descuento/flete), abono de $100`,
+      esperado: 'montoPagado=100, saldoPendiente=100.8 (200.8-100, NO 50=150-100), estadoPago=PARCIAL',
+      obtenido: `montoPagado=${resultado.montoPagado}, saldoPendiente=${resultado.saldoPendiente}, estadoPago=${resultado.estadoPago}`,
+      pasa: resultado.montoPagado === 100 && resultado.saldoPendiente === 100.8 && resultado.estadoPago === 'PARCIAL',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-202', grupo: 'compras', nombre: 'COM-201: dos abonos parciales se acumulan hasta liquidar la orden (PAGADA)', metodo: 'EMPÍRICO',
+  objetivo: 'Un libro de pagos, no un campo único — dos abonos de la misma OC deben sumarse, y al llegar al total la orden queda PAGADA',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+
+    entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 100.8, 'Transferencia', 'Anticipo', token);
+    const segundo = entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 100, 'Efectivo', 'Liquidación', token);
+
+    const consulta = entorno.invocar('obtenerPagosOrdenCompraApp', r.folio, token);
+
+    return {
+      datos: 'OC con totalConImpuestos=200.8, abonos de 100.8 y 100 (suman exactamente el total)',
+      esperado: 'tras el 2º abono: montoPagado=200.8, saldoPendiente=0, estadoPago=PAGADA; el historial trae los 2 pagos, más reciente primero',
+      obtenido: `montoPagado=${segundo.montoPagado}, saldoPendiente=${segundo.saldoPendiente}, estadoPago=${segundo.estadoPago}, ` +
+        `historial=${consulta.pagos.length} pagos, primero.observaciones="${consulta.pagos[0].observaciones}"`,
+      pasa: segundo.montoPagado === 200.8 && segundo.saldoPendiente === 0 && segundo.estadoPago === 'PAGADA' &&
+        consulta.pagos.length === 2 && consulta.pagos[0].observaciones === 'Liquidación',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-203', grupo: 'compras', nombre: 'COM-201: no se puede registrar un pago que exceda el saldo pendiente', metodo: 'EMPÍRICO',
+  objetivo: 'Un monto mayor al saldo pendiente (más allá del margen de un centavo por redondeo) debe rechazarse, sin escribir nada en PAGOS_OC',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+
+    let error = '';
+    try { entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 500, 'Transferencia', '', token); }
+    catch (e) { error = e.message; }
+
+    const consulta = entorno.invocar('obtenerPagosOrdenCompraApp', r.folio, token);
+
+    return {
+      datos: 'OC con saldo pendiente de 200.8, se intenta pagar 500',
+      esperado: 'lanza error explícito mencionando el saldo, y no queda ningún pago registrado',
+      obtenido: `error="${error}", pagosRegistrados=${consulta.pagos.length}`,
+      pasa: !!error && /saldo pendiente/i.test(error) && consulta.pagos.length === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-204', grupo: 'compras', nombre: 'COM-201: solo ADMIN puede registrar un pago — Almacén/Supervisor no', metodo: 'EMPÍRICO',
+  objetivo: 'Es dinero, mismo criterio que aprobarOrdenCompraApp — ni SUPERVISOR (que sí puede generar/recibir OC) puede registrar un pago',
+  ejecutar() {
+    const { entorno, token: tokenAdmin } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, tokenAdmin);
+
+    const tokenSup = entorno.invocar('crearSesion_', 'supervisor@tagers.com', 'Sup', 'SUPERVISOR');
+    let error = '';
+    try { entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 50, '', '', tokenSup); }
+    catch (e) { error = e.message; }
+
+    return {
+      datos: 'token de SUPERVISOR intentando registrar un pago',
+      esperado: 'bloqueado con error explícito',
+      obtenido: `error="${error}"`,
+      pasa: !!error,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-205', grupo: 'compras', nombre: 'COM-201: no se puede pagar una OC cancelada', metodo: 'EMPÍRICO',
+  objetivo: 'Una orden CANCELADA no debe aceptar pagos nuevos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+    entorno.invocar('aprobarOrdenCompraApp', r.folio, token);
+    entorno.invocar('cancelarOrdenCompraApp', r.folio, token);
+
+    let error = '';
+    try { entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 50, '', '', token); }
+    catch (e) { error = e.message; }
+
+    return {
+      datos: `OC ${r.folio} cancelada`,
+      esperado: 'lanza error explícito mencionando que está cancelada',
+      obtenido: `error="${error}"`,
+      pasa: !!error && /cancelada/i.test(error),
+    };
+  },
+});
+
+prueba({
+  id: 'COM-206', grupo: 'compras', nombre: 'COM-201: obtenerOrdenesCompraApp incluye el estado de pago de cada orden, sin recalcularlo mal en la lista', metodo: 'EMPÍRICO',
+  objetivo: 'La lista de Órdenes de Compra debe traer montoPagado/saldoPendiente/estadoPago consistentes con obtenerPagosOrdenCompraApp para la misma orden, y PENDIENTE (no PAGADA/PARCIAL) para una orden sin ningún pago',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const pagada = generarOcConImpuestos_(entorno, token);
+    entorno.invocar('registrarPagoOrdenCompraApp', pagada.folio, 100, '', '', token);
+
+    const sinPagos = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 },
+    ], token);
+
+    const lista = entorno.invocar('obtenerOrdenesCompraApp', token);
+    const filaPagada = lista.find(o => o.oc === pagada.folio);
+    const filaSinPagos = lista.find(o => o.oc === sinPagos.folio);
+
+    return {
+      datos: `${pagada.folio} con un abono de 100 sobre 200.8; ${sinPagos.folio} sin ningún pago (subtotal=50)`,
+      esperado: `${pagada.folio}: estadoPago=PARCIAL, saldoPendiente=100.8. ${sinPagos.folio}: estadoPago=PENDIENTE, saldoPendiente=50, montoPagado=0`,
+      obtenido: `pagada: estado=${filaPagada.estadoPago}, saldo=${filaPagada.saldoPendiente} | sinPagos: estado=${filaSinPagos.estadoPago}, saldo=${filaSinPagos.saldoPendiente}, pagado=${filaSinPagos.montoPagado}`,
+      pasa: filaPagada.estadoPago === 'PARCIAL' && filaPagada.saldoPendiente === 100.8 &&
+        filaSinPagos.estadoPago === 'PENDIENTE' && filaSinPagos.saldoPendiente === 50 && filaSinPagos.montoPagado === 0,
+    };
+  },
+});
