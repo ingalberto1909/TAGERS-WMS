@@ -1053,6 +1053,10 @@ display:inline-block;
 
 .badgeEstado.CON_INCIDENCIA{ background:var(--color-danger-bg); color:var(--color-danger); }
 
+.badgeEstado.ABC-A{ background:var(--color-success-bg); color:var(--color-success); }
+.badgeEstado.ABC-B{ background:var(--color-warning-bg); color:var(--color-warning); }
+.badgeEstado.ABC-C{ background:var(--border); color:var(--text-muted); }
+
 /* Fila expandible reutilizable para listas móviles densas (Conteos
    cíclicos del Dashboard, bandejas de Requisiciones, etc.): título +
    estado siempre visibles, el resto de los campos bajo demanda
@@ -3400,7 +3404,7 @@ const PERMISOS_ROL = {
     // btnAjustes) — a partir de ahora exclusivo de ADMIN/OPERADOR. Se agregó
     // acceso completo a Compras e Inventario mensual.
     "btnInicio",
-    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas",
+    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas","btnClasificacionABC",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
@@ -6986,6 +6990,158 @@ function buscarAuditoria(){
       cont.innerHTML = "";
     })
     .obtenerRegistroAuditoriaApp(filtros, obtenerTokenSesion());
+
+}
+
+function abrirClasificacionABC(){
+
+  marcarActivo("btnClasificacionABC");
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">🏷️ Clasificación ABC</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-6px">Qué productos mueven realmente tu inventario — clasificados por valor de consumo real (salidas × costo), no solo por existencia.</p>
+
+    <div class="cardProducto">
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Ventana de análisis (días)</label>
+          <input id="abcDiasHistorial" type="number" min="7" value="180">
+        </div>
+        <div class="campo">
+          <label>Buscar producto o código</label>
+          <input id="abcFiltroTexto" placeholder="Ej. Harina..." oninput="filtrarTablaABC()">
+        </div>
+      </div>
+      <div class="boton" id="btnActualizarABC" style="margin-top:10px;max-width:200px" onclick="cargarClasificacionABC()">${tgIcon("buscar",16)} Actualizar</div>
+    </div>
+
+    <div id="mensajeABC" style="display:none;margin:10px 0;font-size:13.5px;font-weight:600"></div>
+    <div id="resultadoABC"></div>
+
+    </div>
+  `;
+
+  cargarClasificacionABC();
+
+}
+
+function cargarClasificacionABC(){
+
+  const cont = document.getElementById("resultadoABC");
+  if(!cont) return;
+
+  const diasHistorial = Number(document.getElementById("abcDiasHistorial").value) || 180;
+
+  activarCargaBoton("btnActualizarABC", true);
+  cont.innerHTML = "<div class='cardProducto'>Calculando...</div>";
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+
+      activarCargaBoton("btnActualizarABC", false);
+      window.abcActual = resultado;
+
+      if(!resultado.productos.length){
+        cont.innerHTML = tgEmptyState("buscar", "No hay productos en el catálogo");
+        return;
+      }
+
+      const pct = (valor) => resultado.totalValorConsumo > 0 ? Math.round((valor / resultado.totalValorConsumo) * 100) : 0;
+
+      cont.innerHTML = `
+
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Del ${resultado.desde} al ${resultado.hasta} (${resultado.diasHistorial} días) — valor de consumo total: <strong>$${resultado.totalValorConsumo.toLocaleString("es-MX",{minimumFractionDigits:2})}</strong></p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
+          <div class="cardProducto" style="margin:0;cursor:pointer" onclick="filtrarPorCategoriaABC('A')">
+            <div style="font-size:11px;color:var(--text-muted)">A — ALTO IMPACTO</div>
+            <div style="font-size:22px;font-weight:800;color:var(--color-success)">${resultado.resumen.A.conteo} <span style="font-size:13px;font-weight:600">productos</span></div>
+            <div style="font-size:12px;color:var(--text-muted)">$${resultado.resumen.A.valor.toLocaleString("es-MX",{minimumFractionDigits:2})} (${pct(resultado.resumen.A.valor)}%)</div>
+          </div>
+          <div class="cardProducto" style="margin:0;cursor:pointer" onclick="filtrarPorCategoriaABC('B')">
+            <div style="font-size:11px;color:var(--text-muted)">B — IMPACTO MEDIO</div>
+            <div style="font-size:22px;font-weight:800;color:var(--color-warning)">${resultado.resumen.B.conteo} <span style="font-size:13px;font-weight:600">productos</span></div>
+            <div style="font-size:12px;color:var(--text-muted)">$${resultado.resumen.B.valor.toLocaleString("es-MX",{minimumFractionDigits:2})} (${pct(resultado.resumen.B.valor)}%)</div>
+          </div>
+          <div class="cardProducto" style="margin:0;cursor:pointer" onclick="filtrarPorCategoriaABC('C')">
+            <div style="font-size:11px;color:var(--text-muted)">C — BAJO IMPACTO</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text-muted)">${resultado.resumen.C.conteo} <span style="font-size:13px;font-weight:600">productos</span></div>
+            <div style="font-size:12px;color:var(--text-muted)">$${resultado.resumen.C.valor.toLocaleString("es-MX",{minimumFractionDigits:2})} (${pct(resultado.resumen.C.valor)}%)</div>
+          </div>
+          <div class="cardProducto" style="margin:0;cursor:pointer" onclick="filtrarPorCategoriaABC('')">
+            <div style="font-size:11px;color:var(--text-muted)">VER TODOS</div>
+            <div style="font-size:22px;font-weight:800">${resultado.totalProductos} <span style="font-size:13px;font-weight:600">productos</span></div>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto">
+          <table class="tablaActividad">
+            <thead><tr><th>Código</th><th>Producto</th><th>Existencia</th><th>Salida (periodo)</th><th>Costo unit.</th><th>Valor de consumo</th><th>% acum.</th><th>Categoría</th></tr></thead>
+            <tbody id="tbodyClasificacionABC"></tbody>
+          </table>
+        </div>
+      `;
+
+      window.abcCategoriaActiva = "";
+      dibujarTablaABC(resultado.productos);
+
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnActualizarABC", false);
+      mostrarMensajeTemporal("mensajeABC", "⚠️ " + e.message, "error");
+      cont.innerHTML = "";
+    })
+    .obtenerClasificacionABCApp(obtenerTokenSesion(), { diasHistorial: diasHistorial });
+
+}
+
+function dibujarTablaABC(productos){
+
+  const tbody = document.getElementById("tbodyClasificacionABC");
+  if(!tbody) return;
+
+  if(!productos.length){
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Sin productos con estos filtros</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = productos.map(p => `
+    <tr>
+      <td>${p.codigo}</td>
+      <td>${p.producto}${p.sinMovimiento ? ' <span style="font-size:11px;color:var(--text-muted)">(sin movimiento)</span>' : ""}</td>
+      <td>${formatearCantidadJS(p.existencia)}</td>
+      <td>${formatearCantidadJS(p.cantidadSalida)}</td>
+      <td>$${p.costoUnitario.toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+      <td>$${p.valorConsumo.toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+      <td>${p.porcentajeAcumulado}%</td>
+      <td><span class="badgeEstado ABC-${p.categoria}">${p.categoria}</span></td>
+    </tr>
+  `).join("");
+
+}
+
+function filtrarPorCategoriaABC(categoria){
+  window.abcCategoriaActiva = categoria;
+  filtrarTablaABC();
+}
+
+function filtrarTablaABC(){
+
+  if(!window.abcActual) return;
+
+  const texto = document.getElementById("abcFiltroTexto").value.trim().toLowerCase();
+  const categoria = window.abcCategoriaActiva || "";
+
+  const filtrados = window.abcActual.productos.filter(p => {
+    if(categoria && p.categoria !== categoria) return false;
+    if(texto && !p.producto.toLowerCase().includes(texto) && !p.codigo.toLowerCase().includes(texto)) return false;
+    return true;
+  });
+
+  dibujarTablaABC(filtrados);
 
 }
 
@@ -15217,6 +15373,7 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnInventarioLista" onclick="abrirInventario()" title="Existencias"><span class="icono">📋</span><span class="textoMenu">Existencias</span></button>
     <button class="menuLateralBtn sub" id="btnUbicaciones" onclick="abrirUbicaciones()" title="Buscar ubicación"><span class="icono">🔎</span><span class="textoMenu">Buscar ubicación</span></button>
     <button class="menuLateralBtn sub" id="btnMermas" onclick="abrirMermas()" title="Mermas"><span class="icono">🗑️</span><span class="textoMenu">Mermas</span></button>
+    <button class="menuLateralBtn sub" id="btnClasificacionABC" onclick="abrirClasificacionABC()" title="Clasificación ABC"><span class="icono">🏷️</span><span class="textoMenu">Clasificación ABC</span></button>
   </div>
 </div>
 
