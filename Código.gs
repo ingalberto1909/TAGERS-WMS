@@ -51,38 +51,6 @@ function onOpen() {
 
 }
 
-function debugKardex(){
-
-  const ss = SpreadsheetApp.getActive();
-  const hoja = ss.getSheetByName("KARDEX");
-
-  if (!hoja) {
-    Logger.log("❌ NO SE ENCONTRÓ una hoja llamada exactamente 'KARDEX'.");
-    Logger.log("Hojas que sí existen en este archivo:");
-    ss.getSheets().forEach(h => Logger.log(" - " + h.getName()));
-    return;
-  }
-
-  Logger.log("✅ Hoja encontrada: " + hoja.getName());
-  Logger.log("Última fila con datos (getLastRow): " + hoja.getLastRow());
-  Logger.log("Última columna con datos (getLastColumn): " + hoja.getLastColumn());
-
-  if (hoja.getLastRow() >= 2) {
-
-    const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 12).getValues();
-
-    Logger.log("Filas de datos encontradas: " + datos.length);
-    Logger.log("Primera fila de datos: " + JSON.stringify(datos[0]));
-    Logger.log("Última fila de datos: " + JSON.stringify(datos[datos.length - 1]));
-
-  } else {
-
-    Logger.log("⚠️ getLastRow() dio menos de 2 — el script piensa que la hoja no tiene datos, solo encabezado.");
-
-  }
-
-}
-
 function nuevaSalida() {
 
   const ss = SpreadsheetApp.getActive();
@@ -618,56 +586,6 @@ function abrirKardex(){
 
 }
 
-function obtenerHistorialKardex(codigo){
-
-  const hoja = SpreadsheetApp.getActive().getSheetByName("KARDEX");
-
-  if (hoja.getLastRow() < 2) return [];
-
-  const datos = hoja
-    .getRange(2, 1, hoja.getLastRow() - 1, 12)
-    .getValues();
-
-  const codigoBuscado = codigo.toString().trim().toUpperCase();
-
-  let movimientos = [];
-
-  datos.forEach(fila => {
-
-    const codigoFila = fila[4].toString().trim().toUpperCase();
-
-    if (codigoFila == codigoBuscado) {
-
-      movimientos.push({
-        fecha: Utilities.formatDate(
-          new Date(fila[0]),
-          Session.getScriptTimeZone(),
-          "dd/MM/yyyy"
-        ),
-        fechaOrden: new Date(fila[0]).getTime(),
-        hora: fila[1],
-        tipo: fila[2],
-        folio: fila[3],
-        codigo: fila[4],
-        producto: fila[5],
-        entrada: fila[6],
-        salida: fila[7],
-        existenciaAnterior: fila[8],
-        existenciaNueva: fila[9],
-        usuario: fila[10],
-        observacion: fila[11]
-      });
-
-    }
-
-  });
-
-  movimientos.sort((a, b) => b.fechaOrden - a.fechaOrden);
-
-  return movimientos;
-
-}
-
 function obtenerUltimosMovimientosKardex(limite) {
   limite = limite || 8;
 
@@ -704,17 +622,6 @@ function obtenerUltimosMovimientosKardex(limite) {
   movimientos.sort((a, b) => b.fechaOrden - a.fechaOrden);
 
   return movimientos.slice(0, limite);
-}
-
-function formatoNumero(valor) {
-  const numero = Number(valor);
-
-  if (isNaN(numero)) return "-";
-
-  return numero.toLocaleString("es-MX", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  });
 }
 
 function onEdit(e) {

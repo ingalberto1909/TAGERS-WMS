@@ -4781,7 +4781,7 @@ function aprobarLineasReqSucUI(){
       activarCargaBoton("btnAprobarLineasReqSuc", false);
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ " + res.lineasAprobadas + " línea(s) aprobadas — estado: " + res.estado, "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
+      verDetalleRequisicionSucursal(detalle.folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){
       activarCargaBoton("btnAprobarLineasReqSuc", false);
@@ -4798,7 +4798,7 @@ function rechazarLineaReqSucUI(codigo){
   google.script.run
     .withSuccessHandler(function(){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Producto rechazado", "ok");
-      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 600);
+      verDetalleRequisicionSucursal(detalle.folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
     .rechazarLineaRequisicionSucursalApp(detalle.folio, codigo, motivo, obtenerTokenSesion());
@@ -4843,7 +4843,7 @@ function surtirReqSucUI(){
       activarCargaBoton("btnSurtirReqSuc", false);
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Surtido registrado — estado: " + res.estado, "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(detalle.folio); }, 900);
+      verDetalleRequisicionSucursal(detalle.folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){
       activarCargaBoton("btnSurtirReqSuc", false);
@@ -4858,7 +4858,7 @@ async function despacharRequisicionSucursalUI(folio){
     .withSuccessHandler(function(res){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Transferencia " + res.folioTransferencia + " creada — en tránsito", "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+      verDetalleRequisicionSucursal(folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
     .despacharRequisicionSucursalApp(folio, obtenerTokenSesion());
@@ -4914,7 +4914,7 @@ async function recibirTransferenciaReqSucUI(folio){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal",
         res.incidencias.length ? "⚠️ Recibido con " + res.incidencias.length + " incidencia(s) por diferencia" : "✅ Recepción confirmada", "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 1200);
+      verDetalleRequisicionSucursal(folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
     .recibirTransferenciaSucursalApp(transf.folioTransferencia, recepciones, obtenerTokenSesion());
@@ -4951,7 +4951,7 @@ function resolverIncidenciaReqSucUI(folioIncidencia, folio){
     .withSuccessHandler(function(){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Incidencia resuelta", "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+      verDetalleRequisicionSucursal(folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
     .resolverIncidenciaRequisicionApp(folioIncidencia, resolucion, obtenerTokenSesion());
@@ -4963,7 +4963,7 @@ async function cerrarRequisicionSucursalUI(folio){
     .withSuccessHandler(function(){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Requisición cerrada", "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+      verDetalleRequisicionSucursal(folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
     .cerrarRequisicionSucursalApp(folio, obtenerTokenSesion());
@@ -4977,7 +4977,7 @@ async function cancelarRequisicionSucursalUI(folio){
     .withSuccessHandler(function(){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "Requisición cancelada", "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+      verDetalleRequisicionSucursal(folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "⚠️ " + e.message, "error"); })
     .cancelarRequisicionSucursalApp(folio, motivo || "", obtenerTokenSesion());
@@ -5006,7 +5006,7 @@ async function confirmarEntregaRequisicionSucursalUI(folio){
     .withSuccessHandler(function(resultado){
       mostrarMensajeTemporal("mensajeDetalleRequisicionSucursal", "✅ Entrega confirmada — " + resultado.productosEntregados + " producto(s)", "ok");
       cargarListaRequisicionesSucursal();
-      setTimeout(function(){ verDetalleRequisicionSucursal(folio); }, 900);
+      verDetalleRequisicionSucursal(folio); // el guardado ya terminó (estamos en withSuccessHandler) — no hay nada que esperar
     })
     .withFailureHandler(function(e){
       activarCargaBoton("btnConfirmarEntregaSucursal", false);

@@ -21,42 +21,36 @@ const path = require('path');
 const { ejecutarTodas, imprimirReporte, limpiarRegistro } = require('./lib/runner');
 const { compararConBaseline, imprimirComparacion } = require('./lib/comparador');
 
-const ARCHIVOS_DE_PRUEBA = [
-  'smoke/smoke.test.js',
-  'seguridad/seguridad.test.js',
-  'inventario/inventario.test.js',
-  'compras/compras.test.js',
-  'requisiciones/requisiciones.test.js',
-  'recetas/recetas.test.js',
-  'produccion/produccion.test.js',
-  'concurrencia/concurrencia.test.js',
-  'rendimiento/rendimiento.test.js',
-  'sucursales/sucursales.test.js',
-  'sucursales/prueba-maestra-6-sucursales.test.js',
-  'requisiciones-sucursal/requisiciones-sucursal.test.js',
-  'legado/movimientos-dashboard.test.js',
-  'legado/onedit-entrada-salida.test.js',
-  'legado/programacion-conteos.test.js',
-  'notificaciones/notificaciones.test.js',
-  'notificaciones/notificaciones-correo.test.js',
-  'usuarios/usuarios.test.js',
-  'proveedores/proveedores.test.js',
-  'mermas/mermas.test.js',
-  'devoluciones/devoluciones.test.js',
-  'reportes/reportes.test.js',
-  'inteligencia/inteligencia.test.js',
-  'fefo/fefo.test.js',
-  'kpis/kpis-operativos.test.js',
-];
+/**
+ * Auditoría de arquitectura (evolución continua): antes esto era una lista
+ * blanca escrita a mano — un archivo *.test.js nuevo que alguien olvidara
+ * agregar aquí simplemente NUNCA corría, sin ningún aviso (pasó de verdad
+ * en esta misma sesión con legado/programacion-conteos.test.js). Ahora se
+ * descubren solos todos los *.test.js bajo pruebas-qa/, recursivamente,
+ * en cualquier subcarpeta — agregar un archivo de prueba ya no requiere
+ * tocar este archivo. Orden alfabético (estable entre corridas) en vez
+ * del orden manual anterior; ningún archivo de prueba depende del orden
+ * en que se cargan los demás (cada prueba construye su propio entorno
+ * aislado con crearEntorno()).
+ */
+function encontrarArchivosDePrueba(directorio) {
+  let encontrados = [];
+  fs.readdirSync(directorio, { withFileTypes: true }).forEach(entrada => {
+    const rutaCompleta = path.join(directorio, entrada.name);
+    if (entrada.isDirectory()) {
+      encontrados = encontrados.concat(encontrarArchivosDePrueba(rutaCompleta));
+    } else if (entrada.isFile() && entrada.name.endsWith('.test.js')) {
+      encontrados.push(rutaCompleta);
+    }
+  });
+  return encontrados.sort();
+}
 
 function cargarTodasLasPruebas() {
   limpiarRegistro();
-  ARCHIVOS_DE_PRUEBA.forEach(rel => {
-    const ruta = path.join(__dirname, rel);
-    if (fs.existsSync(ruta)) {
-      delete require.cache[require.resolve(ruta)];
-      require(ruta);
-    }
+  encontrarArchivosDePrueba(__dirname).forEach(ruta => {
+    delete require.cache[require.resolve(ruta)];
+    require(ruta);
   });
 }
 
