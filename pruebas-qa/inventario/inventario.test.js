@@ -460,3 +460,92 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'INV-019', grupo: 'inventario', nombre: 'INV-202: registrarCambioUbicacionApp mueve rack/ubicación sin tocar existencia ni Kardex', metodo: 'EMPÍRICO',
+  objetivo: 'Cambiar de rack/ubicación un producto NO debe registrarse como entrada ni salida — Existencia y Kardex deben quedar exactamente igual, solo cambia MATRIZ.Rack/Ubicación',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    const filaAntes = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001');
+    const existenciaAntes = filaAntes[10];
+    const kardexAntes = entorno.leerHoja('KARDEX').length;
+
+    const res = entorno.invocar('registrarCambioUbicacionApp', 'COD-001', 'B', 'B-02-N03-P01', token);
+
+    const filaDespues = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001');
+    const kardexDespues = entorno.leerHoja('KARDEX').length;
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const filaAuditoria = auditoria[auditoria.length - 1];
+
+    return {
+      datos: 'COD-001 (HARINA DE TRIGO, existencia=100, rack original) → nuevo rack B, ubicación B-02-N03-P01',
+      esperado: 'rack/ubicación actualizados, existencia y Kardex sin cambio, queda registrado en AUDITORIA (módulo INVENTARIO, acción CAMBIO DE UBICACION)',
+      obtenido: `rackNuevo=${filaDespues[6]}, ubicacionNueva=${filaDespues[9]}, existenciaAntes=${existenciaAntes}, existenciaDespues=${filaDespues[10]}, ` +
+        `kardexAntes=${kardexAntes}, kardexDespues=${kardexDespues}, accionAuditoria=${filaAuditoria[5]}`,
+      pasa: res.ok === true && filaDespues[6] === 'B' && filaDespues[9] === 'B-02-N03-P01' &&
+        filaDespues[10] === existenciaAntes && kardexDespues === kardexAntes &&
+        filaAuditoria[4] === 'INVENTARIO' && filaAuditoria[5] === 'CAMBIO DE UBICACION',
+    };
+  },
+});
+
+prueba({
+  id: 'INV-020', grupo: 'inventario', nombre: 'INV-202: registrarCambioUbicacionApp acepta cambiar solo rack o solo ubicación', metodo: 'EMPÍRICO',
+  objetivo: 'Si solo se manda un valor nuevo, el otro debe conservar su valor anterior en vez de borrarse',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    const filaAntes = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001');
+    const rackOriginal = filaAntes[6];
+
+    const res = entorno.invocar('registrarCambioUbicacionApp', 'COD-001', '', 'A-05-N01-P02', token);
+    const filaDespues = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001');
+
+    return {
+      datos: `rack original=${rackOriginal}, se manda rack="" (sin cambio) y ubicación nueva=A-05-N01-P02`,
+      esperado: `rack se conserva (${rackOriginal}), ubicación cambia a A-05-N01-P02`,
+      obtenido: `rackDespues=${filaDespues[6]}, ubicacionDespues=${filaDespues[9]}, res.rackNuevo=${res.rackNuevo}`,
+      pasa: filaDespues[6] === rackOriginal && filaDespues[9] === 'A-05-N01-P02' && res.rackNuevo === rackOriginal,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-021', grupo: 'inventario', nombre: 'INV-202: registrarCambioUbicacionApp exige sesión y bloquea CONSULTA/SUPERVISOR', metodo: 'EMPÍRICO',
+  objetivo: 'Mover un producto de ubicación es una operación de piso (igual que registrar entrada/salida) — debe exigir sesión y bloquear a CONSULTA/SUPERVISOR igual que requerirAccesoOperacionesApp_ ya hace para entradas/salidas',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'consulta@tagers.com', nombre: 'Consulta', rol: 'CONSULTA' });
+    let error = '';
+    try { entorno.invocar('registrarCambioUbicacionApp', 'COD-001', 'B', '', token); }
+    catch (e) { error = e.message; }
+
+    let errorSinSesion = '';
+    try { entorno.invocar('registrarCambioUbicacionApp', 'COD-001', 'B', '', undefined); }
+    catch (e) { errorSinSesion = e.message; }
+
+    return {
+      datos: 'token de CONSULTA, y aparte una llamada sin token',
+      esperado: 'ambas lanzan error explícito, ninguna mueve nada',
+      obtenido: `errorConsulta=${error}, errorSinSesion=${errorSinSesion}`,
+      pasa: !!error && !!errorSinSesion,
+    };
+  },
+});
+
+prueba({
+  id: 'INV-022', grupo: 'inventario', nombre: 'INV-202: registrarCambioUbicacionApp rechaza un código que no existe en MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'No debe crear ninguna fila ni modificar nada si el código no existe',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'operador@tagers.com', nombre: 'Op', rol: 'OPERADOR' });
+    const filasAntes = entorno.leerHoja('MATRIZ').length;
+    let error = '';
+    try { entorno.invocar('registrarCambioUbicacionApp', 'NO-EXISTE', 'B', '', token); }
+    catch (e) { error = e.message; }
+    const filasDespues = entorno.leerHoja('MATRIZ').length;
+    return {
+      datos: 'código NO-EXISTE, no está en MATRIZ',
+      esperado: 'lanza error explícito, MATRIZ sin filas nuevas',
+      obtenido: `error=${error}, filasAntes=${filasAntes}, filasDespues=${filasDespues}`,
+      pasa: !!error && filasAntes === filasDespues,
+    };
+  },
+});

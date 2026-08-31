@@ -10682,6 +10682,8 @@ function abrirDetalleProducto(codigo, estado, claveNotif){
       document.getElementById("detalleCodigo").innerText = p.codigo + (p.rack ? " · Rack " + p.rack : "");
       document.getElementById("detalleExistencia").innerText = p.existencia + (p.udm ? " " + p.udm : "");
       document.getElementById("detalleUbicacion").innerText = p.ubicacion;
+      document.getElementById("detalleUbicacionEditor").style.display = "none";
+      window.detalleProductoActual = { codigo: p.codigo, rack: p.rack || "", ubicacion: p.ubicacion || "" };
       document.getElementById("detalleMinimo").innerText = p.minimo;
       document.getElementById("detalleMaximo").innerText = p.maximo;
       document.getElementById("detallePuntoReorden").innerText = p.puntoReorden;
@@ -10695,6 +10697,44 @@ function abrirDetalleProducto(codigo, estado, claveNotif){
       document.getElementById("detalleCargando").innerText = "Error: " + error.message;
     })
     .obtenerDetalleProductoApp(codigo, obtenerTokenSesion());
+
+}
+
+/**
+ * INV-202: mover un producto de rack/ubicación sin que sea una entrada
+ * ni una salida — solo actualiza dónde está físicamente el producto
+ * (MATRIZ.Rack/Ubicación), nunca su existencia ni el Kardex.
+ */
+function abrirEditorUbicacionProducto(){
+  const actual = window.detalleProductoActual;
+  if(!actual) return;
+  document.getElementById("detalleNuevoRack").value = actual.rack === "Sin ubicación" ? "" : actual.rack;
+  document.getElementById("detalleNuevaUbicacion").value = (actual.ubicacion === "Sin ubicación" ? "" : actual.ubicacion);
+  document.getElementById("detalleUbicacionEditor").style.display = "block";
+}
+
+function guardarCambioUbicacionProducto(){
+
+  const actual = window.detalleProductoActual;
+  if(!actual) return;
+
+  const rackNuevo = document.getElementById("detalleNuevoRack").value.trim();
+  const ubicacionNueva = document.getElementById("detalleNuevaUbicacion").value.trim();
+
+  if(!rackNuevo && !ubicacionNueva){
+    alert("Indica el nuevo rack o la nueva ubicación.");
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      document.getElementById("detalleUbicacionEditor").style.display = "none";
+      document.getElementById("detalleUbicacion").innerText = res.ubicacionNueva;
+      document.getElementById("detalleCodigo").innerText = res.codigo + (res.rackNuevo ? " · Rack " + res.rackNuevo : "");
+      window.detalleProductoActual = { codigo: res.codigo, rack: res.rackNuevo, ubicacion: res.ubicacionNueva };
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .registrarCambioUbicacionApp(actual.codigo, rackNuevo, ubicacionNueva, obtenerTokenSesion());
 
 }
 
@@ -15267,6 +15307,15 @@ function aplicarFiltros(){
         <div class="modalDetalleDato">
           <div class="etiqueta">Ubicación</div>
           <div class="valor" id="detalleUbicacion" style="font-size:14px">-</div>
+          <div class="boton secundario" style="margin-top:6px;padding:4px 10px;font-size:12px;width:auto;display:inline-block" onclick="abrirEditorUbicacionProducto()">📍 Cambiar ubicación</div>
+          <div id="detalleUbicacionEditor" style="display:none;margin-top:8px">
+            <input id="detalleNuevoRack" placeholder="Rack (ej. A)" style="width:90px;margin-right:6px">
+            <input id="detalleNuevaUbicacion" placeholder="Ubicación (ej. A-01-N01-P01)" style="width:180px">
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <div class="boton success" style="flex:1;margin:0;padding:6px" onclick="guardarCambioUbicacionProducto()">Guardar</div>
+              <div class="boton secundario" style="flex:1;margin:0;padding:6px" onclick="document.getElementById('detalleUbicacionEditor').style.display='none'">Cancelar</div>
+            </div>
+          </div>
         </div>
         <div class="modalDetalleDato">
           <div class="etiqueta">Mínimo</div>

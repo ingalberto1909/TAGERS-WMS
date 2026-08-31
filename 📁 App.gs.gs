@@ -2524,6 +2524,67 @@ function buscarProductoCatalogoApp(texto, token){
 
 }
 
+/**
+ * INV-202 (auditoría de arquitectura, evolución continua): mueve un
+ * producto de rack/ubicación dentro del mismo almacén SIN que cuente
+ * como entrada ni salida — solo cambia MATRIZ.Rack/Ubicación (columnas
+ * G y J), nunca Existencia ni Kardex. Antes, reorganizar el almacén
+ * físico no tenía ninguna operación propia: había que "inventar" un
+ * movimiento que nunca ocurrió solo para que el sistema reflejara dónde
+ * está el producto de verdad, o simplemente dejar MATRIZ desactualizada.
+ * rackNuevo/ubicacionNueva son independientes — se puede mandar solo
+ * uno de los dos si el otro no cambió.
+ */
+function registrarCambioUbicacionApp(codigo, rackNuevo, ubicacionNueva, token){
+
+  requerirAccesoOperacionesApp_(token);
+
+  const codigoBuscado = String(codigo||"").trim();
+  const rack = String(rackNuevo||"").trim();
+  const ubicacion = String(ubicacionNueva||"").trim();
+
+  if(!codigoBuscado) throw new Error("Falta el código del producto.");
+  if(!rack && !ubicacion) throw new Error("Indica el nuevo rack o la nueva ubicación.");
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
+  const ultimaFila = hoja.getLastRow();
+  if(ultimaFila < 2) throw new Error("No se encontró el producto " + codigoBuscado + " en MATRIZ.");
+
+  const datos = hoja.getRange(2, 1, ultimaFila - 1, 10).getValues(); // hasta J (Ubicación)
+
+  let indice = -1;
+  for(let i=0; i<datos.length; i++){
+    if(String(datos[i][4]||"").trim() === codigoBuscado){ indice = i; break; }
+  }
+  if(indice === -1) throw new Error("No se encontró el producto " + codigoBuscado + " en MATRIZ.");
+
+  const fila = indice + 2;
+  const producto = datos[indice][0];
+  const rackAnterior = String(datos[indice][6]||"").trim();
+  const ubicacionAnterior = String(datos[indice][9]||"").trim();
+
+  if(rack) hoja.getRange(fila, 7).setValue(rack);
+  if(ubicacion) hoja.getRange(fila, 10).setValue(ubicacion);
+
+  invalidarCacheHoja_("MATRIZ");
+
+  const rackFinal = rack || rackAnterior;
+  const ubicacionFinal = ubicacion || ubicacionAnterior;
+
+  registrarAuditoria(
+    obtenerNombreDesdeToken(token), "INVENTARIO", "CAMBIO DE UBICACION",
+    "", codigoBuscado, producto, 0, 0,
+    "Rack: " + (rackAnterior || "—") + " → " + rackFinal + " · Ubicación: " + (ubicacionAnterior || "—") + " → " + ubicacionFinal
+  );
+
+  return {
+    ok: true, codigo: codigoBuscado, producto: producto,
+    rackAnterior: rackAnterior, rackNuevo: rackFinal,
+    ubicacionAnterior: ubicacionAnterior, ubicacionNueva: ubicacionFinal
+  };
+
+}
+
 function obtenerProveedoresReabastecimientoApp(token){
 
   requerirSesionActivaApp_(token);
