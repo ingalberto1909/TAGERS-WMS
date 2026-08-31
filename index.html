@@ -15391,8 +15391,8 @@ function aplicarFiltros(){
 </div>
 
 <div class="grupoMenu">
-  <button class="menuLateralBtn grupoBtn" data-icono="carrito" onclick="toggleGrupo('grupoRequisiciones')" title="Requisiciones internas">
-  <span class="icono">📦</span><span class="textoMenu">Requisiciones internas</span> <span class="flechaGrupo" id="flecha-grupoRequisiciones">▸</span>
+  <button class="menuLateralBtn grupoBtn" data-icono="carrito" onclick="toggleGrupo('grupoRequisiciones')" title="Requisiciones">
+  <span class="icono">📦</span><span class="textoMenu">Requisiciones</span> <span class="flechaGrupo" id="flecha-grupoRequisiciones">▸</span>
   </button>
   <div class="submenu" id="grupoRequisiciones">
     <button class="menuLateralBtn sub" id="btnNuevaRequisicion" onclick="abrirNuevaRequisicion()" title="Nueva requisición"><span class="icono">➕</span><span class="textoMenu">Nueva requisición</span></button>
@@ -15402,14 +15402,11 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnPreparacionRequisicion" onclick="abrirPreparacionRequisicion()" title="Preparación"><span class="icono">🧰</span><span class="textoMenu">Preparación</span></button>
     <button class="menuLateralBtn sub" id="btnEntregasRequisicion" onclick="abrirEntregasRequisicion()" title="Entregas"><span class="icono">✅</span><span class="textoMenu">Entregas</span></button>
     <button class="menuLateralBtn sub" id="btnHistorialRequisicion" onclick="abrirHistorialRequisicion()" title="Historial"><span class="icono">🗂️</span><span class="textoMenu">Historial</span></button>
+    <button class="menuLateralBtn sub" id="btnRequisicionesSucursal" onclick="abrirRequisicionesSucursal()" title="Requisiciones por sucursal"><span class="icono">🏬</span><span class="textoMenu">Requisiciones por Sucursal</span></button>
+    <button class="menuLateralBtn sub" id="btnTransferenciasSucursal" onclick="abrirTransferenciasSucursal()" title="Transferencias entre sucursales"><span class="icono">🚚</span><span class="textoMenu">Transferencias entre Sucursales</span></button>
+    <button class="menuLateralBtn sub" id="btnDevoluciones" onclick="abrirDevoluciones()" title="Devoluciones"><span class="icono">↩️</span><span class="textoMenu">Devoluciones</span></button>
   </div>
 </div>
-
-<button class="menuLateralBtn" id="btnRequisicionesSucursal" onclick="abrirRequisicionesSucursal()" title="Requisiciones por sucursal"><span class="icono">🏬</span><span class="textoMenu">Requisiciones por Sucursal</span></button>
-
-<button class="menuLateralBtn" id="btnTransferenciasSucursal" onclick="abrirTransferenciasSucursal()" title="Transferencias entre sucursales"><span class="icono">🚚</span><span class="textoMenu">Transferencias entre Sucursales</span></button>
-
-<button class="menuLateralBtn" id="btnDevoluciones" onclick="abrirDevoluciones()" title="Devoluciones"><span class="icono">↩️</span><span class="textoMenu">Devoluciones</span></button>
 
 <div class="grupoMenu">
   <button class="menuLateralBtn grupoBtn" data-icono="fabrica" onclick="toggleGrupo('grupoProduccion')" title="Producción">
@@ -15418,6 +15415,7 @@ function aplicarFiltros(){
   <div class="submenu" id="grupoProduccion">
     <button class="menuLateralBtn sub" id="btnRegistrarProduccion" onclick="abrirRegistrarProduccion()" title="Registrar producción"><span class="icono">🏭</span><span class="textoMenu">Registrar producción</span></button>
     <button class="menuLateralBtn sub" id="btnLotesProduccion" onclick="abrirLotesProduccion()" title="Lotes de producción"><span class="icono">📦</span><span class="textoMenu">Lotes de producción</span></button>
+    <button class="menuLateralBtn sub" id="btnRecetas" onclick="abrirRecetas()" title="Recetas"><span class="icono">📖</span><span class="textoMenu">Recetas</span></button>
   </div>
 </div>
 
@@ -15455,25 +15453,21 @@ function aplicarFiltros(){
 <span class="icono">📊</span><span class="textoMenu">Reportes</span>
 </button>
 
-<button class="menuLateralBtn" id="btnRecetas" onclick="abrirRecetas()" title="Recetas">
-<span class="icono">📖</span><span class="textoMenu">Recetas</span>
-</button>
-
-<!-- Solo ADMIN (PERMISOS_ROL.ADMIN = null = ve todo); no se lista en el
-     arreglo de SUPERVISOR/OPERADOR/CONSULTA a propósito, así que
-     aplicarPermisosPorRol() lo oculta solo para ellos. El backend también
-     exige ADMIN en cada función (requerirAccesoAdminApp_) — el botón oculto
-     nunca es la única protección. -->
-<button class="menuLateralBtn" id="btnUsuarios" onclick="abrirUsuarios()" title="Usuarios">
-<span class="icono">👤</span><span class="textoMenu">Usuarios</span>
-</button>
-
-<!-- ADM-201: solo ADMIN, mismo criterio que btnUsuarios arriba (no se
-     lista en SUPERVISOR/OPERADOR/CONSULTA a propósito). El backend
-     también exige ADMIN en cada función (requerirAccesoAuditoriaApp_). -->
-<button class="menuLateralBtn" id="btnAuditoria" onclick="abrirAuditoria()" title="Auditoría">
-<span class="icono">🛡️</span><span class="textoMenu">Auditoría</span>
-</button>
+<!-- Solo ADMIN ve este grupo: ninguno de sus botones se lista en el arreglo
+     de SUPERVISOR/OPERADOR/CONSULTA a propósito, así que aplicarPermisosPorRol()
+     oculta cada botón individualmente y luego oculta el grupo completo (misma
+     lógica de "grupo sin ningún sub visible" que ya usa el resto de grupos). El
+     backend también exige ADMIN en cada función (requerirAccesoAdminApp_ /
+     requerirAccesoAuditoriaApp_) — el grupo oculto nunca es la única protección. -->
+<div class="grupoMenu">
+  <button class="menuLateralBtn grupoBtn" data-icono="usuario" onclick="toggleGrupo('grupoAdministracion')" title="Administración">
+  <span class="icono">🛡️</span><span class="textoMenu">Administración</span> <span class="flechaGrupo" id="flecha-grupoAdministracion">▸</span>
+  </button>
+  <div class="submenu" id="grupoAdministracion">
+    <button class="menuLateralBtn sub" id="btnUsuarios" onclick="abrirUsuarios()" title="Usuarios"><span class="icono">👤</span><span class="textoMenu">Usuarios</span></button>
+    <button class="menuLateralBtn sub" id="btnAuditoria" onclick="abrirAuditoria()" title="Auditoría"><span class="icono">🛡️</span><span class="textoMenu">Auditoría</span></button>
+  </div>
+</div>
 
 <div class="grupoMenu">
   <button class="menuLateralBtn grupoBtn" data-icono="configuracion" onclick="toggleGrupo('grupoConfig')" title="Configuración">
