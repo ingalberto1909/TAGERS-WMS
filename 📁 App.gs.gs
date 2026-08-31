@@ -1426,13 +1426,27 @@ function obtenerRacksConteoApp(token){
 
 function generarConteoRacksApp(racks, token){
   requerirAccesoAlmacenApp_(token);
+  const usuario = obtenerNombreDesdeToken(token);
+  return generarConteoRacksInterna_(racks, usuario);
+}
+
+/**
+ * ARQ-201 (auditoría de arquitectura, evolución continua): núcleo real de
+ * "Generar Conteo Cíclico" — extraído de generarConteoRacksApp para que
+ * la generación AUTOMÁTICA (ProgramacionConteos.gs, sin sesión/token de
+ * usuario) pueda reusar exactamente el mismo flujo completo (folio
+ * consecutivo, CONTEO_CICLICO, CONTROL_CONTEOS, auditoría) en vez de la
+ * función legada más simple que no registraba CONTROL_CONTEOS. El
+ * contrato externo de generarConteoRacksApp no cambió.
+ */
+function generarConteoRacksInterna_(racks, usuario){
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const matriz = ss.getSheetByName("MATRIZ");
   const conteo = ss.getSheetByName("CONTEO_CICLICO");
 
   const datos = matriz.getRange(2,1,matriz.getLastRow()-1,17).getValues();
   const fecha = new Date();
-  const usuario = obtenerNombreDesdeToken(token);
 
   let folioConteo, salida;
 
@@ -6621,5 +6635,95 @@ function obtenerProductosSugeridosAreaApp(area, token){
       // Promedio de lo que suele pedir, redondeado — como sugerencia de cantidad.
       cantidadSugerida: Math.max(Math.round(p.sumaCantidad / p.veces), 1)
     }));
+
+}
+
+// ============================================
+// ADM-201 (auditoría de arquitectura, evolución continua): registro de
+// auditoría consultable desde la app. AUDITORIA ya se escribe
+// correctamente en todo el sistema (registrarAuditoria, Código.gs) desde
+// hace varias fases — lo que faltaba era una forma de LEERLA sin abrir
+// la hoja cruda en Sheets. Solo ADMIN, mismo criterio que la gestión de
+// Usuarios (información sensible de toda la operación).
+// ============================================
+
+function requerirAccesoAuditoriaApp_(token){
+  requerirSesionActivaApp_(token);
+  const rol = String(obtenerRolDesdeToken(token) || "").toUpperCase();
+  if(rol !== "ADMIN"){
+    throw new Error("Solo un administrador puede consultar el registro de auditoría.");
+  }
+}
+
+/** Lista de módulos ya usados en AUDITORIA, para poblar un filtro de selección (nunca texto libre que el usuario tenga que adivinar). */
+function obtenerModulosAuditoriaApp(token){
+
+  requerirAccesoAuditoriaApp_(token);
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("AUDITORIA");
+  if(!hoja || hoja.getLastRow() < 2) return [];
+
+  const datos = hoja.getRange(2, 5, hoja.getLastRow() - 1, 1).getValues(); // E = Módulo
+  const modulos = {};
+  datos.forEach(f => {
+    const m = String(f[0] || "").trim();
+    if(m) modulos[m] = true;
+  });
+
+  return Object.keys(modulos).sort();
+
+}
+
+/**
+ * filtros = { usuario, modulo, desde, hasta } — todos opcionales.
+ * usuario: coincidencia parcial (normalizada, sin acentos/mayúsculas).
+ * modulo: coincidencia exacta (viene del selector de obtenerModulosAuditoriaApp).
+ * desde/hasta: "YYYY-MM-DD" (como entrega un <input type="date">), ambos
+ * extremos inclusive.
+ * Regresa los 300 más recientes que cumplan los filtros (más reciente
+ * primero) — un tope fijo, igual que buscarProductoCatalogoApp, para no
+ * mandar miles de filas al navegador. truncado=true avisa que hay más.
+ */
+function obtenerRegistroAuditoriaApp(filtros, token){
+
+  requerirAccesoAuditoriaApp_(token);
+
+  filtros = filtros || {};
+  const TOPE = 300;
+
+  const usuarioBuscado = normalizarTexto_(filtros.usuario || "");
+  const moduloBuscado = String(filtros.modulo || "").trim().toUpperCase();
+  const desde = filtros.desde ? new Date(filtros.desde + "T00:00:00") : null;
+  const hasta = filtros.hasta ? new Date(filtros.hasta + "T23:59:59") : null;
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("AUDITORIA");
+  if(!hoja || hoja.getLastRow() < 2) return { registros: [], truncado: false };
+
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 13).getValues();
+
+  const registros = [];
+
+  for(let i = datos.length - 1; i >= 0 && registros.length < TOPE; i--){
+
+    const f = datos[i];
+    const fecha = f[1] instanceof Date ? f[1] : new Date(f[1]);
+
+    if(desde && fecha < desde) continue;
+    if(hasta && fecha > hasta) continue;
+    if(moduloBuscado && String(f[4] || "").trim().toUpperCase() !== moduloBuscado) continue;
+    if(usuarioBuscado && normalizarTexto_(f[3]).indexOf(usuarioBuscado) === -1) continue;
+
+    registros.push({
+      id: f[0],
+      fecha: Utilities.formatDate(fecha, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm"),
+      usuario: f[3], modulo: f[4], accion: f[5], folio: f[6],
+      codigo: f[7], producto: f[8],
+      cantidadAnterior: f[9], cantidadNueva: f[10], diferencia: f[11],
+      observacion: f[12]
+    });
+
+  }
+
+  return { registros: registros, truncado: registros.length >= TOPE };
 
 }

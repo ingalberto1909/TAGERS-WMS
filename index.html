@@ -6872,6 +6872,122 @@ function guardarUsuario(){
 
 }
 
+// ===============================
+// ADM-201: AUDITORÍA CONSULTABLE (solo ADMIN)
+// ===============================
+
+function abrirAuditoria(){
+
+  marcarActivo("btnAuditoria");
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">🛡️ Auditoría</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-6px">Quién hizo qué, cuándo — inicios de sesión, ajustes de inventario, cambios de ubicación, discrepancias, conteos y más.</p>
+
+    <div class="cardProducto">
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Usuario</label>
+          <input id="auditoriaFiltroUsuario" placeholder="Nombre (parcial)">
+        </div>
+        <div class="campo">
+          <label>Módulo</label>
+          <select id="auditoriaFiltroModulo"><option value="">Todos</option></select>
+        </div>
+        <div class="campo">
+          <label>Desde</label>
+          <input id="auditoriaFiltroDesde" type="date">
+        </div>
+        <div class="campo">
+          <label>Hasta</label>
+          <input id="auditoriaFiltroHasta" type="date">
+        </div>
+      </div>
+      <div class="boton" id="btnBuscarAuditoria" style="margin-top:10px" onclick="buscarAuditoria()">${tgIcon("buscar",17)} Buscar</div>
+    </div>
+
+    <div id="mensajeAuditoria" style="display:none;margin:10px 0;font-size:13.5px;font-weight:600"></div>
+    <div id="resultadoAuditoria"></div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(function(modulos){
+      const select = document.getElementById("auditoriaFiltroModulo");
+      if(!select) return;
+      modulos.forEach(m => { select.innerHTML += `<option value="${m}">${m}</option>`; });
+    })
+    .withFailureHandler(function(){ /* el selector simplemente se queda solo con "Todos" */ })
+    .obtenerModulosAuditoriaApp(obtenerTokenSesion());
+
+  buscarAuditoria();
+
+}
+
+function buscarAuditoria(){
+
+  const cont = document.getElementById("resultadoAuditoria");
+  if(!cont) return;
+
+  const filtros = {
+    usuario: document.getElementById("auditoriaFiltroUsuario").value.trim(),
+    modulo: document.getElementById("auditoriaFiltroModulo").value,
+    desde: document.getElementById("auditoriaFiltroDesde").value,
+    hasta: document.getElementById("auditoriaFiltroHasta").value,
+  };
+
+  activarCargaBoton("btnBuscarAuditoria", true);
+  cont.innerHTML = "<div class='cardProducto'>Buscando...</div>";
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+
+      activarCargaBoton("btnBuscarAuditoria", false);
+
+      if(!resultado.registros.length){
+        cont.innerHTML = tgEmptyState("buscar", "Sin registros con estos filtros");
+        return;
+      }
+
+      cont.innerHTML = `
+        ${resultado.truncado ? `<p style="font-size:12px;color:var(--terracota);margin:0 0 8px">⚠️ Mostrando los ${resultado.registros.length} más recientes — hay más, acota los filtros para verlos todos.</p>` : ""}
+        <div style="overflow-x:auto">
+          <table class="tablaActividad">
+            <thead><tr><th>Fecha</th><th>Usuario</th><th>Módulo</th><th>Acción</th><th>Folio/Código</th><th>Detalle</th></tr></thead>
+            <tbody>
+              ${resultado.registros.map(r => `
+                <tr>
+                  <td style="white-space:nowrap">${r.fecha}</td>
+                  <td>${r.usuario}</td>
+                  <td>${r.modulo}</td>
+                  <td>${r.accion}</td>
+                  <td>${[r.folio, r.codigo].filter(Boolean).join(" · ") || "—"}</td>
+                  <td style="font-size:12px;color:var(--text-muted)">
+                    ${r.producto ? r.producto + "<br>" : ""}
+                    ${(r.cantidadAnterior !== "" || r.cantidadNueva !== "") ? `${r.cantidadAnterior} → ${r.cantidadNueva} (${r.diferencia > 0 ? "+" : ""}${r.diferencia})<br>` : ""}
+                    ${r.observacion || ""}
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnBuscarAuditoria", false);
+      mostrarMensajeTemporal("mensajeAuditoria", "⚠️ " + e.message, "error");
+      cont.innerHTML = "";
+    })
+    .obtenerRegistroAuditoriaApp(filtros, obtenerTokenSesion());
+
+}
+
 function alternarModoOscuro(){
 
   const actual = document.documentElement.getAttribute("data-theme");
@@ -15100,6 +15216,13 @@ function aplicarFiltros(){
      nunca es la única protección. -->
 <button class="menuLateralBtn" id="btnUsuarios" onclick="abrirUsuarios()" title="Usuarios">
 <span class="icono">👤</span><span class="textoMenu">Usuarios</span>
+</button>
+
+<!-- ADM-201: solo ADMIN, mismo criterio que btnUsuarios arriba (no se
+     lista en SUPERVISOR/OPERADOR/CONSULTA a propósito). El backend
+     también exige ADMIN en cada función (requerirAccesoAuditoriaApp_). -->
+<button class="menuLateralBtn" id="btnAuditoria" onclick="abrirAuditoria()" title="Auditoría">
+<span class="icono">🛡️</span><span class="textoMenu">Auditoría</span>
 </button>
 
 <div class="grupoMenu">
