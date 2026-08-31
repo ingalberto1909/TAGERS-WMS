@@ -5928,11 +5928,12 @@ function cargarPreparacionRequisicionProducto_(folio){
           ${datos.observaciones ? `<p style="font-size:12.5px"><b>Observaciones:</b> ${datos.observaciones}</p>` : ""}
 
           <table class="tablaTop" style="font-size:13px">
-            <thead><tr><th>Producto</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia</th><th style="text-align:right">Entregar</th><th>Lote</th></tr></thead>
+            <thead><tr><th>Producto</th><th>Ubicación</th><th style="text-align:right">Solicitado</th><th style="text-align:right">Existencia</th><th style="text-align:right">Entregar</th><th>Lote</th></tr></thead>
             <tbody>
               ${datos.items.map((it,i) => `
                 <tr style="${it.existencia < it.solicitado ? 'background:rgba(196,82,42,.06)' : ''}">
                   <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}</span></td>
+                  <td style="font-size:12px;color:var(--text-muted)">${it.ubicacion || "—"}</td>
                   <td style="text-align:right">${it.solicitado} ${it.unidad||""}</td>
                   <td style="text-align:right">${it.existencia} ${it.unidad||""}</td>
                   <td style="text-align:right">

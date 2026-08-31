@@ -6200,7 +6200,15 @@ function obtenerDetalleRequisicionApp(folio, token){
   const matriz = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datosMatriz = matriz.getRange(2, 1, matriz.getLastRow()-1, 11).getValues();
   const existenciaPorCodigo = {};
-  datosMatriz.forEach(f => { if(f[4]) existenciaPorCodigo[String(f[4]).trim()] = Number(f[10]) || 0; });
+  const ubicacionPorCodigo = {};
+  datosMatriz.forEach(f => {
+    if(!f[4]) return;
+    const c = String(f[4]).trim();
+    existenciaPorCodigo[c] = Number(f[10]) || 0;
+    // ubicacionVacia_ trata "--"/vacío como "sin ubicación real" (mismo
+    // criterio que ya usa el resto del proyecto, p. ej. busquedaGlobalHeaderApp).
+    ubicacionPorCodigo[c] = ubicacionVacia_(f[9]) ? "" : String(f[9]).trim();
+  });
 
   const items = datosDetalle
     .filter(f => String(f[0]) === String(folio))
@@ -6211,10 +6219,23 @@ function obtenerDetalleRequisicionApp(folio, token){
       return {
         codigo: f[1], producto: f[2], unidad: f[3], solicitado: solicitado,
         existencia: existencia,
+        ubicacion: ubicacionPorCodigo[codigo] || "",
         entregarSugerido: Math.min(solicitado, existencia),
         entregado: f[5]
       };
     });
+
+  // ALM-201 (auditoría de arquitectura, evolución continua): ordenar por
+  // ubicación para que quien surte siga una ruta física por el almacén,
+  // en vez de la lista en el orden en que se solicitó (que no tiene
+  // ninguna relación con dónde está parado cada producto). Los productos
+  // sin ubicación quedan al final, no intercalados.
+  items.sort((a, b) => {
+    if(!a.ubicacion && !b.ubicacion) return 0;
+    if(!a.ubicacion) return 1;
+    if(!b.ubicacion) return -1;
+    return a.ubicacion.localeCompare(b.ubicacion, "es");
+  });
 
   return {
     folio: encabezado[0],

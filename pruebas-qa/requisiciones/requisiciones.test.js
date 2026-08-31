@@ -472,3 +472,36 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'REQ-024', grupo: 'requisiciones', nombre: 'ALM-201: obtenerDetalleRequisicionApp ordena el picking por ubicación, no por orden de captura', metodo: 'EMPÍRICO',
+  objetivo: 'Quien surte una requisición debe recorrer el almacén en orden, no saltar de un extremo a otro siguiendo el orden en que se solicitaron los productos — el detalle debe traer cada item con su ubicación y venir ordenado alfabéticamente por ella (sin ubicación al final)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const matriz = entorno.leerHoja('MATRIZ');
+    matriz.find(f => f[4] === 'COD-001')[9] = 'C-03-N01-P01'; // HARINA
+    matriz.find(f => f[4] === 'COD-002')[9] = 'A-01-N02-P01'; // AZUCAR
+    matriz.find(f => f[4] === 'COD-003')[9] = 'B-02-N01-P03'; // SAL
+    matriz.find(f => f[4] === 'COD-005')[9] = '--'; // sin ubicación real (marcador del fixture)
+    matriz.find(f => f[4] === 'COD-005')[10] = 5; // el fixture estándar lo trae en 0 — se sube para poder reservarlo
+
+    // Se solicitan en un orden que NO coincide con el orden físico del almacén.
+    const req = entorno.invocar('crearRequisicionApp', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 5 },
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', unidad: 'KG', solicitado: 2 },
+      { codigo: 'COD-003', producto: 'SAL DE MESA', unidad: 'KG', solicitado: 1 },
+      { codigo: 'COD-005', producto: 'PRODUCTO SIN UBICACION', unidad: 'PZ', solicitado: 1 },
+    ], token);
+
+    const detalle = entorno.invocar('obtenerDetalleRequisicionApp', req.folio, token);
+    const ordenCodigos = detalle.items.map(it => it.codigo);
+    const ordenUbicaciones = detalle.items.map(it => it.ubicacion);
+
+    return {
+      datos: 'solicitado en orden COD-001(C-03), COD-002(A-01), COD-003(B-02), COD-005(sin ubicación)',
+      esperado: 'devuelto en orden de ubicación: COD-002(A-01) → COD-003(B-02) → COD-001(C-03) → COD-005(al final, sin ubicación)',
+      obtenido: `orden=${ordenCodigos.join(',')}, ubicaciones=${ordenUbicaciones.join('|')}`,
+      pasa: ordenCodigos.join(',') === 'COD-002,COD-003,COD-001,COD-005' && ordenUbicaciones[3] === '',
+    };
+  },
+});
