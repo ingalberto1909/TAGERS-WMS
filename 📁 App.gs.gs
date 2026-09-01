@@ -3515,7 +3515,13 @@ function registrarRecepcionOCApp(oc, recepciones, token){
 
 /**
  * Cancela una OC (nunca se borra, solo cambia de estado). Solo se puede
- * cancelar si sigue PENDIENTE o PARCIAL.
+ * cancelar si sigue PENDIENTE o PENDIENTE_APROBACION — es decir, mientras
+ * NO haya llegado nada todavía. Antes también se permitía cancelar en
+ * PARCIAL, pero eso dejaba una orden "cancelada" con mercancía real ya
+ * recibida y aplicada a existencia — contradictorio para el área
+ * contable/almacén (pedido explícito: si ya se recibió algo, aunque sea
+ * parcial, la orden ya no se cancela; se cierra recibiendo el resto o se
+ * deja así).
  */
 function cancelarOrdenCompraApp(oc, token){
 
@@ -3537,6 +3543,9 @@ function cancelarOrdenCompraApp(oc, token){
 
       if(estadoActual === "RECIBIDA"){
         throw new Error("Esta orden ya fue recibida, no se puede cancelar.");
+      }
+      if(estadoActual === "PARCIAL"){
+        throw new Error("Esta orden ya tiene mercancía recibida parcialmente — no se puede cancelar. Registra la recepción del resto o déjala como está.");
       }
       if(estadoActual === "CANCELADA"){
         throw new Error("Esta orden ya está cancelada.");

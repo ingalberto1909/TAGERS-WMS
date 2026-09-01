@@ -8854,7 +8854,7 @@ function dibujarListaOrdenesCompra(lista, conAcciones){
             ${conAcciones ? `<td style="display:flex;flex-wrap:wrap;gap:6px">
               ${o.estado==="PENDIENTE_APROBACION" && USUARIO_ACTUAL.rol === "ADMIN" ? `<button class="boton success" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="aprobarOC('${o.oc}')">${tgIcon("checkCirculo",14)} Aprobar</button>` : ""}
               ${(o.estado==="PENDIENTE"||o.estado==="PENDIENTE_APROBACION") ? `<button class="boton secundario" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="abrirEditarOC('${o.oc}')">${tgIcon("editar",14)} Editar</button>` : ""}
-              ${(o.estado==="PENDIENTE"||o.estado==="PARCIAL"||o.estado==="PENDIENTE_APROBACION") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}
+              ${(o.estado==="PENDIENTE"||o.estado==="PENDIENTE_APROBACION") ? `<button class="boton danger" style="width:auto;padding:6px 12px;font-size:12px;margin:0" onclick="cancelarOC('${o.oc}')">${tgIcon("xCirculo",14)} Cancelar</button>` : ""}
             </td>` : ""}
           </tr>
         `).join("")}

@@ -872,3 +872,25 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'COM-207', grupo: 'compras', nombre: 'No se puede cancelar una OC con recepción parcial', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarOrdenCompraApp debe rechazar cancelar una OC en estado PARCIAL — ya tiene mercancía real recibida y aplicada a existencia, cancelarla dejaría un registro contradictorio',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
+    ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('cancelarOrdenCompraApp', oc.folio, token); } catch (e) { bloqueado = true; mensaje = e.message; }
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
+    return {
+      datos: 'pedido=20, recibido=12 (PARCIAL), intenta cancelar',
+      esperado: 'bloqueado, mensaje menciona la recepción parcial, la orden sigue en PARCIAL (no queda CANCELADA)',
+      obtenido: `bloqueado=${bloqueado}, mensaje="${mensaje}", estado=${detalle.estado}`,
+      pasa: bloqueado && /parcial/i.test(mensaje) && detalle.estado === 'PARCIAL',
+    };
+  },
+});
