@@ -3207,7 +3207,15 @@ function verificarSesionTAGERS(callback){
         return;
       }
 
-      USUARIO_ACTUAL = { nombre: res.nombre, rol: res.rol, correo: res.correo };
+      // Normalizado a MAYÚSCULAS/sin espacios aquí, una sola vez: el rol en
+      // USUARIOS se captura a mano y puede llegar como "Admin" o "ADMIN " —
+      // aplicarPermisosPorRol() y cada requerirAccesoXApp_ del backend ya
+      // comparan con .toUpperCase(), pero un par de botones (Aprobar OC,
+      // Registrar pago) comparaban USUARIO_ACTUAL.rol==="ADMIN" tal cual,
+      // así que con "Admin" en la hoja el botón nunca aparecía aunque el
+      // usuario sí fuera Admin — mismo criterio en todo el frontend de aquí
+      // en adelante, sin tocar cómo se guarda el rol en la sesión ni en USUARIOS.
+      USUARIO_ACTUAL = { nombre: res.nombre, rol: String(res.rol || "").trim().toUpperCase(), correo: res.correo };
       localStorage.setItem("tagers_usuario", JSON.stringify(USUARIO_ACTUAL));
 
       pintarUsuarioSidebar();
