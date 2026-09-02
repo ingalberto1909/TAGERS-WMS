@@ -1113,8 +1113,263 @@ function tgmPantallaPendiente_(titulo){
     '<div class="tgmVacio">' + tgmIcon("documento", 40) + '<div style="margin-top:10px;font-weight:700">' + titulo + '</div><div style="font-size:12.5px;margin-top:4px">Esta pantalla se construye en el siguiente paso de esta misma sesión.</div></div>';
 }
 function tgmAbrirOperaciones(){ tgmPantallaPendiente_("Operaciones"); }
-function tgmAbrirRequisiciones(){ tgmPantallaPendiente_("Requisiciones"); }
 function tgmAbrirMas(){ tgmPantallaPendiente_("Más"); }
+
+// ============================================
+// REQUISICIONES — lista (Pendientes/Entregadas/Todas) + detalle + Surtido.
+// Alcance de esta fase: solo Requisiciones de Área (crearRequisicionApp /
+// obtenerRequisicionesApp / confirmarEntregaRequisicionApp), el mismo
+// sistema simple que ya prueban RIM-002/003. Las Requisiciones de
+// Sucursal y de Receta (RequisicionesSucursal.gs / RequisicionesRecetas.gs)
+// tienen flujos de aprobación/despacho propios más complejos y quedan
+// fuera de esta pasada — no se inventa soporte a medias para ellas.
+//
+// IMPORTANTE sobre Surtido: confirmarEntregaRequisicionApp es una
+// operación de UN SOLO DISPARO — la primera llamada ya marca TODA la
+// requisición como ENTREGADA y libera la reserva completa (ver el
+// backend). Por eso el flujo "producto por producto" del mockup NO
+// dispara una llamada al servidor por cada producto: acumula las
+// cantidades en el cliente mientras se avanza, y solo hace la llamada
+// real (una sola vez, con todo el arreglo) al terminar el último
+// producto. Llamar la función una vez por producto habría cerrado la
+// requisición y liberado la reserva desde el primer producto, rompiendo
+// el resto de la captura.
+// ============================================
+let TGM_REQ_TAB = "pendientes";
+let TGM_REQ_ACCESO = null;
+let TGM_REQ_DETALLE = null;
+let TGM_SURTIDO_FOLIO = null;
+let TGM_SURTIDO_ITEMS = [];
+let TGM_SURTIDO_INDICE = 0;
+let TGM_SURTIDO_ENTREGAS = [];
+
+function tgmAbrirRequisiciones(){
+
+  TGM_TAB_ACTIVA = "requisiciones";
+  tgmRenderNavInferior();
+  tgmRenderHeaderRaiz("Requisiciones");
+  TGM_REQ_TAB = "pendientes";
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmTabs">' +
+      '<button class="tgmTab activa" onclick="tgmReqCambiarTab_(\'pendientes\')">Pendientes</button>' +
+      '<button class="tgmTab" onclick="tgmReqCambiarTab_(\'entregadas\')">Entregadas</button>' +
+      '<button class="tgmTab" onclick="tgmReqCambiarTab_(\'todas\')">Todas</button>' +
+    '</div>' +
+    '<div id="tgmReqLista"><div class="tgmVacio">Cargando…</div></div>';
+
+  google.script.run
+    .withSuccessHandler(function(acceso){ TGM_REQ_ACCESO = acceso; })
+    .withFailureHandler(function(){ TGM_REQ_ACCESO = null; })
+    .obtenerAccesoRequisicionesApp(tgmObtenerToken());
+
+  tgmReqCargarLista_();
+
+}
+
+function tgmReqCambiarTab_(tab){
+  TGM_REQ_TAB = tab;
+  const orden = ["pendientes", "entregadas", "todas"];
+  document.querySelectorAll("#tgmContenido .tgmTabs .tgmTab").forEach(function(btn, idx){
+    btn.classList.toggle("activa", orden[idx] === tab);
+  });
+  tgmReqCargarLista_();
+}
+
+function tgmReqCargarLista_(){
+  const cont = document.getElementById("tgmReqLista");
+  cont.innerHTML = '<div class="tgmVacio">Cargando…</div>';
+  google.script.run
+    .withSuccessHandler(function(lista){
+      let filtrada = lista;
+      if(TGM_REQ_TAB === "pendientes") filtrada = lista.filter(function(r){ return r.estado === "PENDIENTE"; });
+      if(TGM_REQ_TAB === "entregadas") filtrada = lista.filter(function(r){ return r.estado === "ENTREGADA"; });
+      tgmDibujarListaRequisiciones_(filtrada);
+    })
+    .withFailureHandler(function(e){ cont.innerHTML = '<div class="tgmVacio">' + (e.message || "No se pudo cargar") + '</div>'; })
+    .obtenerRequisicionesApp(tgmObtenerToken());
+}
+
+function tgmClaseEstadoRequisicion_(estado){
+  if(estado === "PENDIENTE") return "tgmEstado-pendiente";
+  if(estado === "ENTREGADA") return "tgmEstado-surtida";
+  return "tgmEstado-cancelada";
+}
+
+function tgmDibujarListaRequisiciones_(lista){
+  const cont = document.getElementById("tgmReqLista");
+  if(!lista || !lista.length){
+    cont.innerHTML = '<div class="tgmVacio">' + tgmIcon("carrito", 40) + '<div style="margin-top:10px">No hay requisiciones en esta pestaña</div></div>';
+    return;
+  }
+  cont.innerHTML = lista.map(function(r){
+    const folioEscapado = String(r.folio).replace(/'/g, "\\'");
+    return '<div class="tgmCard tgmCardTappable" onclick="tgmAbrirDetalleRequisicion_(\'' + folioEscapado + '\')">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+        '<div style="font-weight:800;font-size:15px">' + r.folio + '</div>' +
+        '<span class="tgmEstado ' + tgmClaseEstadoRequisicion_(r.estado) + '">' + r.estado + '</span>' +
+      '</div>' +
+      '<div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">Área: ' + r.area + '</div>' +
+      '<div style="font-size:12.5px;color:var(--text-muted)">Solicitante: ' + r.solicitante + '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' +
+        '<span style="font-size:11.5px;color:var(--text-muted)">' + r.fecha + '</span>' +
+        '<span class="tgmChevron">' + tgmIcon("chevronDerecha", 18) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+function tgmAbrirDetalleRequisicion_(folio){
+  document.getElementById("tgmHeader").innerHTML =
+    '<button class="tgmHeaderVolver" onclick="tgmAbrirRequisiciones()">' + tgmIcon("chevronIzquierda", 22) + '</button>' +
+    '<div class="tgmHeaderTitulo">' + folio + '</div>' +
+    tgmHeaderAccionesHtml_();
+  document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">Cargando…</div>';
+
+  google.script.run
+    .withSuccessHandler(function(detalle){
+      TGM_REQ_DETALLE = detalle;
+      tgmDibujarDetalleRequisicion_(detalle);
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">' + (e.message || "No se pudo cargar la requisición") + '</div>';
+    })
+    .obtenerDetalleRequisicionApp(folio, tgmObtenerToken());
+}
+
+function tgmDibujarDetalleRequisicion_(d){
+
+  const puedeSurtir = TGM_REQ_ACCESO && TGM_REQ_ACCESO.esAdmin && d.estado === "PENDIENTE";
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmCard">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+        '<div>' +
+          '<div style="font-weight:800;font-size:16px">' + d.folio + '</div>' +
+          '<div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">Área: ' + d.area + '</div>' +
+        '</div>' +
+        '<span class="tgmEstado ' + tgmClaseEstadoRequisicion_(d.estado) + '">' + d.estado + '</span>' +
+      '</div>' +
+      '<div style="font-size:12.5px;color:var(--text-muted);margin-top:10px">Solicitante: ' + d.solicitante + '</div>' +
+      '<div style="font-size:12.5px;color:var(--text-muted)">Fecha: ' + d.fecha + '</div>' +
+      (d.observaciones ? '<div style="font-size:12.5px;color:var(--text-muted);margin-top:4px">Obs: ' + d.observaciones + '</div>' : '') +
+    '</div>' +
+    '<div class="tgmSeccionTitulo">Productos (' + d.items.length + ')</div>' +
+    d.items.map(function(it){
+      const pendiente = Math.max(0, it.solicitado - (Number(it.entregado) || 0));
+      return '<div class="tgmCard">' +
+        '<div style="font-weight:700;font-size:14px">' + it.producto + '</div>' +
+        '<div style="font-size:11.5px;color:var(--text-muted)">' + it.codigo + (it.ubicacion ? ' · ' + it.ubicacion : '') + '</div>' +
+        '<div style="display:flex;gap:18px;margin-top:8px;font-size:12.5px">' +
+          '<div><span style="color:var(--text-muted)">Solicitado</span><br><b>' + it.solicitado + ' ' + it.unidad + '</b></div>' +
+          '<div><span style="color:var(--text-muted)">Existencia</span><br><b>' + it.existencia + '</b></div>' +
+          '<div><span style="color:var(--text-muted)">' + (d.estado === "ENTREGADA" ? "Entregado" : "Pendiente") + '</span><br><b>' + (d.estado === "ENTREGADA" ? (it.entregado || 0) : pendiente) + '</b></div>' +
+        '</div>' +
+      '</div>';
+    }).join("") +
+    (puedeSurtir ? '<button class="tgmBotonPrimario" onclick="tgmIniciarSurtido_()">' + tgmIcon("checkCirculo", 18) + ' Surtir requisición</button>' : '');
+
+}
+
+function tgmIniciarSurtido_(){
+
+  if(!TGM_REQ_DETALLE || !TGM_REQ_DETALLE.items.length) return;
+
+  TGM_SURTIDO_FOLIO = TGM_REQ_DETALLE.folio;
+  TGM_SURTIDO_ITEMS = TGM_REQ_DETALLE.items.slice();
+  TGM_SURTIDO_INDICE = 0;
+  TGM_SURTIDO_ENTREGAS = [];
+
+  document.getElementById("tgmHeader").innerHTML =
+    '<button class="tgmHeaderVolver" onclick="tgmAbrirDetalleRequisicion_(\'' + TGM_SURTIDO_FOLIO.replace(/'/g,"\\'") + '\')">' + tgmIcon("chevronIzquierda", 22) + '</button>' +
+    '<div class="tgmHeaderTitulo">Surtido</div>' +
+    tgmHeaderAccionesHtml_();
+
+  tgmDibujarSurtidoActual_();
+
+}
+
+function tgmDibujarSurtidoActual_(){
+
+  const total = TGM_SURTIDO_ITEMS.length;
+  const it = TGM_SURTIDO_ITEMS[TGM_SURTIDO_INDICE];
+  const pct = total ? Math.round((TGM_SURTIDO_INDICE / total) * 100) : 0;
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div style="display:flex;justify-content:space-between;font-weight:800;font-size:13.5px"><span>' + TGM_SURTIDO_FOLIO + '</span><span>' + TGM_SURTIDO_INDICE + '/' + total + '</span></div>' +
+    '<div class="tgmProgreso"><div class="tgmProgresoRelleno" style="width:' + pct + '%"></div></div>' +
+    '<div class="tgmMensaje" id="tgmSurtidoMensaje" style="margin-top:14px"></div>' +
+    '<div class="tgmSeccionTitulo">Producto ' + (TGM_SURTIDO_INDICE + 1) + ' de ' + total + '</div>' +
+    '<div class="tgmCard">' +
+      '<div style="font-weight:700;font-size:15px">' + it.producto + '</div>' +
+      '<div style="font-size:12px;color:var(--text-muted)">' + it.codigo + (it.ubicacion ? ' · ' + it.ubicacion : '') + '</div>' +
+    '</div>' +
+    '<div class="tgmDetalleGrid">' +
+      '<div class="tgmDetalleItem"><div class="lbl">Solicitado</div><div class="val">' + it.solicitado + ' ' + it.unidad + '</div></div>' +
+      '<div class="tgmDetalleItem"><div class="lbl">Disponible</div><div class="val">' + it.existencia + '</div></div>' +
+    '</div>' +
+    '<div class="tgmCampo"><label>Cantidad a surtir</label><input type="number" id="tgmSurtidoCantidad" inputmode="decimal" value="' + it.entregarSugerido + '"></div>' +
+    '<button class="tgmBotonPrimario" id="tgmSurtidoBtnConfirmar" onclick="tgmConfirmarSurtido_()">' + tgmIcon("chevronDerecha", 18) + ' Confirmar y siguiente</button>' +
+    '<button class="tgmBotonSecundario" style="margin-top:10px" onclick="tgmSurtidoNoDisponible_()">No disponible</button>';
+
+  document.getElementById("tgmSurtidoCantidad").focus();
+
+}
+
+function tgmConfirmarSurtido_(){
+  const it = TGM_SURTIDO_ITEMS[TGM_SURTIDO_INDICE];
+  const cantidad = document.getElementById("tgmSurtidoCantidad").value;
+  if(cantidad === "" || Number(cantidad) < 0){
+    tgmMensaje_("tgmSurtidoMensaje", "Captura una cantidad válida", "error");
+    return;
+  }
+  if(Number(cantidad) > 0){
+    TGM_SURTIDO_ENTREGAS.push({ codigo: it.codigo, cantidadEntregada: Number(cantidad) });
+  }
+  tgmSurtidoAvanzar_();
+}
+
+function tgmSurtidoNoDisponible_(){
+  tgmSurtidoAvanzar_();
+}
+
+function tgmSurtidoAvanzar_(){
+  TGM_SURTIDO_INDICE++;
+  if(TGM_SURTIDO_INDICE >= TGM_SURTIDO_ITEMS.length){
+    tgmFinalizarSurtido_();
+    return;
+  }
+  tgmDibujarSurtidoActual_();
+}
+
+function tgmFinalizarSurtido_(){
+
+  document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">Guardando entrega…</div>';
+
+  if(!TGM_SURTIDO_ENTREGAS.length){
+    document.getElementById("tgmContenido").innerHTML =
+      '<div class="tgmVacio">No se capturó ninguna cantidad a entregar — nada se guardó.</div>' +
+      '<button class="tgmBotonSecundario" onclick="tgmAbrirDetalleRequisicion_(\'' + TGM_SURTIDO_FOLIO.replace(/'/g,"\\'") + '\')">Volver al detalle</button>';
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(){
+      document.getElementById("tgmContenido").innerHTML =
+        '<div class="tgmVacio">' + tgmIcon("checkCirculo", 40) +
+          '<div style="margin-top:10px;font-weight:700">Surtido completado</div>' +
+          '<div style="font-size:12.5px;margin-top:4px">' + TGM_SURTIDO_FOLIO + ' — entrega registrada</div>' +
+        '</div>' +
+        '<button class="tgmBotonSecundario" onclick="tgmAbrirRequisiciones()">Volver a Requisiciones</button>';
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("tgmContenido").innerHTML =
+        '<div class="tgmVacio">' + (e.message || "No se pudo confirmar la entrega") + '</div>' +
+        '<button class="tgmBotonSecundario" onclick="tgmAbrirDetalleRequisicion_(\'' + TGM_SURTIDO_FOLIO.replace(/'/g,"\\'") + '\')">Volver al detalle</button>';
+    })
+    .confirmarEntregaRequisicionApp(TGM_SURTIDO_FOLIO, TGM_SURTIDO_ENTREGAS, tgmObtenerToken());
+
+}
 // ============================================
 // Utilidades compartidas por los formularios (Entrada, Salida, y las
 // que sigan) — mensaje de confirmación/error con auto-cierre, y estado
