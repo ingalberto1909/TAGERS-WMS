@@ -1512,6 +1512,72 @@ function generarConteoRacksInterna_(racks, usuario){
   return { folio: folioConteo, productos: salida.length, racks: racks };
 }
 
+/**
+ * TAGERS WMS MOBILE — desglose por rack de un folio de CONTEO_CICLICO
+ * (Desktop no lo necesita: su flujo es "escanea cualquier código de este
+ * folio", sin pantalla de selección de rack). No lee más que
+ * obtenerFoliosAbiertos ya lee — es la misma hoja, solo agrupada.
+ */
+function obtenerRacksDelConteoApp(folio, token){
+
+  requerirSesionActivaApp_(token);
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("CONTEO_CICLICO");
+  if(!hoja || hoja.getLastRow() < 2) return [];
+
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,11).getValues();
+  const racks = {};
+  const orden = [];
+
+  datos.forEach(function(f){
+    if(String(f[0]) !== String(folio)) return;
+    const rack = String(f[10]||"").trim();
+    if(!rack) return;
+    if(!racks[rack]){ racks[rack] = { total: 0, contados: 0 }; orden.push(rack); }
+    racks[rack].total++;
+    if(f[7] !== "" && f[7] !== null && f[7] !== undefined) racks[rack].contados++;
+  });
+
+  return orden.map(function(r){
+    return { rack: r, total: racks[r].total, contados: racks[r].contados, pendientes: racks[r].total - racks[r].contados };
+  });
+
+}
+
+/**
+ * TAGERS WMS MOBILE — siguiente producto SIN contar de un rack específico
+ * dentro de un folio (el flujo de captura en Mobile es "por rack", no
+ * "todo el folio" como en Desktop). El guardado real de cada captura
+ * sigue siendo guardarConteoFisico (Código.gs) — no se duplica esa
+ * lógica, solo la consulta de "cuál sigue" queda acotada al rack elegido.
+ */
+function obtenerSiguientePendienteRackApp(folio, rack, token){
+
+  requerirSesionActivaApp_(token);
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("CONTEO_CICLICO");
+  if(!hoja || hoja.getLastRow() < 2) return { total: 0, contados: 0, siguiente: null };
+
+  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,11).getValues();
+
+  let total = 0, contados = 0, siguiente = null;
+
+  for(let i=0;i<datos.length;i++){
+    const f = datos[i];
+    if(String(f[0]) !== String(folio)) continue;
+    if(String(f[10]||"").trim() !== String(rack)) continue;
+    total++;
+    const yaContado = f[7] !== "" && f[7] !== null && f[7] !== undefined;
+    if(yaContado){ contados++; continue; }
+    if(!siguiente){
+      siguiente = { fila: i+2, folio: f[0], codigo: f[3], producto: f[4], ubicacion: f[5], existencia: f[6] };
+    }
+  }
+
+  return { total: total, contados: contados, siguiente: siguiente };
+
+}
+
 // ============================================
 // PROGRAMACIÓN DE CONTEOS CÍCLICOS (PROGRAMACION_CONTEOS)
 // ============================================

@@ -732,7 +732,7 @@ function tgmDibujarKpisInicio_(r){
 /** Atajos desde las tarjetas del Inicio — reusan pantallas ya construidas en las siguientes fases (Inventario/Conteos/Requisiciones/Compras/Kardex). */
 function tgmIrAVistaAtajo(vista){
   if(vista === "inventario-agotado" || vista === "inventario-bajo"){ tgmIrATab("inventario"); return; }
-  if(vista === "conteos"){ tgmIrATab("operaciones"); return; }
+  if(vista === "conteos"){ tgmAbrirConteo(); return; }
   if(vista === "requisiciones"){ tgmIrATab("requisiciones"); return; }
   if(vista === "compras"){ tgmIrATab("mas"); return; }
   if(vista === "kardex"){ tgmIrATab("mas"); return; }
@@ -743,7 +743,7 @@ function tgmAbrirEscanerGeneral(){
     tgmAbrirDetalleProducto(codigo);
   }});
 }
-function tgmAbrirConteoDesdeAtajo(){ tgmIrATab("operaciones"); }
+function tgmAbrirConteoDesdeAtajo(){ tgmAbrirConteo(); }
 
 // ============================================
 // ESCÁNER — implementación propia de MobileApp.html (no comparte código
@@ -911,8 +911,199 @@ function tgmEscanerManual(){
 }
 
 // ============================================
+// CONTEO CÍCLICO — Seleccionar rack → mostrar progreso → capturar el
+// siguiente producto SIN contar de ese rack → avanzar automáticamente.
+// El guardado real de cada captura sigue siendo guardarConteoFisico
+// (Código.gs, la misma función que ya usa Desktop) — obtenerRacksDelConteoApp
+// y obtenerSiguientePendienteRackApp son solo consultas nuevas que acotan
+// la vista a un rack a la vez, cosa que el flujo de Desktop no necesita.
+// ============================================
+let TGM_CONTEO_FOLIO = null;
+let TGM_CONTEO_RACK = null;
+let TGM_CONTEO_SIGUIENTE = null;
+
+function tgmAbrirConteo(){
+
+  tgmRenderHeaderPantalla("Conteo cíclico", true);
+  document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">Cargando…</div>';
+
+  google.script.run
+    .withSuccessHandler(function(folios){
+      if(!folios || !folios.length){
+        document.getElementById("tgmContenido").innerHTML =
+          '<div class="tgmVacio">' + tgmIcon("documento", 40) + '<div style="margin-top:10px;font-weight:700">No hay conteos abiertos</div>' +
+          '<div style="font-size:12.5px;margin-top:4px">Cuando se genere un conteo cíclico, aparecerá aquí para capturarlo.</div></div>';
+        return;
+      }
+      if(!TGM_CONTEO_FOLIO || folios.indexOf(TGM_CONTEO_FOLIO) === -1) TGM_CONTEO_FOLIO = folios[0];
+      tgmConteoCargarRacks_(folios);
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">' + (e.message || "No se pudo cargar") + '</div>';
+    })
+    .obtenerFoliosAbiertos(tgmObtenerToken());
+
+}
+
+function tgmConteoCargarRacks_(folios){
+
+  const selectorFolio = folios.length > 1 ?
+    '<div class="tgmCampo"><label>Conteo abierto</label><select id="tgmConteoFolioSelect" onchange="tgmConteoCambiarFolio_(this.value)">' +
+      folios.map(function(f){ return '<option value="' + f + '"' + (f === TGM_CONTEO_FOLIO ? ' selected' : '') + '>' + f + '</option>'; }).join("") +
+    '</select></div>' : '';
+
+  document.getElementById("tgmContenido").innerHTML =
+    selectorFolio +
+    '<div class="tgmSeccionTitulo">Selecciona un rack</div>' +
+    '<div id="tgmConteoRacksLista"><div class="tgmVacio">Cargando…</div></div>';
+
+  tgmConteoRefrescarRacks_();
+
+}
+
+function tgmConteoCambiarFolio_(folio){
+  TGM_CONTEO_FOLIO = folio;
+  tgmConteoRefrescarRacks_();
+}
+
+function tgmConteoRefrescarRacks_(){
+  google.script.run
+    .withSuccessHandler(tgmDibujarRacksConteo_)
+    .withFailureHandler(function(e){
+      const cont = document.getElementById("tgmConteoRacksLista");
+      if(cont) cont.innerHTML = '<div class="tgmVacio">' + (e.message || "No se pudo cargar") + '</div>';
+    })
+    .obtenerRacksDelConteoApp(TGM_CONTEO_FOLIO, tgmObtenerToken());
+}
+
+function tgmDibujarRacksConteo_(racks){
+  const cont = document.getElementById("tgmConteoRacksLista");
+  if(!cont) return;
+  if(!racks || !racks.length){
+    cont.innerHTML = '<div class="tgmVacio">Este conteo no tiene racks asignados</div>';
+    return;
+  }
+  cont.innerHTML = racks.map(function(r){
+    const completo = r.pendientes === 0;
+    const pct = r.total ? Math.round((r.contados / r.total) * 100) : 0;
+    const rackEscapado = String(r.rack).replace(/'/g, "\\'");
+    return '<div class="tgmCard tgmCardTappable" onclick="tgmAbrirConteoCaptura_(\'' + rackEscapado + '\')">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+        '<div style="font-weight:800;font-size:15px">Rack ' + r.rack + '</div>' +
+        (completo ?
+          '<span class="tgmEstado tgmEstado-aprobada">Completo</span>' :
+          '<span class="tgmEstado tgmEstado-pendiente">' + r.pendientes + ' pendiente' + (r.pendientes === 1 ? '' : 's') + '</span>') +
+      '</div>' +
+      '<div class="tgmProgreso" style="margin-top:10px"><div class="tgmProgresoRelleno" style="width:' + pct + '%"></div></div>' +
+      '<div style="font-size:12px;color:var(--text-muted);margin-top:6px">' + r.contados + ' de ' + r.total + ' contados</div>' +
+    '</div>';
+  }).join("");
+}
+
+function tgmAbrirConteoCaptura_(rack){
+  TGM_CONTEO_RACK = rack;
+  document.getElementById("tgmHeader").innerHTML =
+    '<button class="tgmHeaderVolver" onclick="tgmAbrirConteo()">' + tgmIcon("chevronIzquierda", 22) + '</button>' +
+    '<div class="tgmHeaderTitulo">Conteo cíclico</div>' +
+    tgmHeaderAccionesHtml_();
+  document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">Cargando…</div>';
+  tgmConteoCargarSiguiente_();
+}
+
+function tgmConteoCargarSiguiente_(){
+  google.script.run
+    .withSuccessHandler(tgmDibujarConteoCaptura_)
+    .withFailureHandler(function(e){
+      document.getElementById("tgmContenido").innerHTML = '<div class="tgmVacio">' + (e.message || "No se pudo cargar") + '</div>';
+    })
+    .obtenerSiguientePendienteRackApp(TGM_CONTEO_FOLIO, TGM_CONTEO_RACK, tgmObtenerToken());
+}
+
+function tgmDibujarConteoCaptura_(estado){
+
+  TGM_CONTEO_SIGUIENTE = estado.siguiente;
+  const pct = estado.total ? Math.round((estado.contados / estado.total) * 100) : 0;
+
+  const barraProgreso =
+    '<div style="display:flex;align-items:center;justify-content:space-between;font-weight:800;font-size:13.5px">' +
+      '<span>RACK ' + TGM_CONTEO_RACK + '</span><span>' + estado.contados + '/' + estado.total + '</span>' +
+    '</div>' +
+    '<div class="tgmProgreso"><div class="tgmProgresoRelleno" style="width:' + pct + '%"></div></div>';
+
+  if(!estado.siguiente){
+    document.getElementById("tgmContenido").innerHTML =
+      barraProgreso +
+      '<div class="tgmVacio">' + tgmIcon("checkCirculo", 40) +
+        '<div style="margin-top:10px;font-weight:700">Rack ' + TGM_CONTEO_RACK + ' completo</div>' +
+        '<div style="font-size:12.5px;margin-top:4px">Todos los productos de este rack ya fueron contados</div>' +
+      '</div>' +
+      '<button class="tgmBotonSecundario" onclick="tgmAbrirConteo()">Volver a racks</button>';
+    return;
+  }
+
+  const p = estado.siguiente;
+  document.getElementById("tgmContenido").innerHTML =
+    barraProgreso +
+    '<div class="tgmMensaje" id="tgmConteoMensaje" style="margin-top:14px"></div>' +
+    '<div class="tgmSeccionTitulo">Producto ' + (estado.contados + 1) + ' de ' + estado.total + '</div>' +
+    '<div class="tgmCard">' +
+      '<div style="display:flex;gap:12px;align-items:flex-start">' +
+        '<div style="width:40px;height:40px;border-radius:10px;background:var(--color-danger-bg);color:var(--guinda);display:flex;align-items:center;justify-content:center;flex-shrink:0">' + tgmIcon("paquete", 20) + '</div>' +
+        '<div>' +
+          '<div style="font-weight:700;font-size:15px">' + p.producto + '</div>' +
+          '<div style="font-size:12px;color:var(--text-muted)">' + p.codigo + ' · ' + p.ubicacion + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="tgmDetalleItem" style="margin-bottom:14px"><div class="lbl">Cantidad en sistema</div><div class="val">' + p.existencia + '</div></div>' +
+    '<div class="tgmCampo"><label>Cantidad física</label><input type="number" id="tgmConteoFisico" inputmode="decimal" placeholder="0" oninput="tgmConteoActualizarDiferencia_()"></div>' +
+    '<div id="tgmConteoDiferencia" style="font-weight:700;font-size:13.5px;margin:-6px 0 14px;min-height:18px"></div>' +
+    '<button class="tgmBotonPrimario" id="tgmConteoBtnSiguiente" onclick="tgmGuardarConteo_()">' + tgmIcon("chevronDerecha", 18) + ' Siguiente</button>';
+
+  document.getElementById("tgmConteoFisico").focus();
+
+}
+
+function tgmConteoActualizarDiferencia_(){
+  const el = document.getElementById("tgmConteoDiferencia");
+  const campo = document.getElementById("tgmConteoFisico");
+  if(!el || !campo || !TGM_CONTEO_SIGUIENTE) return;
+  if(campo.value === ""){ el.textContent = ""; return; }
+  const diferencia = Math.round((Number(campo.value) - Number(TGM_CONTEO_SIGUIENTE.existencia)) * 1000) / 1000;
+  if(diferencia === 0){
+    el.textContent = "Sin diferencia";
+    el.style.color = "var(--color-success)";
+  } else {
+    el.textContent = "Diferencia: " + (diferencia > 0 ? "+" : "") + diferencia;
+    el.style.color = "var(--color-danger)";
+  }
+}
+
+function tgmGuardarConteo_(){
+
+  const fisico = document.getElementById("tgmConteoFisico").value;
+  if(fisico === "" || !TGM_CONTEO_SIGUIENTE){
+    tgmMensaje_("tgmConteoMensaje", "Captura la cantidad física", "error");
+    return;
+  }
+
+  tgmBotonCargando_("tgmConteoBtnSiguiente", true);
+
+  google.script.run
+    .withSuccessHandler(function(){
+      tgmConteoCargarSiguiente_();
+    })
+    .withFailureHandler(function(e){
+      tgmBotonCargando_("tgmConteoBtnSiguiente", false, tgmIcon("chevronDerecha", 18) + " Siguiente");
+      tgmMensaje_("tgmConteoMensaje", e.message || "No se pudo guardar el conteo", "error");
+    })
+    .guardarConteoFisico(TGM_CONTEO_SIGUIENTE.fila, fisico, tgmObtenerToken());
+
+}
+
+// ============================================
 // Placeholders temporales — se reemplazan uno por uno en las siguientes
-// ediciones de esta misma sesión de trabajo (MOBILE-5 a MOBILE-8). Se
+// ediciones de esta misma sesión de trabajo (MOBILE-7 y MOBILE-8). Se
 // dejan aquí para que el shell (header + bottom nav + Inicio + Escáner)
 // sea probable de punta a punta antes de construir cada pantalla.
 // ============================================
@@ -1429,7 +1620,7 @@ function tgmDibujarDetalleProducto_(p){
       '<div class="tgmHojaAcciones">' +
         '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirEntrada(\'' + codigoEscapado + '\')">' + tgmIcon("entrada", 20) + 'Entrada</button>' +
         '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirSalida(\'' + codigoEscapado + '\')">' + tgmIcon("salida", 20) + 'Salida</button>' +
-        '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmIrATab(\'operaciones\')">' + tgmIcon("documento", 20) + 'Contar</button>' +
+        '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirConteo()">' + tgmIcon("documento", 20) + 'Contar</button>' +
       '</div>'
       : '');
 }
