@@ -37,6 +37,17 @@
   var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
   vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 })();
+
+// Mismo interruptor manual de tema que Desktop (index.html), misma
+// llave de localStorage ("tagers-tema") — un solo estado compartido
+// entre las 2 experiencias, no dos toggles independientes que se
+// pisen. Se aplica ANTES de pintar el body para evitar el parpadeo
+// de tema claro→oscuro (FOUC) que tendría hacerlo después.
+(function(){
+  if(localStorage.getItem('tagers-tema') === 'dark'){
+    document.documentElement.setAttribute('data-theme','dark');
+  }
+})();
 </script>
 
 <title>TAGERS WMS</title>
@@ -89,14 +100,15 @@
   --safe-right:env(safe-area-inset-right);
 }
 
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#201714;
-    --bg-panel:#2c211d;
-    --text:#f2ebe0;
-    --text-muted:#b5a49c;
-    --border:#4a3a34;
-  }
+/* Mismo interruptor manual que Desktop (data-theme="dark" + localStorage
+   "tagers-tema") — no sigue el prefers-color-scheme del sistema, para que
+   ambas experiencias compartan un único estado de tema, no dos independientes. */
+[data-theme="dark"]{
+  --bg:#201714;
+  --bg-panel:#2c211d;
+  --text:#f2ebe0;
+  --text-muted:#b5a49c;
+  --border:#4a3a34;
 }
 
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -1112,8 +1124,123 @@ function tgmPantallaPendiente_(titulo){
   document.getElementById("tgmContenido").innerHTML =
     '<div class="tgmVacio">' + tgmIcon("documento", 40) + '<div style="margin-top:10px;font-weight:700">' + titulo + '</div><div style="font-size:12.5px;margin-top:4px">Esta pantalla se construye en el siguiente paso de esta misma sesión.</div></div>';
 }
-function tgmAbrirOperaciones(){ tgmPantallaPendiente_("Operaciones"); }
-function tgmAbrirMas(){ tgmPantallaPendiente_("Más"); }
+// ============================================
+// OPERACIONES — agrupa Entrada/Salida/Escanear/Conteo (mismas pantallas
+// ya construidas en MOBILE-3/5/6). Tab raíz, sin flecha de volver.
+// ============================================
+function tgmAbrirOperaciones(){
+
+  TGM_TAB_ACTIVA = "operaciones";
+  tgmRenderNavInferior();
+  tgmRenderHeaderRaiz("Operaciones");
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmAccesosGrid">' +
+      '<button class="tgmAcceso" onclick="tgmAbrirEntrada()"><span class="tgmAccesoIcono">' + tgmIcon("entrada", 20) + '</span><span class="tgmAccesoTexto">Entrada</span></button>' +
+      '<button class="tgmAcceso" onclick="tgmAbrirSalida()"><span class="tgmAccesoIcono">' + tgmIcon("salida", 20) + '</span><span class="tgmAccesoTexto">Salida</span></button>' +
+      '<button class="tgmAcceso" onclick="tgmAbrirEscanerGeneral()"><span class="tgmAccesoIcono">' + tgmIcon("camara", 20) + '</span><span class="tgmAccesoTexto">Escanear</span></button>' +
+      '<button class="tgmAcceso" onclick="tgmAbrirConteo()"><span class="tgmAccesoIcono">' + tgmIcon("documento", 20) + '</span><span class="tgmAccesoTexto">Conteo cíclico</span></button>' +
+    '</div>';
+
+}
+
+// ============================================
+// MÁS — todo lo que no cabe en las 4 pestañas principales. Los módulos
+// que YA tienen pantalla propia en Mobile enlazan directo a ella
+// (Conteos, Existencias vía Inventario). Los que solo existen en
+// Desktop (Producción, Compras, Recepción, Inventario mensual,
+// Transferencias, Kardex, Movimientos, Administración, Configuración)
+// muestran un aviso honesto y un enlace real a Desktop — NUNCA un botón
+// que aparente funcionar y no haga nada.
+// ============================================
+function tgmAbrirMas(){
+
+  TGM_TAB_ACTIVA = "mas";
+  tgmRenderNavInferior();
+  tgmRenderHeaderRaiz("Más");
+
+  const esAdmin = USUARIO_ACTUAL.rol === "ADMIN";
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmSeccionTitulo">Operaciones</div>' +
+    '<div class="tgmAccesosGrid">' +
+      tgmAccesoMas_("camion", "Transferencias", "tgmAbrirEnDesktop_(\'Transferencias\')") +
+      tgmAccesoMas_("fabrica", "Producción", "tgmAbrirEnDesktop_(\'Producción\')") +
+      tgmAccesoMas_("dinero", "Compras", "tgmAbrirEnDesktop_(\'Compras\')") +
+      tgmAccesoMas_("entrada", "Recepción", "tgmAbrirEnDesktop_(\'Recepción de mercancía\')") +
+      tgmAccesoMas_("documento", "Inventario mensual", "tgmAbrirEnDesktop_(\'Inventario mensual\')") +
+      tgmAccesoMas_("checkCirculo", "Conteos", "tgmAbrirConteo()") +
+    '</div>' +
+    '<div class="tgmSeccionTitulo">Reportes</div>' +
+    '<div class="tgmListaReportes">' +
+      tgmItemReporteMas_("documento", "Kardex", "tgmAbrirEnDesktop_(\'Kardex\')") +
+      tgmItemReporteMas_("paquete", "Existencias", "tgmIrATab(\'inventario\')") +
+      tgmItemReporteMas_("alertaTriangulo", "Productos bajo mínimo", "tgmIrATab(\'inventario\')") +
+      tgmItemReporteMas_("camion", "Movimientos", "tgmAbrirEnDesktop_(\'Movimientos\')") +
+    '</div>' +
+    (esAdmin ?
+      '<div class="tgmSeccionTitulo">Administración</div>' +
+      '<div class="tgmListaReportes">' +
+        tgmItemReporteMas_("usuarios", "Usuarios", "tgmAbrirEnDesktop_(\'Usuarios\')") +
+        tgmItemReporteMas_("configuracion", "Configuración", "tgmAbrirEnDesktop_(\'Configuración\')") +
+      '</div>'
+      : '') +
+    '<div class="tgmSeccionTitulo">Cuenta</div>' +
+    '<div class="tgmListaReportes">' +
+      '<a class="tgmListaReportesItem" style="text-decoration:none;color:var(--text)" href="' + URL_APP + '" target="_top">' +
+        '<span class="tgmAccesoIcono">' + tgmIcon("paquete", 18) + '</span><span class="tgmTexto">Ver versión de escritorio</span>' + tgmIcon("chevronDerecha", 16) +
+      '</a>' +
+      '<button class="tgmListaReportesItem" style="width:100%;border:none;background:none;text-align:left;font:inherit;cursor:pointer" onclick="tgmAlternarTema_()">' +
+        '<span class="tgmAccesoIcono">' + tgmIcon("configuracion", 18) + '</span><span class="tgmTexto">Modo oscuro</span>' +
+        '<span id="tgmEstadoTema" style="font-size:12px;color:var(--text-muted);font-weight:700">' + (document.documentElement.getAttribute("data-theme") === "dark" ? "Activado" : "Desactivado") + '</span>' +
+      '</button>' +
+      '<button class="tgmListaReportesItem" style="width:100%;border:none;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--color-danger)" onclick="tgmCerrarSesion_()">' +
+        '<span class="tgmAccesoIcono" style="background:var(--color-danger-bg);color:var(--color-danger)">' + tgmIcon("xCirculo", 18) + '</span><span class="tgmTexto" style="color:var(--color-danger)">Cerrar sesión</span>' +
+      '</button>' +
+    '</div>';
+
+}
+
+function tgmAccesoMas_(icono, texto, onclick){
+  return '<button class="tgmAcceso" onclick="' + onclick + '"><span class="tgmAccesoIcono">' + tgmIcon(icono, 20) + '</span><span class="tgmAccesoTexto">' + texto + '</span></button>';
+}
+
+function tgmItemReporteMas_(icono, texto, onclick){
+  return '<button class="tgmListaReportesItem" style="width:100%;border:none;background:none;text-align:left;font:inherit;cursor:pointer" onclick="' + onclick + '">' +
+    '<span class="tgmAccesoIcono">' + tgmIcon(icono, 18) + '</span><span class="tgmTexto">' + texto + '</span>' + tgmIcon("chevronDerecha", 16) +
+  '</button>';
+}
+
+function tgmAbrirEnDesktop_(nombre){
+  tgmRenderHeaderPantalla(nombre, true);
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmVacio">' + tgmIcon("documento", 40) +
+      '<div style="margin-top:10px;font-weight:700">' + nombre + '</div>' +
+      '<div style="font-size:12.5px;margin-top:4px">Este módulo todavía no tiene una versión móvil dedicada — ábrelo desde TAGERS WMS Escritorio.</div>' +
+    '</div>' +
+    '<a class="tgmBotonPrimario" style="text-decoration:none" href="' + URL_APP + '" target="_top">' + tgmIcon("chevronDerecha", 18) + ' Abrir en escritorio</a>';
+}
+
+function tgmAlternarTema_(){
+  const actual = document.documentElement.getAttribute("data-theme");
+  const nuevo = actual === "dark" ? "light" : "dark";
+  if(nuevo === "dark"){
+    document.documentElement.setAttribute("data-theme", "dark");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  localStorage.setItem("tagers-tema", nuevo);
+  const el = document.getElementById("tgmEstadoTema");
+  if(el) el.textContent = nuevo === "dark" ? "Activado" : "Desactivado";
+}
+
+function tgmCerrarSesion_(){
+  if(!confirm("¿Cerrar sesión?")) return;
+  google.script.run
+    .withSuccessHandler(tgmIrALogin)
+    .withFailureHandler(tgmIrALogin)
+    .cerrarSesionApp(tgmObtenerToken());
+}
 
 // ============================================
 // REQUISICIONES — lista (Pendientes/Entregadas/Todas) + detalle + Surtido.
