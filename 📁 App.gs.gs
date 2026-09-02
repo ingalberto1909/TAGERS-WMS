@@ -2402,13 +2402,39 @@ function obtenerResumenInicioMovilApp(token){
   let ordenesCompraPendientes = 0;
 
   if(acceso.esAdmin){
-    const reqArea = obtenerRequisicionesApp(token).filter(r => r.estado === "PENDIENTE").length;
-    const reqSucursal = obtenerRequisicionesSucursalApp(token).filter(r => r.estado === "PENDIENTE").length;
+
+    // RENDIMIENTO (hallazgo real en producción — el KPI grid del Inicio
+    // móvil se quedaba pegado en su estado de carga varios segundos):
+    // antes esta función llamaba a obtenerRequisicionesApp/
+    // obtenerRequisicionesSucursalApp/obtenerOrdenesCompraApp completas
+    // solo para contar cuántas filas están PENDIENTE. Esas 3 funciones
+    // formatean fechas y arman un objeto por cada fila (todo descartado
+    // acá, solo se usa el conteo) y 2 de las 3 leen la hoja SIN la caché
+    // de 20s que ya usa el resto del Dashboard (obtenerRequisicionesSucursalApp
+    // y obtenerOrdenesCompraApp — esta última además hace una SEGUNDA
+    // lectura sin caché de PAGOS_OC, que ni siquiera hace falta para
+    // contar). Contra el catálogo de prueba (unas cuantas filas) esto no
+    // se notaba; contra datos reales, la cadena de lecturas sin caché
+    // convertía este único endpoint en la parte más lenta del Inicio
+    // móvil. Ahora se cuenta directo sobre la misma lectura cacheada que
+    // ya usa el resto del Dashboard, sin construir nada que se tira.
+    const datosReqArea = obtenerFilasHojaCacheadas_("REQUISICIONES");
+    const reqArea = datosReqArea.length > 1
+      ? datosReqArea.slice(1).filter(f => f[4] === "PENDIENTE").length
+      : 0;
+
+    const datosReqSucursal = obtenerFilasHojaCacheadas_("REQUISICIONES_SUCURSAL");
+    const reqSucursal = datosReqSucursal.length > 1
+      ? datosReqSucursal.slice(1).filter(f => f[4] === "PENDIENTE").length
+      : 0;
+
     requisicionesPendientes = reqArea + reqSucursal;
 
-    ordenesCompraPendientes = obtenerOrdenesCompraApp(token)
-      .filter(o => o.estado === "PENDIENTE" || o.estado === "PARCIAL" || o.estado === "PENDIENTE_APROBACION")
-      .length;
+    const datosOC = obtenerFilasHojaCacheadas_("ORDENES_COMPRA");
+    ordenesCompraPendientes = datosOC.length > 1
+      ? datosOC.slice(1).filter(f => f[4] === "PENDIENTE" || f[4] === "PARCIAL" || f[4] === "PENDIENTE_APROBACION").length
+      : 0;
+
   }
 
   return {

@@ -709,10 +709,52 @@ function tgmAbrirInicio(){
       '<button class="tgmAccionRapida" onclick="tgmIrATab(\'mas\')"><span class="tgmAccionRapidaCirculo">' + tgmIcon("menu", 22) + '</span><span class="tgmAccionRapidaTexto">Más</span></button>' +
     '</div>';
 
+  tgmCargarKpisInicio_();
+
+}
+
+/**
+ * Separado de tgmAbrirInicio para poder reintentar sin rearmar toda la
+ * pantalla. Con datos reales (no el catálogo pequeño de pruebas),
+ * obtenerResumenInicioMovilApp puede tardar varios segundos — antes, si
+ * tardaba mucho o el usuario navegaba fuera y volvía a Inicio, las
+ * tarjetas se quedaban en su animación de carga sin ningún límite ni
+ * forma de reintentar. Ahora, pasados 12s sin respuesta, se muestra un
+ * aviso explícito con botón de reintentar en vez de un skeleton eterno
+ * que parece congelado. tgmInicioSolicitudId evita que una respuesta
+ * vieja (que al final sí llega) pise el estado de un reintento más nuevo.
+ */
+let tgmInicioSolicitudId = 0;
+
+function tgmCargarKpisInicio_(){
+
+  const idSolicitud = ++tgmInicioSolicitudId;
+  const grid = document.getElementById("tgmKpiGrid");
+  if(grid){
+    grid.innerHTML = [1,2,3,4,5,6].map(function(){ return '<div class="tgmKpiCard"><div class="tgmSkeleton" style="width:60%"></div><div class="tgmSkeleton" style="width:40%;height:22px"></div></div>'; }).join("");
+  }
+
+  const avisoLento = setTimeout(function(){
+    if(idSolicitud !== tgmInicioSolicitudId) return;
+    const g = document.getElementById("tgmKpiGrid");
+    if(!g) return;
+    g.innerHTML = '<div class="tgmVacio" style="grid-column:1/-1">' + tgmIcon("reloj", 32) +
+      '<div style="margin-top:8px">Está tardando más de lo normal…</div>' +
+      '<button class="tgmBotonSecundario" style="margin-top:10px" onclick="tgmCargarKpisInicio_()">Reintentar</button></div>';
+  }, 12000);
+
   google.script.run
-    .withSuccessHandler(tgmDibujarKpisInicio_)
+    .withSuccessHandler(function(r){
+      clearTimeout(avisoLento);
+      if(idSolicitud !== tgmInicioSolicitudId) return;
+      tgmDibujarKpisInicio_(r);
+    })
     .withFailureHandler(function(e){
-      document.getElementById("tgmKpiGrid").innerHTML = '<div class="tgmVacio" style="grid-column:1/-1">' + e.message + '</div>';
+      clearTimeout(avisoLento);
+      if(idSolicitud !== tgmInicioSolicitudId) return;
+      const g = document.getElementById("tgmKpiGrid");
+      if(g) g.innerHTML = '<div class="tgmVacio" style="grid-column:1/-1">' + (e.message || "No se pudo cargar") +
+        '<button class="tgmBotonSecundario" style="margin-top:10px" onclick="tgmCargarKpisInicio_()">Reintentar</button></div>';
     })
     .obtenerResumenInicioMovilApp(tgmObtenerToken());
 
