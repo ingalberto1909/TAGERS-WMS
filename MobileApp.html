@@ -30,12 +30,35 @@
 // Misma corrección que index.html: dentro del iframe que arma
 // script.google.com, el <meta viewport> no siempre se respeta con el
 // ancho real del teléfono — screen.width sí lo conoce.
+//
+// HALLAZGO REAL (reportado por el usuario con capturas de un teléfono
+// real): el contenido se veía correcto pero "alejado"/chico, ocupando
+// solo una franja angosta al centro de la pantalla — exactamente el
+// síntoma de que el ancho de layout efectivo NO es el ancho real del
+// dispositivo. La causa: esta corrección se aplicaba UNA sola vez, de
+// inmediato, sin reintentos — pero el wrapper de Google
+// (script.google.com) a veces monta/reajusta el iframe con un ancho de
+// layout equivocado (~980px, un "ancho de escritorio" típico) DESPUÉS
+// de esta primera pasada, y esa segunda pasada de Google pisaba el
+// valor correcto que ya habíamos puesto. index.html ya resolvió este
+// mismo problema reintentando varias veces tras la carga — se replica
+// aquí exactamente igual, en vez de asumir que una sola pasada basta.
 (function(){
-  var vp = document.getElementById('viewportMeta');
-  if(!vp) return;
-  var anchoPantalla = (window.screen && window.screen.width) || 0;
-  var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
-  vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+  function ajustarViewportMovil(){
+    var vp = document.getElementById('viewportMeta');
+    if(!vp) return;
+    var anchoPantalla = (window.screen && window.screen.width) || 0;
+    var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
+    vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+  }
+  ajustarViewportMovil();
+  window.addEventListener('load', ajustarViewportMovil);
+  window.addEventListener('resize', ajustarViewportMovil);
+  window.addEventListener('orientationchange', ajustarViewportMovil);
+  setTimeout(ajustarViewportMovil, 150);
+  setTimeout(ajustarViewportMovil, 600);
+  setTimeout(ajustarViewportMovil, 1500);
+  setTimeout(ajustarViewportMovil, 3000);
 })();
 
 // Mismo interruptor manual de tema que Desktop (index.html), misma
