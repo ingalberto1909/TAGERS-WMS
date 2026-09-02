@@ -1057,6 +1057,41 @@ display:inline-block;
 .badgeEstado.ABC-B{ background:var(--color-warning-bg); color:var(--color-warning); }
 .badgeEstado.ABC-C{ background:var(--border); color:var(--text-muted); }
 
+/* Etiquetas de producto: el área de impresión vive fuera de ".contenedor"
+   (se agrega directo a <body> la primera vez que se imprime) y se
+   mantiene oculta en pantalla — solo se muestra dentro de @media print,
+   momento en el que el resto de la app (sidebar, header, ".contenedor")
+   se oculta para que SOLO salgan las etiquetas en la hoja impresa. Grid
+   genérico pensado para una hoja carta en una impresora normal (no una
+   plantilla Avery exacta) — el usuario puede necesitar ajustar los
+   márgenes de impresión de su navegador según el papel de etiqueta que use. */
+#areaImpresionEtiquetas{ display:none; }
+@media print{
+  body *{ visibility:hidden; }
+  #areaImpresionEtiquetas, #areaImpresionEtiquetas *{ visibility:visible; }
+  #areaImpresionEtiquetas{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:4mm;
+    position:absolute;
+    top:0; left:0;
+    width:100%;
+    padding:8mm;
+    box-sizing:border-box;
+  }
+  .etiquetaImprimible{
+    border:1px dashed #999;
+    border-radius:3px;
+    padding:3mm;
+    text-align:center;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+  .etiquetaImprimible img{ max-width:100%; height:auto; }
+  .etiquetaImprimibleNombre{ font-size:9pt; font-weight:600; margin-top:1mm; word-break:break-word; }
+  .etiquetaImprimibleCosto{ font-size:8pt; color:#333; margin-top:0.5mm; }
+}
+
 /* Fila expandible reutilizable para listas móviles densas (Conteos
    cíclicos del Dashboard, bandejas de Requisiciones, etc.): título +
    estado siempre visibles, el resto de los campos bajo demanda
@@ -3412,7 +3447,7 @@ const PERMISOS_ROL = {
     // btnAjustes) — a partir de ahora exclusivo de ADMIN/OPERADOR. Se agregó
     // acceso completo a Compras e Inventario mensual.
     "btnInicio",
-    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas","btnClasificacionABC",
+    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas","btnClasificacionABC","btnEtiquetas",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnProgramacionConteos","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
@@ -7380,6 +7415,183 @@ function alternarModoOscuro(){
   localStorage.setItem("tagers-tema", nuevo);
 
   actualizarIconoTema();
+
+}
+
+// ===============================
+// ETIQUETAS DE PRODUCTO (impresión de código de barras)
+// Reusa buscarProductoCatalogoApp (ya existente) para buscar productos —
+// no hay backend nuevo, esta pantalla es 100% de presentación. El código
+// de barras se genera con el mismo servicio y los mismos parámetros que
+// ya usa la fórmula IMAGE() de la columna F de MATRIZ (bwip-js, Code128),
+// para que la etiqueta impresa se vea y escanee igual que la de Sheets.
+// ===============================
+
+window.etiquetasSeleccionadas = [];
+let temporizadorBuscarProductoEtiqueta;
+
+function urlCodigoBarrasEtiqueta_(codigo){
+  return "https://bwipjs-api.metafloor.com/?bcid=code128&text=" + encodeURIComponent(codigo) +
+    "&includetext&textxalign=center&scale=3&height=12";
+}
+
+function abrirEtiquetas(){
+
+  marcarActivo("btnEtiquetas");
+  window.etiquetasSeleccionadas = [];
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("cajas",20)} Etiquetas de Producto</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Busca productos, agrégalos a la lista y genera una hoja de etiquetas con código de barras lista para imprimir en una impresora normal.</p>
+
+    <div class="cardProducto">
+
+      <label>Buscar producto</label>
+      <div style="position:relative">
+        <input id="buscarProductoEtiqueta" placeholder="Nombre o código..." oninput="buscarProductoParaEtiqueta()" autocomplete="off">
+        <div id="resultadosProductoEtiqueta" style="display:none;position:absolute;z-index:5;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;width:100%;max-height:260px;overflow:auto;box-shadow:var(--sombra)"></div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="etiquetaIncluirCosto" style="width:auto;margin:0">
+        <label style="margin:0" for="etiquetaIncluirCosto">Incluir costo unitario en la etiqueta</label>
+      </div>
+
+      <div id="listaEtiquetasSeleccionadas" style="margin-top:16px"></div>
+
+      <div class="boton" id="btnImprimirEtiquetas" style="margin-top:16px" onclick="imprimirEtiquetasSeleccionadas()">${tgIcon("imprimir",17)} Imprimir Etiquetas</div>
+
+    </div>
+
+    </div>
+  `;
+
+  dibujarListaEtiquetasSeleccionadas();
+
+}
+
+function buscarProductoParaEtiqueta(){
+
+  clearTimeout(temporizadorBuscarProductoEtiqueta);
+
+  const texto = document.getElementById("buscarProductoEtiqueta").value.trim();
+  const cont = document.getElementById("resultadosProductoEtiqueta");
+
+  if(texto.length < 2){ cont.innerHTML = ""; cont.style.display = "none"; return; }
+
+  temporizadorBuscarProductoEtiqueta = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        if(!lista || !lista.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+        cont.innerHTML = lista.map(p => `
+          <div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarProductoAEtiquetas(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>
+        `).join("");
+        cont.style.display = "block";
+      })
+      .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; cont.style.display = "block"; })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+  }, 300);
+
+}
+
+function agregarProductoAEtiquetas(producto){
+
+  document.getElementById("buscarProductoEtiqueta").value = "";
+  document.getElementById("resultadosProductoEtiqueta").innerHTML = "";
+  document.getElementById("resultadosProductoEtiqueta").style.display = "none";
+
+  const yaEsta = window.etiquetasSeleccionadas.find(function(p){ return p.codigo === producto.codigo; });
+  if(yaEsta){ yaEsta.copias++; }
+  else{ window.etiquetasSeleccionadas.push({ codigo: producto.codigo, producto: producto.producto, precio: producto.precio, copias: 1 }); }
+
+  dibujarListaEtiquetasSeleccionadas();
+
+}
+
+function quitarProductoDeEtiquetas(codigo){
+  window.etiquetasSeleccionadas = window.etiquetasSeleccionadas.filter(function(p){ return p.codigo !== codigo; });
+  dibujarListaEtiquetasSeleccionadas();
+}
+
+function cambiarCopiasEtiqueta(codigo, valor){
+  const item = window.etiquetasSeleccionadas.find(function(p){ return p.codigo === codigo; });
+  if(!item) return;
+  const copias = parseInt(valor, 10);
+  item.copias = (Number.isFinite(copias) && copias > 0) ? copias : 1;
+}
+
+function dibujarListaEtiquetasSeleccionadas(){
+
+  const cont = document.getElementById("listaEtiquetasSeleccionadas");
+  if(!cont) return;
+
+  if(!window.etiquetasSeleccionadas.length){
+    cont.innerHTML = tgEmptyState("cajas", "Todavía no agregas ningún producto");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Código</th><th>Producto</th><th>Copias</th><th></th></tr></thead>
+      <tbody>
+        ${window.etiquetasSeleccionadas.map(function(p){ return `
+          <tr>
+            <td>${p.codigo}</td>
+            <td>${p.producto}</td>
+            <td><input type="number" min="1" value="${p.copias}" style="width:70px" onchange="cambiarCopiasEtiqueta('${p.codigo.replace(/'/g,"\\'")}', this.value)"></td>
+            <td style="text-align:right"><span class="boton danger" style="width:auto;padding:6px 10px;margin:0;font-size:12px" onclick="quitarProductoDeEtiquetas('${p.codigo.replace(/'/g,"\\'")}')">Quitar</span></td>
+          </tr>
+        `; }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function imprimirEtiquetasSeleccionadas(){
+
+  if(!window.etiquetasSeleccionadas.length){
+    alert("Agrega al menos un producto antes de imprimir.");
+    return;
+  }
+
+  const incluirCosto = document.getElementById("etiquetaIncluirCosto").checked;
+
+  const etiquetas = [];
+  window.etiquetasSeleccionadas.forEach(function(p){
+    for(let i = 0; i < p.copias; i++) etiquetas.push(p);
+  });
+
+  const html = etiquetas.map(function(p){
+    return `
+      <div class="etiquetaImprimible">
+        <img src="${urlCodigoBarrasEtiqueta_(p.codigo)}" alt="${p.codigo}">
+        <div class="etiquetaImprimibleNombre">${p.producto}</div>
+        ${incluirCosto ? `<div class="etiquetaImprimibleCosto">$${Number(p.precio || 0).toFixed(2)}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+
+  let contenedorImpresion = document.getElementById("areaImpresionEtiquetas");
+  if(!contenedorImpresion){
+    contenedorImpresion = document.createElement("div");
+    contenedorImpresion.id = "areaImpresionEtiquetas";
+    document.body.appendChild(contenedorImpresion);
+  }
+  contenedorImpresion.innerHTML = html;
+
+  window.print();
 
 }
 
@@ -15823,6 +16035,7 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnUbicaciones" onclick="abrirUbicaciones()" title="Buscar ubicación"><span class="icono">🔎</span><span class="textoMenu">Buscar ubicación</span></button>
     <button class="menuLateralBtn sub" id="btnMermas" onclick="abrirMermas()" title="Mermas"><span class="icono">🗑️</span><span class="textoMenu">Mermas</span></button>
     <button class="menuLateralBtn sub" id="btnClasificacionABC" onclick="abrirClasificacionABC()" title="Clasificación ABC"><span class="icono">🏷️</span><span class="textoMenu">Clasificación ABC</span></button>
+    <button class="menuLateralBtn sub" id="btnEtiquetas" onclick="abrirEtiquetas()" title="Etiquetas"><span class="icono">🏷️</span><span class="textoMenu">Etiquetas</span></button>
   </div>
 </div>
 
