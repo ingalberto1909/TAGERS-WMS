@@ -2597,6 +2597,93 @@ function buscarProductoCatalogoApp(texto, token){
 }
 
 /**
+ * TAGERS WMS MOBILE — un solo endpoint para las 3 pestañas de Inventario
+ * móvil (Productos/Racks/Ubicaciones): búsqueda por texto libre y/o
+ * filtro exacto por rack, ambos opcionales y combinables. No reemplaza
+ * buscarProductoCatalogoApp (Desktop la sigue usando tal cual) — es una
+ * variante que además regresa rack/ubicación/estado, que la tarjeta
+ * móvil necesita mostrar y que aquella función no expone.
+ */
+function obtenerInventarioMovilApp(filtros, token){
+
+  requerirSesionActivaApp_(token);
+  filtros = filtros || {};
+
+  const texto = normalizarTexto_(filtros.texto || "");
+  const rackFiltro = String(filtros.rack || "").trim().toUpperCase();
+  const limite = Math.min(Number(filtros.limite) || 30, 100);
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
+  const resultados = [];
+
+  for(let i=0;i<datos.length;i++){
+
+    const f = datos[i];
+    const ubicacion = String(f[9]||"").trim();
+    if(ubicacionVacia_(ubicacion)) continue;
+
+    const rack = String(f[6]||"").trim();
+    if(rackFiltro && rack.toUpperCase() !== rackFiltro) continue;
+
+    if(texto){
+      const coincideNombre = normalizarTexto_(f[0]).indexOf(texto) !== -1;
+      const coincideCodigo = normalizarTexto_(f[4]).indexOf(texto) !== -1;
+      const coincideUbic = normalizarTexto_(ubicacion).indexOf(texto) !== -1;
+      const coincideRack = normalizarTexto_(rack).indexOf(texto) !== -1;
+      if(!coincideNombre && !coincideCodigo && !coincideUbic && !coincideRack) continue;
+    }
+
+    const existencia = Number(f[10]) || 0;
+    const minimo = Number(f[11]) || 0;
+    const maximo = Number(f[12]) || 0;
+
+    resultados.push({
+      codigo: f[4],
+      producto: f[0],
+      udm: f[1],
+      rack: rack,
+      ubicacion: ubicacion,
+      existencia: existencia,
+      minimo: minimo,
+      maximo: maximo,
+      estado: existencia <= 0 ? "Agotado" : (existencia <= minimo ? "Bajo" : "Óptimo")
+    });
+
+    if(resultados.length >= limite) break;
+
+  }
+
+  return resultados;
+
+}
+
+/**
+ * TAGERS WMS MOBILE — lista de ubicaciones únicas no vacías (columna J de
+ * MATRIZ), para la pestaña "Ubicaciones" de Inventario móvil. Mismo
+ * patrón exacto que obtenerRacksConteo (Código.gs) pero sobre la columna
+ * de ubicación en vez de rack.
+ */
+function obtenerUbicacionesUnicasApp(token){
+
+  requerirSesionActivaApp_(token);
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
+  const vistas = {};
+  const ubicaciones = [];
+
+  datos.forEach(function(f){
+    const u = String(f[9]||"").trim();
+    if(u && !vistas[u]){
+      vistas[u] = true;
+      ubicaciones.push(u);
+    }
+  });
+
+  return ubicaciones.sort();
+
+}
+
+/**
  * INV-202 (auditoría de arquitectura, evolución continua): mueve un
  * producto de rack/ubicación dentro del mismo almacén SIN que cuente
  * como entrada ni salida — solo cambia MATRIZ.Rack/Ubicación (columnas

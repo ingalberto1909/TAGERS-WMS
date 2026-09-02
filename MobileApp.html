@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="UTF-8">
+<base target="_top">
+
+<meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#6B2737">
+
+<!--
+  TAGERS WMS MOBILE — manifest propio (mismos datos/colores que el de
+  index.html) con start_url=?page=mobile: si el usuario "Agrega a
+  inicio" desde el teléfono, la app instalada abre DIRECTO aquí, no en
+  la versión de escritorio. No hay Service Worker (ver nota al final de
+  este archivo) — Google Apps Script solo sirve lo que doGet() regresa,
+  no puede exponer un archivo /sw.js en una ruta propia, y un Service
+  Worker no puede registrarse desde una data: URI. La instalación
+  (Agregar a inicio) sí funciona sin Service Worker en iOS Safari y en
+  Chrome/Android con el manifest + apple-mobile-web-app-capable — solo
+  el cacheo offline queda fuera de alcance con esta plataforma.
+-->
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiVEFHRVJTIFdNUyIsInNob3J0X25hbWUiOiJUQUdFUlMgV01TIiwiZGVzY3JpcHRpb24iOiJTaXN0ZW1hIGRlIGdlc3Rpw7NuIGRlIGFsbWFjw6luIFRBR0VSUyIsInN0YXJ0X3VybCI6Ii4vP3BhZ2U9bW9iaWxlIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI0YyRUJFMCIsInRoZW1lX2NvbG9yIjoiIzZCMjczNyIsImljb25zIjpbXX0=">
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAGAklEQVR4nO3dP44URxiG8W9WTskdkBMgkZIYkXMBmxMQcAKfgBMQ+AQWF+ACkJAiOSAncGohYhysCtXMVE9XV1d1fX+e3wHYZubZl293EZxEgdePnv6Y/QzY7+2XT6fZzzDlAQg4hhmBH/YBiTi2o+Ie+kGIGCUj4x7yCxMyaowI+673L0jMqDWilW6fIYSMPXqtdZeFJmbs1auhXZ8VhIwR9qx180ITM0bZ01ZT0MSM0Vob2xw0MeMoLa1tCpqYcbStzVUHTcyYZUt7VUETM2arbXA1aGKGFjUtdv/RNzDTzaBZZ2iz1uRi0MQMrW61yckBV4pBs87QbqnRq6CJGVaUWuXkgCtnQbPOsOayWRYarhA0XPkZNOcGrMrbZaHhCkHDlTsRzg3YlxpmoeEKQcMVgoYrJ+5neMJCwxWChisEDVcIGq4Q9EHefHw3+xFC4Lscg5VC/vO33yc8SQws9EBLq8xaj8NCD7AlWNa6L4LuaM/yEnYfnByd7D0jOEP6YKF3GhEia92Ohd5h1Kqy1u1Y6AZHBsdab0PQG8xcTsKuw8lRafYZMPvjW8FCr9AYEmu9jKAXaAz5EmFf4+QosBCziJ3nPBILnbEcCGt9j6DFdsiXoocd/uTwFLOIv9/PVmEXOsIbH3GtQy50hJhF4vw+c6EWOuIbnERZ6xBBRw75kvew3Z8cxHzO++vhdqG9v3E9eFxrd0ET8naewnZ1chBzG0+vm4uF9vSGzGZ9rU0HTcjjWA3b7MlBzGNZfX3NLbTVF9oyS2ttaqGJeQ5Lr7uJhbb0gnqnfa1VB03IemkNW+3JQcy6aX1/1AX98vE3tS8Wzr35+E6ePfx39mOc+WX2A5R8fvVCRESe/PV+8pNgyfs/ns9+hCJ1C51LYUMXrTGLKF3oHGuth+aQE/VBJ4Q9j4WQE9UnRwlnyLEsxSxiaKFzrPV41kJOTAadEHZ/VkNOzJ0cJZwhfViPWcT4QudY63YeQk7cBJ0Qdj1PISfugk4Ie5nHkBMXN/Qt3NfnPMcs4nihc6y1/5CTEEEnEcOOEnLi/uQoiXKGRItZJNhC5zyvdcSQk7BBJ57CjhxyEvLkKLF+hhDzvfALnbO41oR8jqALLIRNyGWcHDdoPUOIeRkLvULTWhPyOoKuNDNsQq7HybHR0WcIMW/DQjc4Yq0JuQ1B7zAibELeh6A76BE2IffBDd1R631NzP2w0J1tWWtC7o+gB7kVNiGPw8kx2OUZQsxjsdAH+PzqhXz97/vsxwiBhYYrBA1XCBquEDRcIWi4QtBwhaDhCkHDFYKGKwQNVwgarhA0XCFouELQcIWg4QpBwxV1f8H/738eiIjIy8ffJj8J1nz4+uvsR7iidqFT2NBJY8wiChc6x1rrozXkRHXQCWHPpz3kRO3JUcIZMoeVmEWMLHSOtT6OpZATUwudY63HshiziMGFzrHW/VkNOTEddELY+1kPOTF7cpRwhrTxErOIk4XOsdb1PIWcuAs6IexlHkNOXJ0cJZwh5zzHLOJ4oXOstf+QkxBBJxHDjhJy4v7kKIlyhkSLWSTYQuc8r3XEkJOQC53zttaRYxYJvNA5D2sdPeSEoDMWwybkc+FPjhIrZwgxX2OhF2hea0JeRtArNIVNyOs4OSrNPkOIuQ4LvcGMtSbkbQi6wRFhE3IbTo4dRp0hxNzuJCLy+tHTH7MfxLq1ta75v74JeZ+3Xz6dWOhO9q41MffBDd1Ry21NyH0R9AA1YRPyGHci97fH7AfxaOkMIeb+UsMs9GAp6mcPvxPyAfii8CDEfIyfQXN2wKq8XRYarhA0XDkLmrMD1lw2y0LDlaugWWlYUWq1uNBEDe2WGuXkgCuLQbPS0OpWmzcXmqihzVqTnBxwZTVoVhpa1LRYtdBEjdlqG6w+OYgas2xpb9MNTdQ42tbmNn9RSNQ4SktrTd/lIGqM1tpY87ftiBqj7GmrS5T8QzXoocdIdvnBCmuNvXo11D1E1hpb9B7D7j/6Zq1Ra0QrQ+NjrVEycvQOW1Piju2oP7mnnAfEHcOM81PFvUvgPmj4+ul/3HlbNAo+z04AAAAASUVORK5CYII=">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TAGERS WMS">
+
+<script>
+// Misma corrección que index.html: dentro del iframe que arma
+// script.google.com, el <meta viewport> no siempre se respeta con el
+// ancho real del teléfono — screen.width sí lo conoce.
+(function(){
+  var vp = document.getElementById('viewportMeta');
+  if(!vp) return;
+  var anchoPantalla = (window.screen && window.screen.width) || 0;
+  var ancho = anchoPantalla > 0 ? anchoPantalla : (document.documentElement.clientWidth || window.innerWidth);
+  vp.setAttribute('content','width=' + ancho + ', initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+})();
+</script>
+
+<title>TAGERS WMS</title>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="window.tgHtml5QrcodeFalloCarga=true"></script>
+
+<style>
+
+/* ============================================
+   TAGERS WMS MOBILE — design tokens
+   Misma paleta de marca que Desktop (index.html) — no se inventa una
+   identidad nueva, solo se REUSAN los mismos valores de --guinda,
+   --oliva, --terracota, etc. Se agregan 2 tokens nuevos (--teal,
+   --morado) solo para las 2 tarjetas del Inicio que no tenían un color
+   semántico ya definido en Desktop.
+   ============================================ */
+:root{
+  --bg:#F2EBE0;
+  --bg-panel:#ffffff;
+  --text:#3a2e2a;
+  --text-muted:#7a6d68;
+  --border:#ddccc4;
+  --guinda:#6B2737;
+  --guinda-dark:#4E1C28;
+  --oliva:#5C6B2A;
+  --terracota:#C4522A;
+
+  --color-danger:var(--guinda);
+  --color-danger-bg:rgba(107,39,55,.12);
+  --color-warning:#a87a1f;
+  --color-warning-bg:rgba(217,164,65,.18);
+  --color-success:var(--oliva);
+  --color-success-bg:rgba(92,107,42,.14);
+  --color-info:#2A6B8C;
+  --color-info-bg:rgba(42,107,140,.14);
+  --color-teal:#1C7E76;
+  --color-teal-bg:rgba(28,126,118,.14);
+  --color-morado:#6B3FA0;
+  --color-morado-bg:rgba(107,63,160,.14);
+
+  --radius-md:14px;
+  --radius-lg:18px;
+  --radius-pill:999px;
+  --shadow-sm:0 2px 10px rgba(0,0,0,.08);
+  --shadow-md:0 8px 24px rgba(0,0,0,.14);
+
+  --safe-top:env(safe-area-inset-top);
+  --safe-bottom:env(safe-area-inset-bottom);
+  --safe-left:env(safe-area-inset-left);
+  --safe-right:env(safe-area-inset-right);
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#201714;
+    --bg-panel:#2c211d;
+    --text:#f2ebe0;
+    --text-muted:#b5a49c;
+    --border:#4a3a34;
+  }
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+html,body{
+  margin:0; padding:0; width:100%;
+  background:var(--bg); color:var(--text);
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;
+  overscroll-behavior-y:none;
+}
+
+body{
+  overflow-x:hidden;
+}
+
+/* La app se centra como una "columna de teléfono" en pantallas más
+   anchas (tablet/desktop abriendo esta URL a propósito) — nunca se
+   estira a ancho completo ni se comprime, sigue siendo la MISMA
+   experiencia de app, solo con aire a los lados. */
+#appMobile{
+  max-width:480px;
+  margin:0 auto;
+  min-height:100vh;
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  background:var(--bg);
+  position:relative;
+}
+
+button{ font-family:inherit; }
+input,select,textarea{ font-family:inherit; }
+
+/* ============================================
+   HEADER
+   ============================================ */
+.tgmHeader{
+  position:sticky; top:0; z-index:20;
+  display:flex; align-items:center; gap:12px;
+  padding:calc(14px + var(--safe-top)) 16px 14px;
+  background:var(--bg-panel);
+  border-bottom:1px solid var(--border);
+}
+.tgmHeaderVolver{
+  background:none; border:none; padding:6px; margin:-6px 0 -6px -6px;
+  color:var(--text); display:flex; align-items:center; justify-content:center;
+  border-radius:var(--radius-pill); min-width:36px; min-height:36px;
+}
+.tgmHeaderTitulo{
+  flex:1; font-size:17px; font-weight:700; color:var(--guinda);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.tgmHeaderTitulo .tgmMarca{ display:flex; align-items:center; gap:8px; }
+.tgmHeaderAcciones{ display:flex; align-items:center; gap:10px; }
+.tgmIconoBtn{
+  position:relative; background:none; border:none; color:var(--text);
+  min-width:40px; min-height:40px; display:flex; align-items:center; justify-content:center;
+  border-radius:var(--radius-pill);
+}
+.tgmBadge{
+  position:absolute; top:2px; right:2px;
+  background:var(--guinda); color:#fff; font-size:10px; font-weight:700;
+  min-width:16px; height:16px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center; padding:0 3px;
+}
+.tgmAvatar{
+  width:34px; height:34px; border-radius:50%; background:var(--guinda); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;
+  flex-shrink:0;
+}
+
+/* ============================================
+   CONTENIDO
+   ============================================ */
+#tgmContenido{
+  flex:1;
+  padding:16px 16px calc(96px + var(--safe-bottom));
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+.tgmSaludo{ margin:2px 0 14px; }
+.tgmSaludo h1{ margin:0; font-size:20px; font-weight:700; }
+.tgmSaludo p{ margin:2px 0 0; font-size:13px; color:var(--text-muted); }
+
+.tgmBadgeSync{
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--color-success-bg); color:var(--color-success);
+  font-size:11.5px; font-weight:700; padding:5px 11px; border-radius:var(--radius-pill);
+  margin:10px 0 16px;
+}
+.tgmBadgeSync .punto{ width:6px; height:6px; border-radius:50%; background:var(--color-success); }
+
+.tgmSeccionTitulo{
+  font-size:14px; font-weight:700; color:var(--text); margin:18px 0 10px;
+}
+
+/* Grid 2 columnas de tarjetas KPI del Inicio */
+.tgmKpiGrid{
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
+}
+.tgmKpiCard{
+  background:var(--bg-panel); border-radius:var(--radius-lg); padding:14px;
+  box-shadow:var(--shadow-sm); border:1px solid var(--border);
+  display:flex; flex-direction:column; gap:8px;
+  text-align:left; cursor:pointer; min-height:92px;
+  -webkit-tap-highlight-color:transparent;
+}
+.tgmKpiCard:active{ transform:scale(.98); }
+.tgmKpiCardTop{ display:flex; align-items:center; justify-content:space-between; }
+.tgmKpiCardIcono{
+  width:30px; height:30px; border-radius:9px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.tgmKpiCardLabel{ font-size:12px; font-weight:700; color:var(--text-muted); }
+.tgmKpiCardValor{ font-size:24px; font-weight:800; line-height:1; }
+.tgmKpiCardSub{ font-size:11px; color:var(--text-muted); }
+
+.tgmKpi-agotados .tgmKpiCardIcono{ background:var(--color-danger-bg); color:var(--color-danger); }
+.tgmKpi-agotados .tgmKpiCardValor{ color:var(--color-danger); }
+.tgmKpi-bajo .tgmKpiCardIcono{ background:var(--color-warning-bg); color:var(--color-warning); }
+.tgmKpi-bajo .tgmKpiCardValor{ color:var(--color-warning); }
+.tgmKpi-conteos .tgmKpiCardIcono{ background:var(--color-teal-bg); color:var(--color-teal); }
+.tgmKpi-conteos .tgmKpiCardValor{ color:var(--color-teal); }
+.tgmKpi-requisiciones .tgmKpiCardIcono{ background:var(--color-info-bg); color:var(--color-info); }
+.tgmKpi-requisiciones .tgmKpiCardValor{ color:var(--color-info); }
+.tgmKpi-compras .tgmKpiCardIcono{ background:var(--color-success-bg); color:var(--color-success); }
+.tgmKpi-compras .tgmKpiCardValor{ color:var(--color-success); }
+.tgmKpi-entradas .tgmKpiCardIcono{ background:var(--color-morado-bg); color:var(--color-morado); }
+.tgmKpi-entradas .tgmKpiCardValor{ color:var(--color-morado); }
+
+/* Fila de accesos rápidos circulares */
+.tgmAccionesRapidas{
+  display:flex; justify-content:space-between; gap:6px; margin:4px 0 8px;
+}
+.tgmAccionRapida{
+  background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:6px;
+  flex:1; color:var(--text); padding:2px;
+}
+.tgmAccionRapidaCirculo{
+  width:52px; height:52px; border-radius:50%;
+  background:var(--bg-panel); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:var(--shadow-sm); color:var(--guinda);
+}
+.tgmAccionRapida.tgmAccionHero .tgmAccionRapidaCirculo{
+  width:64px; height:64px; background:var(--guinda); color:#fff; border:none;
+  box-shadow:var(--shadow-md);
+}
+.tgmAccionRapidaTexto{ font-size:11px; font-weight:600; text-align:center; }
+
+/* Tarjetas genéricas reutilizables (producto, requisición, etc.) */
+.tgmCard{
+  background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:14px; margin-bottom:10px; box-shadow:var(--shadow-sm);
+}
+.tgmCardTappable{ cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.tgmCardTappable:active{ transform:scale(.99); }
+
+/* Botones táctiles grandes, ancho completo */
+.tgmBotonPrimario{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; min-height:52px; border:none; border-radius:var(--radius-md);
+  background:var(--guinda); color:#fff; font-size:15.5px; font-weight:700;
+  box-shadow:var(--shadow-sm);
+}
+.tgmBotonPrimario:active{ background:var(--guinda-dark); }
+.tgmBotonPrimario:disabled{ opacity:.55; }
+.tgmBotonSecundario{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; min-height:52px; border:1.5px solid var(--guinda); border-radius:var(--radius-md);
+  background:transparent; color:var(--guinda); font-size:15px; font-weight:700;
+}
+
+/* Formularios grandes y táctiles */
+.tgmCampo{ margin-bottom:14px; }
+.tgmCampo label{ display:block; font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:6px; }
+.tgmCampo input, .tgmCampo select, .tgmCampo textarea{
+  width:100%; min-height:50px; padding:12px 14px; font-size:16px;
+  border:1.5px solid var(--border); border-radius:var(--radius-md);
+  background:var(--bg-panel); color:var(--text);
+}
+.tgmCampo textarea{ min-height:70px; resize:vertical; }
+.tgmCampoConIcono{ position:relative; }
+.tgmCampoConIcono input{ padding-right:46px; }
+.tgmCampoConIcono .tgmCampoIcono{
+  position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  width:38px; height:38px; border-radius:var(--radius-pill); border:none;
+  background:var(--guinda); color:#fff; display:flex; align-items:center; justify-content:center;
+}
+.tgmCampoUnidad{ position:absolute; right:14px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; font-weight:700; }
+
+/* Buscador grande de encabezado de pantalla */
+.tgmBuscador{ position:relative; margin-bottom:14px; }
+.tgmBuscador input{
+  width:100%; min-height:50px; padding:12px 46px; font-size:15px;
+  border:1.5px solid var(--border); border-radius:var(--radius-pill);
+  background:var(--bg-panel); color:var(--text);
+}
+.tgmBuscadorLupa{ position:absolute; left:15px; top:50%; transform:translateY(-50%); color:var(--text-muted); display:flex; }
+.tgmBuscadorEscaner{
+  position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  width:38px; height:38px; border-radius:50%; border:none;
+  background:var(--guinda); color:#fff; display:flex; align-items:center; justify-content:center;
+}
+
+/* Tabs horizontales (Inventario, Requisiciones) */
+.tgmTabs{ display:flex; gap:6px; margin-bottom:14px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tgmTab{
+  flex-shrink:0; padding:9px 16px; border-radius:var(--radius-pill); border:1px solid var(--border);
+  background:var(--bg-panel); color:var(--text-muted); font-size:13.5px; font-weight:700;
+}
+.tgmTab.activa{ background:var(--guinda); border-color:var(--guinda); color:#fff; }
+
+/* Badges de estado semántico (requisiciones, OC) */
+.tgmEstado{ font-size:11px; font-weight:800; padding:4px 10px; border-radius:var(--radius-pill); text-transform:uppercase; letter-spacing:.3px; }
+.tgmEstado-pendiente{ background:var(--color-warning-bg); color:var(--color-warning); }
+.tgmEstado-aprobada{ background:var(--color-success-bg); color:var(--color-success); }
+.tgmEstado-surtida, .tgmEstado-recibida, .tgmEstado-cerrada{ background:var(--color-info-bg); color:var(--color-info); }
+.tgmEstado-cancelada{ background:var(--color-danger-bg); color:var(--color-danger); }
+
+/* Chevron decorativo al final de una fila tappable */
+.tgmChevron{ color:var(--text-muted); flex-shrink:0; }
+
+/* Estado vacío / carga */
+.tgmVacio{ text-align:center; padding:40px 16px; color:var(--text-muted); }
+.tgmVacio svg{ opacity:.4; margin-bottom:10px; }
+.tgmSkeleton{ background:linear-gradient(90deg,var(--border) 25%,var(--bg) 37%,var(--border) 63%); background-size:400% 100%; animation:tgmShimmer 1.4s ease infinite; border-radius:8px; height:14px; margin-bottom:8px; }
+@keyframes tgmShimmer{ 0%{background-position:100% 50%;} 100%{background-position:0 50%;} }
+
+/* Barra de progreso (conteos, surtido) */
+.tgmProgreso{ height:8px; border-radius:var(--radius-pill); background:var(--border); overflow:hidden; margin:8px 0 2px; }
+.tgmProgresoRelleno{ height:100%; background:var(--guinda); border-radius:var(--radius-pill); transition:width .25s ease; }
+
+/* Ubicación destacada (rack-nivel-posición) */
+.tgmUbicacionDestacada{
+  display:flex; align-items:center; gap:10px; background:var(--color-info-bg); color:var(--color-info);
+  border-radius:var(--radius-md); padding:12px 14px; margin:10px 0; font-weight:700; font-size:15px;
+}
+
+/* Grid de accesos (Operaciones, Más) */
+.tgmAccesosGrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:8px; }
+.tgmAcceso{
+  background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-md);
+  padding:14px 6px; display:flex; flex-direction:column; align-items:center; gap:8px;
+  color:var(--text); text-align:center;
+}
+.tgmAccesoIcono{ width:40px; height:40px; border-radius:12px; background:var(--color-danger-bg); color:var(--guinda); display:flex; align-items:center; justify-content:center; }
+.tgmAccesoTexto{ font-size:11.5px; font-weight:700; line-height:1.15; }
+
+.tgmListaReportes{ background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
+.tgmListaReportesItem{
+  display:flex; align-items:center; gap:12px; padding:14px 16px;
+  border-bottom:1px solid var(--border); color:var(--text);
+}
+.tgmListaReportesItem:last-child{ border-bottom:none; }
+.tgmListaReportesItem .tgmAccesoIcono{ width:34px; height:34px; border-radius:10px; }
+.tgmListaReportesItem span.tgmTexto{ flex:1; font-size:14px; font-weight:600; }
+
+/* ============================================
+   BOTTOM NAV
+   ============================================ */
+.tgmNavInferior{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:0; width:100%; max-width:480px; z-index:30;
+  display:flex; background:var(--bg-panel); border-top:1px solid var(--border);
+  padding-bottom:var(--safe-bottom);
+  box-shadow:0 -2px 14px rgba(0,0,0,.08);
+}
+.tgmNavBtn{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  min-height:58px; background:none; border:none; color:var(--text-muted); font-size:10.5px; font-weight:700;
+  position:relative;
+}
+.tgmNavBtn.activa{ color:var(--guinda); }
+.tgmNavBtn.activa::before{
+  content:""; position:absolute; top:0; left:50%; transform:translateX(-50%);
+  width:28px; height:3px; border-radius:0 0 3px 3px; background:var(--guinda);
+}
+
+/* ============================================
+   ESCÁNER — pantalla completa
+   ============================================ */
+.tgmEscanerPantalla{
+  position:fixed; inset:0; z-index:200; background:#000; color:#fff;
+  display:none; flex-direction:column;
+}
+.tgmEscanerPantalla.mostrar{ display:flex; }
+.tgmEscanerHeader{
+  display:flex; align-items:center; gap:12px; padding:calc(14px + var(--safe-top)) 16px 14px;
+  background:rgba(0,0,0,.5);
+}
+.tgmEscanerHeader button{ background:none; border:none; color:#fff; }
+.tgmEscanerHeader h2{ flex:1; margin:0; font-size:16px; font-weight:700; }
+.tgmEscanerVisor{ flex:1; position:relative; overflow:hidden; }
+#tgmLectorQr{ width:100%; height:100%; }
+#tgmLectorQr video{ width:100% !important; height:100% !important; object-fit:cover; }
+.tgmEscanerAccionesFlotantes{ position:absolute; top:14px; right:14px; display:flex; gap:10px; z-index:2; }
+.tgmEscanerAccionFlotante{
+  width:42px; height:42px; border-radius:50%; background:rgba(0,0,0,.45); border:none; color:#fff;
+  display:flex; align-items:center; justify-content:center;
+}
+.tgmEscanerLaser{
+  position:absolute; left:8%; right:8%; top:50%; height:2px; background:#ff3b30;
+  box-shadow:0 0 8px 2px rgba(255,59,48,.7); animation:tgmLaser 1.8s ease-in-out infinite;
+}
+@keyframes tgmLaser{ 0%,100%{ top:32%; } 50%{ top:68%; } }
+.tgmEscanerFooter{ padding:18px 20px calc(20px + var(--safe-bottom)); text-align:center; background:rgba(0,0,0,.5); }
+.tgmEscanerFooter h3{ margin:0 0 4px; font-size:15px; font-weight:700; }
+.tgmEscanerFooter p{ margin:0; font-size:12.5px; color:#ccc; }
+.tgmEscanerEstado{ margin-top:10px; font-size:13px; font-weight:700; min-height:18px; }
+.tgmEscanerEstado.ok{ color:#4ade80; }
+.tgmEscanerEstado.error{ color:#f87171; }
+.tgmEscanerManual{ margin-top:12px; background:none; border:1px solid rgba(255,255,255,.4); color:#fff; padding:10px 18px; border-radius:var(--radius-pill); font-size:13px; }
+
+/* Overlay de carga entre pantallas */
+.tgmCargando{ text-align:center; padding:60px 16px; color:var(--text-muted); }
+
+/* ============================================
+   HOJA INFERIOR (bottom sheet) — ficha de producto y, más adelante,
+   cualquier otro detalle que en Desktop sería un modal centrado. En
+   Mobile los modales SIEMPRE son hoja inferior o pantalla completa,
+   nunca una ventana pequeña centrada.
+   ============================================ */
+.tgmHojaFondo{ position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:150; display:none; }
+.tgmHojaFondo.mostrar{ display:block; }
+.tgmHoja{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:0; width:100%; max-width:480px;
+  background:var(--bg-panel); border-radius:20px 20px 0 0; z-index:151;
+  max-height:85vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:12px 18px calc(18px + var(--safe-bottom)); box-shadow:0 -8px 30px rgba(0,0,0,.25);
+  display:none;
+}
+.tgmHoja.mostrar{ display:block; }
+.tgmHojaAsa{ width:40px; height:4px; background:var(--border); border-radius:2px; margin:0 auto 14px; }
+.tgmHojaHeader{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.tgmHojaCerrar{ background:none; border:none; color:var(--text-muted); flex-shrink:0; padding:4px; }
+.tgmDetalleGrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0; }
+.tgmDetalleItem{ background:var(--bg); border-radius:var(--radius-md); padding:10px 12px; }
+.tgmDetalleItem .lbl{ font-size:10.5px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+.tgmDetalleItem .val{ font-size:16px; font-weight:800; margin-top:2px; }
+.tgmHojaAcciones{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:6px; }
+.tgmHojaAccionBtn{
+  display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 6px;
+  border:1.5px solid var(--border); border-radius:var(--radius-md); background:var(--bg-panel);
+  color:var(--text); font-size:11.5px; font-weight:700;
+}
+.tgmHojaAccionBtn:active{ background:var(--bg); }
+
+/* Filtro activo (chip) en el título de sección de Inventario */
+.tgmFiltroQuitar{ background:none; border:none; color:var(--guinda); font-weight:700; font-size:11.5px; margin-left:8px; text-decoration:underline; padding:2px; }
+
+</style>
+
+</head>
+<body>
+
+<div id="appMobile">
+
+  <header class="tgmHeader" id="tgmHeader"></header>
+
+  <main id="tgmContenido">
+    <div class="tgmCargando">Cargando TAGERS WMS…</div>
+  </main>
+
+  <nav class="tgmNavInferior" id="tgmNavInferior"></nav>
+
+</div>
+
+<!-- Escáner de cámara — pantalla completa, fuera de #appMobile para que
+     cubra TODO el viewport real, no solo la columna de 480px. -->
+<div class="tgmEscanerPantalla" id="tgmEscanerPantalla">
+  <div class="tgmEscanerHeader">
+    <button onclick="tgmCerrarEscaner()" aria-label="Cerrar" style="font-size:22px;line-height:1">&#8592;</button>
+    <h2 id="tgmEscanerTitulo">Escanear</h2>
+  </div>
+  <div class="tgmEscanerVisor">
+    <div id="tgmLectorQr"></div>
+    <div class="tgmEscanerAccionesFlotantes">
+      <button class="tgmEscanerAccionFlotante" id="tgmBtnCambiarCamara" onclick="tgmCambiarCamara()" title="Cambiar cámara" style="display:none">&#8635;</button>
+    </div>
+    <div class="tgmEscanerLaser" id="tgmEscanerLaser"></div>
+  </div>
+  <div class="tgmEscanerFooter">
+    <h3>Apunta al código de barras</h3>
+    <p>El código se detectará automáticamente</p>
+    <div class="tgmEscanerEstado" id="tgmEscanerEstado"></div>
+    <button class="tgmEscanerManual" onclick="tgmEscanerManual()">Introducir código manualmente</button>
+  </div>
+</div>
+
+<!-- Ficha de producto — hoja inferior (bottom sheet), no modal centrado. -->
+<div class="tgmHojaFondo" id="tgmHojaFondo" onclick="tgmCerrarDetalleProducto()"></div>
+<div class="tgmHoja" id="tgmHojaDetalleProducto">
+  <div class="tgmHojaAsa"></div>
+  <div class="tgmHojaHeader">
+    <div style="min-width:0">
+      <div style="font-size:16.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="tgmDetalleNombre">—</div>
+      <div style="font-size:12px;color:var(--text-muted)" id="tgmDetalleCodigo">—</div>
+    </div>
+    <button class="tgmHojaCerrar" onclick="tgmCerrarDetalleProducto()" aria-label="Cerrar" style="font-size:20px;line-height:1">&#10005;</button>
+  </div>
+  <div id="tgmDetalleContenido"></div>
+</div>
+
+<script>
+const URL_APP = "<?= urlApp ?>";
+
+// ============================================
+// ÍCONOS — mismo estilo Lucide (stroke, sin relleno) que ya usa Desktop,
+// subconjunto propio de esta app (no se comparte código entre archivos
+// .html en Apps Script sin include(), y este archivo evita a propósito
+// depender de index.html).
+// ============================================
+const TGM_ICONOS = {
+  casa: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  paquete: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  rayo: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  carrito: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+  menu: '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>',
+  campana: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  camara: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  mas: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  menos: '<path d="M5 12h14"/>',
+  documento: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  checkCirculo: '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
+  alertaTriangulo: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  xCirculo: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+  entrada: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  salida: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+  dinero: '<line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  ubicacion: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  chevronDerecha: '<path d="m9 18 6-6-6-6"/>',
+  chevronIzquierda: '<path d="m15 18-6-6 6-6"/>',
+  camion: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 8.38a1 1 0 0 0-.78-.38H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  fabrica: '<path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/>',
+  calendario: '<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/>',
+  reloj: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  usuarios: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  configuracion: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  candado: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  cambiarCamara: '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M8 16H3v5"/>'
+};
+
+function tgmIcon(nombre, tamano){
+  const path = TGM_ICONOS[nombre];
+  if(!path) return "";
+  const s = tamano || 20;
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s +
+    '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex-shrink:0">' + path + '</svg>';
+}
+
+// ============================================
+// SESIÓN — mismo esquema que index.html: token en localStorage bajo la
+// misma llave ("tagers_token"), así que iniciar sesión en Desktop y
+// abrir la app móvil (o viceversa) no pide credenciales dos veces.
+// ============================================
+let USUARIO_ACTUAL = { nombre: "", rol: "", correo: "" };
+
+function tgmObtenerToken(){
+  return localStorage.getItem("tagers_token");
+}
+
+function tgmIrALogin(){
+  localStorage.removeItem("tagers_token");
+  localStorage.removeItem("tagers_usuario");
+  window.top.location.href = URL_APP + "?page=login";
+}
+
+function tgmVerificarSesion(callback){
+
+  const token = tgmObtenerToken();
+  if(!token){ tgmIrALogin(); return; }
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res.ok){ tgmIrALogin(); return; }
+      USUARIO_ACTUAL = { nombre: res.nombre, rol: String(res.rol||"").trim().toUpperCase(), correo: res.correo };
+      localStorage.setItem("tagers_usuario", JSON.stringify(USUARIO_ACTUAL));
+      if(callback) callback();
+    })
+    .withFailureHandler(function(){ tgmIrALogin(); })
+    .validarSesionApp(token);
+
+}
+
+// ============================================
+// PESTAÑAS DEL BOTTOM NAV — grupos amplios (no el detalle fino de
+// PERMISOS_ROL de Desktop): cada pestaña se oculta solo si el rol no
+// tiene NINGÚN uso razonable para ella. El backend sigue siendo quien
+// realmente protege cada operación (requerirAcceso...App_) — esto es
+// solo qué botones mostrar, igual que aplicarPermisosPorRol en Desktop.
+// ============================================
+const TGM_TABS = [
+  { id: "inicio", texto: "Inicio", icono: "casa", abrir: function(){ tgmAbrirInicio(); }, visible: function(){ return true; } },
+  { id: "inventario", texto: "Inventario", icono: "paquete", abrir: function(){ tgmAbrirInventario(); }, visible: function(){ return true; } },
+  { id: "operaciones", texto: "Operaciones", icono: "rayo", abrir: function(){ tgmAbrirOperaciones(); }, visible: function(){ return USUARIO_ACTUAL.rol !== "CONSULTA"; } },
+  { id: "requisiciones", texto: "Requisiciones", icono: "carrito", abrir: function(){ tgmAbrirRequisiciones(); }, visible: function(){ return true; } },
+  { id: "mas", texto: "Más", icono: "menu", abrir: function(){ tgmAbrirMas(); }, visible: function(){ return true; } }
+];
+
+let TGM_TAB_ACTIVA = "inicio";
+
+function tgmRenderNavInferior(){
+  const nav = document.getElementById("tgmNavInferior");
+  nav.innerHTML = TGM_TABS.filter(function(t){ return t.visible(); }).map(function(t){
+    return '<button class="tgmNavBtn' + (t.id === TGM_TAB_ACTIVA ? ' activa' : '') + '" onclick="tgmIrATab(\'' + t.id + '\')">' +
+      tgmIcon(t.icono, 22) + '<span>' + t.texto + '</span></button>';
+  }).join("");
+}
+
+function tgmIrATab(id){
+  const tab = TGM_TABS.find(function(t){ return t.id === id; });
+  if(!tab) return;
+  TGM_TAB_ACTIVA = id;
+  tgmRenderNavInferior();
+  tab.abrir();
+}
+
+/**
+ * Header genérico de pantalla interna (con flecha de volver a un tab
+ * raíz). El Inicio usa su propio header especial (ver tgmAbrirInicio).
+ */
+function tgmRenderHeaderPantalla(titulo, alVolver){
+  document.getElementById("tgmHeader").innerHTML =
+    '<button class="tgmHeaderVolver" onclick="(' + (alVolver ? 'tgmIrATab(\'' + TGM_TAB_ACTIVA + '\')' : 'history.back()') + ')">' + tgmIcon("chevronIzquierda", 22) + '</button>' +
+    '<div class="tgmHeaderTitulo">' + titulo + '</div>' +
+    tgmHeaderAccionesHtml_();
+}
+
+function tgmRenderHeaderRaiz(tituloHtml){
+  document.getElementById("tgmHeader").innerHTML =
+    '<div class="tgmHeaderTitulo">' + tituloHtml + '</div>' +
+    tgmHeaderAccionesHtml_();
+}
+
+function tgmHeaderAccionesHtml_(){
+  const inicial = (USUARIO_ACTUAL.nombre || "?").trim().charAt(0).toUpperCase();
+  return '<div class="tgmHeaderAcciones">' +
+    '<button class="tgmIconoBtn" title="Notificaciones">' + tgmIcon("campana", 21) + '</button>' +
+    '<div class="tgmAvatar" title="' + (USUARIO_ACTUAL.nombre || "") + '">' + inicial + '</div>' +
+    '</div>';
+}
+
+function tgmSaludoHora_(){
+  const h = new Date().getHours();
+  if(h < 12) return "Buenos días";
+  if(h < 19) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+function tgmFormatearHora_(){
+  return new Date().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+}
+
+// ============================================
+// INICIO — dashboard de tarjetas (no el KPI grid de Desktop). Un solo
+// viaje al servidor (obtenerResumenInicioMovilApp) para las 6 tarjetas.
+// ============================================
+function tgmAbrirInicio(){
+
+  TGM_TAB_ACTIVA = "inicio";
+  tgmRenderNavInferior();
+
+  tgmRenderHeaderRaiz(
+    '<div class="tgmMarca">' + tgmIcon("paquete", 20) + ' TAGERS <span style="font-weight:400">WMS</span></div>'
+  );
+
+  const primerNombre = (USUARIO_ACTUAL.nombre || "").trim().split(" ")[0] || "";
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmSaludo">' +
+      '<h1>' + tgmSaludoHora_() + (primerNombre ? ", " + primerNombre + "!" : "!") + '</h1>' +
+      '<p>Resumen operativo • Hoy ' + tgmFormatearHora_() + '</p>' +
+    '</div>' +
+    '<div class="tgmBadgeSync"><span class="punto"></span> MATRIZ sincronizada</div>' +
+    '<div class="tgmSeccionTitulo">Resumen rápido</div>' +
+    '<div class="tgmKpiGrid" id="tgmKpiGrid">' +
+      [1,2,3,4,5,6].map(function(){ return '<div class="tgmKpiCard"><div class="tgmSkeleton" style="width:60%"></div><div class="tgmSkeleton" style="width:40%;height:22px"></div></div>'; }).join("") +
+    '</div>' +
+    '<div class="tgmSeccionTitulo">Acciones rápidas</div>' +
+    '<div class="tgmAccionesRapidas">' +
+      '<button class="tgmAccionRapida" onclick="tgmAbrirEntrada()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("entrada", 22) + '</span><span class="tgmAccionRapidaTexto">Entrada</span></button>' +
+      '<button class="tgmAccionRapida" onclick="tgmAbrirSalida()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("salida", 22) + '</span><span class="tgmAccionRapidaTexto">Salida</span></button>' +
+      '<button class="tgmAccionRapida tgmAccionHero" onclick="tgmAbrirEscanerGeneral()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("camara", 26) + '</span><span class="tgmAccionRapidaTexto">Escanear</span></button>' +
+      '<button class="tgmAccionRapida" onclick="tgmAbrirConteoDesdeAtajo()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("documento", 22) + '</span><span class="tgmAccionRapidaTexto">Conteo</span></button>' +
+      '<button class="tgmAccionRapida" onclick="tgmIrATab(\'mas\')"><span class="tgmAccionRapidaCirculo">' + tgmIcon("menu", 22) + '</span><span class="tgmAccionRapidaTexto">Más</span></button>' +
+    '</div>';
+
+  google.script.run
+    .withSuccessHandler(tgmDibujarKpisInicio_)
+    .withFailureHandler(function(e){
+      document.getElementById("tgmKpiGrid").innerHTML = '<div class="tgmVacio" style="grid-column:1/-1">' + e.message + '</div>';
+    })
+    .obtenerResumenInicioMovilApp(tgmObtenerToken());
+
+}
+
+function tgmDibujarKpisInicio_(r){
+  const grid = document.getElementById("tgmKpiGrid");
+  if(!grid) return;
+
+  const tarjetas = [
+    { clase: "agotados", icono: "xCirculo", label: "Agotados", valor: r.agotados, sub: "productos", vista: "inventario-agotado" },
+    { clase: "bajo", icono: "alertaTriangulo", label: "Bajo mínimo", valor: r.bajoMinimo, sub: "productos", vista: "inventario-bajo" },
+    { clase: "conteos", icono: "documento", label: "Conteos pendientes", valor: r.conteosAbiertos, sub: "racks", vista: "conteos" },
+    { clase: "requisiciones", icono: "carrito", label: "Requisiciones", valor: r.requisicionesPendientes, sub: "pendiente(s)", vista: "requisiciones" },
+    { clase: "compras", icono: "dinero", label: "Órdenes de compra", valor: r.ordenesCompraPendientes, sub: "pendientes", vista: "compras" },
+    { clase: "entradas", icono: "entrada", label: "Entradas hoy", valor: r.entradasHoy, sub: "productos", vista: "kardex" }
+  ];
+
+  grid.innerHTML = tarjetas.map(function(t){
+    return '<button class="tgmKpiCard tgmKpi-' + t.clase + '" onclick="tgmIrAVistaAtajo(\'' + t.vista + '\')">' +
+      '<div class="tgmKpiCardTop"><span class="tgmKpiCardIcono">' + tgmIcon(t.icono, 17) + '</span></div>' +
+      '<div class="tgmKpiCardLabel">' + t.label + '</div>' +
+      '<div class="tgmKpiCardValor">' + t.valor + '</div>' +
+      '<div class="tgmKpiCardSub">' + t.sub + '</div>' +
+    '</button>';
+  }).join("");
+}
+
+/** Atajos desde las tarjetas del Inicio — reusan pantallas ya construidas en las siguientes fases (Inventario/Conteos/Requisiciones/Compras/Kardex). */
+function tgmIrAVistaAtajo(vista){
+  if(vista === "inventario-agotado" || vista === "inventario-bajo"){ tgmIrATab("inventario"); return; }
+  if(vista === "conteos"){ tgmIrATab("operaciones"); return; }
+  if(vista === "requisiciones"){ tgmIrATab("requisiciones"); return; }
+  if(vista === "compras"){ tgmIrATab("mas"); return; }
+  if(vista === "kardex"){ tgmIrATab("mas"); return; }
+}
+
+function tgmAbrirEscanerGeneral(){
+  tgmAbrirEscaner({ titulo: "Escanear producto", onDetectado: function(codigo){
+    tgmAbrirDetalleProducto(codigo);
+  }});
+}
+function tgmAbrirConteoDesdeAtajo(){ tgmIrATab("operaciones"); }
+
+// ============================================
+// ESCÁNER — implementación propia de MobileApp.html (no comparte código
+// con el motor de index.html, pero SÍ hereda cada corrección encontrada
+// en su auditoría, aplicada aquí desde el primer día:
+//   1. Guard sincrónico "iniciando" ANTES del await start(), no solo
+//      después — evita el doble-start() por doble-tap.
+//   2. stop() con respaldo manual de detener pistas de video si la
+//      promesa de la librería rechaza.
+//   3. Selector de cámara real vía enumerateDevices() + botón visible
+//      (el mockup lo pide explícitamente) — Desktop no lo tiene.
+//   4. isSecureContext/mediaDevices verificado ANTES de intentar nada.
+//   5. Mensajes de error distintos por tipo (permiso/no encontrada/
+//      ocupada/incompatible), igual que ya hace bien index.html.
+// ============================================
+let tgmEscanerActivo = false;
+let tgmEscanerIniciando = false;
+let tgmEscanerCallback = null;
+let tgmCamarasDisponibles = [];
+let tgmIndiceCamaraActual = 0;
+
+function tgmAbrirEscaner(opciones){
+  opciones = opciones || {};
+  tgmEscanerCallback = opciones.onDetectado || null;
+  document.getElementById("tgmEscanerTitulo").textContent = opciones.titulo || "Escanear";
+  document.getElementById("tgmEscanerEstado").textContent = "";
+  document.getElementById("tgmEscanerEstado").className = "tgmEscanerEstado";
+  document.getElementById("tgmEscanerPantalla").classList.add("mostrar");
+  tgmIniciarMotorEscaner_();
+}
+
+function tgmMostrarErrorEscaner_(mensaje){
+  const el = document.getElementById("tgmEscanerEstado");
+  el.textContent = mensaje;
+  el.className = "tgmEscanerEstado error";
+}
+
+async function tgmIniciarMotorEscaner_(){
+
+  if(tgmEscanerActivo || tgmEscanerIniciando) return;
+
+  if(typeof Html5Qrcode === "undefined"){
+    tgmMostrarErrorEscaner_(window.tgHtml5QrcodeFalloCarga
+      ? "No se pudo cargar el escáner (sin conexión). Usa la entrada manual."
+      : "Tu navegador no es compatible con el escáner. Usa la entrada manual.");
+    return;
+  }
+
+  if(!navigator.mediaDevices || !window.isSecureContext){
+    tgmMostrarErrorEscaner_("TAGERS WMS necesita abrirse con https:// para usar la cámara.");
+    return;
+  }
+
+  tgmEscanerIniciando = true;
+
+  if(!window.tgmHtml5QrCode){
+    window.tgmHtml5QrCode = new Html5Qrcode("tgmLectorQr", false);
+  }
+
+  try{
+
+    if(!tgmCamarasDisponibles.length){
+      try{
+        tgmCamarasDisponibles = await Html5Qrcode.getCameras();
+      }catch(e){ tgmCamarasDisponibles = []; }
+    }
+
+    const btnCambiar = document.getElementById("tgmBtnCambiarCamara");
+    if(btnCambiar) btnCambiar.style.display = tgmCamarasDisponibles.length > 1 ? "flex" : "none";
+
+    // Preferencia real de cámara trasera: si enumerateDevices() dio una
+    // lista, se busca la que tenga "back"/"trasera"/"rear" en el label
+    // (esto es lo que permite el botón de "cambiar cámara" ciclar entre
+    // opciones reales); si no hay lista (permiso aún no otorgado, label
+    // vacío en algunos navegadores), se cae al facingMode "environment"
+    // como preferencia (no exacta, para no bloquear con OverconstrainedError).
+    let config = { facingMode: "environment" };
+    if(tgmCamarasDisponibles.length){
+      const idx = tgmIndiceCamaraActual % tgmCamarasDisponibles.length;
+      config = tgmCamarasDisponibles[idx].id;
+    }
+
+    await window.tgmHtml5QrCode.start(
+      config,
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      function(decodedText){
+        const cb = tgmEscanerCallback;
+        if(!cb) return;
+        tgmEscanerCallback = null;
+        if(navigator.vibrate) navigator.vibrate(80);
+        const el = document.getElementById("tgmEscanerEstado");
+        el.textContent = "Código detectado: " + decodedText;
+        el.className = "tgmEscanerEstado ok";
+        setTimeout(function(){ tgmCerrarEscaner(); cb(decodedText); }, 300);
+      }
+    );
+
+    tgmEscanerActivo = true;
+
+  }catch(e){
+    tgmEscanerActivo = false;
+    const texto = String((e && (e.name || e.message || e)) || "").toLowerCase();
+    if(texto.includes("notallowed") || texto.includes("permission") || texto.includes("denied")){
+      tgmMostrarErrorEscaner_("No podemos acceder a la cámara. Revisa los permisos del sitio.");
+    }else if(texto.includes("notfound") || texto.includes("no cameras")){
+      tgmMostrarErrorEscaner_("No se encontró ninguna cámara en este dispositivo.");
+    }else if(texto.includes("notreadable") || texto.includes("track start") || texto.includes("busy") || texto.includes("ocupad")){
+      tgmMostrarErrorEscaner_("La cámara está siendo usada por otra aplicación.");
+    }else if(texto.includes("overconstrained")){
+      tgmMostrarErrorEscaner_("La cámara de este dispositivo no es compatible con este modo.");
+    }else{
+      tgmMostrarErrorEscaner_("No pudimos abrir la cámara. Usa la entrada manual.");
+    }
+  }finally{
+    tgmEscanerIniciando = false;
+  }
+
+}
+
+function tgmDetenerPistasManualmente_(){
+  try{
+    document.querySelectorAll("#tgmLectorQr video").forEach(function(video){
+      const stream = video.srcObject;
+      if(stream && typeof stream.getTracks === "function"){
+        stream.getTracks().forEach(function(t){ t.stop(); });
+      }
+      video.srcObject = null;
+    });
+  }catch(e){ /* mejor esfuerzo */ }
+}
+
+function tgmDetenerMotorEscaner_(){
+  if(window.tgmHtml5QrCode && tgmEscanerActivo){
+    tgmEscanerActivo = false;
+    return window.tgmHtml5QrCode.stop().catch(function(e){
+      console.warn("tgmHtml5QrCode.stop() falló:", e);
+      tgmDetenerPistasManualmente_();
+    });
+  }
+  tgmEscanerActivo = false;
+  return Promise.resolve();
+}
+
+function tgmCerrarEscaner(){
+  tgmEscanerCallback = null;
+  tgmDetenerMotorEscaner_().then(function(){
+    document.getElementById("tgmEscanerPantalla").classList.remove("mostrar");
+  });
+}
+
+function tgmCambiarCamara(){
+  if(tgmCamarasDisponibles.length < 2) return;
+  tgmIndiceCamaraActual = (tgmIndiceCamaraActual + 1) % tgmCamarasDisponibles.length;
+  tgmDetenerMotorEscaner_().then(function(){
+    tgmIniciarMotorEscaner_();
+  });
+}
+
+function tgmEscanerManual(){
+  const codigo = prompt("Introduce el código manualmente:");
+  if(!codigo) return;
+  const cb = tgmEscanerCallback;
+  tgmCerrarEscaner();
+  if(cb) cb(codigo.trim());
+}
+
+// ============================================
+// Placeholders temporales — se reemplazan uno por uno en las siguientes
+// ediciones de esta misma sesión de trabajo (MOBILE-5 a MOBILE-8). Se
+// dejan aquí para que el shell (header + bottom nav + Inicio + Escáner)
+// sea probable de punta a punta antes de construir cada pantalla.
+// ============================================
+function tgmPantallaPendiente_(titulo){
+  tgmRenderHeaderPantalla(titulo, true);
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmVacio">' + tgmIcon("documento", 40) + '<div style="margin-top:10px;font-weight:700">' + titulo + '</div><div style="font-size:12.5px;margin-top:4px">Esta pantalla se construye en el siguiente paso de esta misma sesión.</div></div>';
+}
+function tgmAbrirOperaciones(){ tgmPantallaPendiente_("Operaciones"); }
+function tgmAbrirRequisiciones(){ tgmPantallaPendiente_("Requisiciones"); }
+function tgmAbrirMas(){ tgmPantallaPendiente_("Más"); }
+function tgmAbrirEntrada(codigoPrefill){ tgmPantallaPendiente_("Entrada" + (codigoPrefill ? " — " + codigoPrefill : "")); }
+function tgmAbrirSalida(codigoPrefill){ tgmPantallaPendiente_("Salida" + (codigoPrefill ? " — " + codigoPrefill : "")); }
+
+// ============================================
+// INVENTARIO — búsqueda (nombre/código/rack/ubicación) + 3 pestañas
+// (Productos/Racks/Ubicaciones). Un solo endpoint nuevo del lado del
+// servidor (obtenerInventarioMovilApp) cubre búsqueda libre y filtro
+// exacto por rack; obtenerRacksConteoApp y obtenerUbicacionesUnicasApp
+// alimentan las otras 2 pestañas. Ningún cálculo de existencia/estado
+// se duplica aquí — todo llega ya calculado del servidor.
+// ============================================
+let TGM_INV_SUBTAB = "productos";
+let TGM_INV_TEXTO = "";
+let TGM_INV_RACK_ACTIVO = null;
+let tgmInvBuscarTimer = null;
+
+function tgmAbrirInventario(){
+
+  TGM_TAB_ACTIVA = "inventario";
+  tgmRenderNavInferior();
+  tgmRenderHeaderRaiz("Inventario");
+
+  TGM_INV_SUBTAB = "productos";
+  TGM_INV_TEXTO = "";
+  TGM_INV_RACK_ACTIVO = null;
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmBuscador">' +
+      '<span class="tgmBuscadorLupa">' + tgmIcon("buscar", 18) + '</span>' +
+      '<input type="text" id="tgmInvBuscador" placeholder="Buscar producto, código o rack..." oninput="tgmInvBuscar_(this.value)">' +
+      '<button class="tgmBuscadorEscaner" onclick="tgmInvEscanear_()" title="Escanear">' + tgmIcon("camara", 18) + '</button>' +
+    '</div>' +
+    '<div class="tgmTabs">' +
+      '<button class="tgmTab activa" onclick="tgmInvCambiarTab_(\'productos\')">Productos</button>' +
+      '<button class="tgmTab" onclick="tgmInvCambiarTab_(\'racks\')">Racks</button>' +
+      '<button class="tgmTab" onclick="tgmInvCambiarTab_(\'ubicaciones\')">Ubicaciones</button>' +
+    '</div>' +
+    '<div class="tgmSeccionTitulo" id="tgmInvSeccionTitulo">Productos</div>' +
+    '<div id="tgmInvContenido"></div>';
+
+  tgmInvCargar_();
+
+}
+
+function tgmInvActualizarTabsActivas_(){
+  const orden = ["productos", "racks", "ubicaciones"];
+  const botones = document.querySelectorAll("#tgmContenido .tgmTabs .tgmTab");
+  botones.forEach(function(btn, idx){
+    btn.classList.toggle("activa", orden[idx] === TGM_INV_SUBTAB);
+  });
+}
+
+function tgmInvTituloProductos_(){
+  if(TGM_INV_RACK_ACTIVO){
+    return "Rack " + TGM_INV_RACK_ACTIVO +
+      '<button class="tgmFiltroQuitar" onclick="tgmInvLimpiarFiltro_()">Quitar filtro ✕</button>';
+  }
+  if(TGM_INV_TEXTO) return "Resultados de búsqueda";
+  return "Productos";
+}
+
+function tgmInvCargar_(){
+
+  const cont = document.getElementById("tgmInvContenido");
+  const titulo = document.getElementById("tgmInvSeccionTitulo");
+  cont.innerHTML = '<div class="tgmVacio">Cargando…</div>';
+
+  if(TGM_INV_SUBTAB === "racks"){
+    titulo.textContent = "Racks del almacén";
+    google.script.run
+      .withSuccessHandler(tgmDibujarRacks_)
+      .withFailureHandler(tgmInvError_)
+      .obtenerRacksConteoApp(tgmObtenerToken());
+    return;
+  }
+
+  if(TGM_INV_SUBTAB === "ubicaciones"){
+    titulo.textContent = "Ubicaciones registradas";
+    google.script.run
+      .withSuccessHandler(tgmDibujarUbicaciones_)
+      .withFailureHandler(tgmInvError_)
+      .obtenerUbicacionesUnicasApp(tgmObtenerToken());
+    return;
+  }
+
+  titulo.innerHTML = tgmInvTituloProductos_();
+  google.script.run
+    .withSuccessHandler(tgmDibujarProductos_)
+    .withFailureHandler(tgmInvError_)
+    .obtenerInventarioMovilApp({ texto: TGM_INV_TEXTO, rack: TGM_INV_RACK_ACTIVO || "", limite: 30 }, tgmObtenerToken());
+
+}
+
+function tgmInvError_(e){
+  document.getElementById("tgmInvContenido").innerHTML = '<div class="tgmVacio">' + (e && e.message ? e.message : "No se pudo cargar la información") + '</div>';
+}
+
+function tgmInvCambiarTab_(tab){
+  TGM_INV_SUBTAB = tab;
+  TGM_INV_TEXTO = "";
+  TGM_INV_RACK_ACTIVO = null;
+  const input = document.getElementById("tgmInvBuscador");
+  if(input) input.value = "";
+  tgmInvActualizarTabsActivas_();
+  tgmInvCargar_();
+}
+
+function tgmInvBuscar_(valor){
+  TGM_INV_TEXTO = valor;
+  TGM_INV_RACK_ACTIVO = null;
+  if(TGM_INV_SUBTAB !== "productos"){
+    TGM_INV_SUBTAB = "productos";
+    tgmInvActualizarTabsActivas_();
+  }
+  clearTimeout(tgmInvBuscarTimer);
+  tgmInvBuscarTimer = setTimeout(function(){
+    document.getElementById("tgmInvSeccionTitulo").innerHTML = tgmInvTituloProductos_();
+    tgmInvCargar_();
+  }, 300);
+}
+
+function tgmInvLimpiarFiltro_(){
+  TGM_INV_TEXTO = "";
+  TGM_INV_RACK_ACTIVO = null;
+  const input = document.getElementById("tgmInvBuscador");
+  if(input) input.value = "";
+  document.getElementById("tgmInvSeccionTitulo").innerHTML = tgmInvTituloProductos_();
+  tgmInvCargar_();
+}
+
+function tgmInvFiltrarPorRack_(rack){
+  TGM_INV_SUBTAB = "productos";
+  TGM_INV_TEXTO = "";
+  TGM_INV_RACK_ACTIVO = rack;
+  const input = document.getElementById("tgmInvBuscador");
+  if(input) input.value = "";
+  tgmInvActualizarTabsActivas_();
+  document.getElementById("tgmInvSeccionTitulo").innerHTML = tgmInvTituloProductos_();
+  tgmInvCargar_();
+}
+
+function tgmInvFiltrarPorUbicacion_(ubicacion){
+  TGM_INV_SUBTAB = "productos";
+  TGM_INV_RACK_ACTIVO = null;
+  TGM_INV_TEXTO = ubicacion;
+  const input = document.getElementById("tgmInvBuscador");
+  if(input) input.value = ubicacion;
+  tgmInvActualizarTabsActivas_();
+  document.getElementById("tgmInvSeccionTitulo").innerHTML = tgmInvTituloProductos_();
+  tgmInvCargar_();
+}
+
+function tgmInvEscanear_(){
+  tgmAbrirEscaner({ titulo: "Escanear producto", onDetectado: function(codigo){
+    TGM_INV_SUBTAB = "productos";
+    TGM_INV_RACK_ACTIVO = null;
+    TGM_INV_TEXTO = codigo;
+    const input = document.getElementById("tgmInvBuscador");
+    if(input) input.value = codigo;
+    tgmInvActualizarTabsActivas_();
+    document.getElementById("tgmInvSeccionTitulo").innerHTML = tgmInvTituloProductos_();
+    tgmInvCargar_();
+  }});
+}
+
+function tgmClaseEstado_(estado){
+  if(estado === "Agotado") return "tgmEstado-cancelada";
+  if(estado === "Bajo") return "tgmEstado-pendiente";
+  return "tgmEstado-aprobada";
+}
+
+function tgmDibujarProductos_(lista){
+  const cont = document.getElementById("tgmInvContenido");
+  if(!lista || !lista.length){
+    cont.innerHTML = '<div class="tgmVacio">' + tgmIcon("paquete", 40) + '<div style="margin-top:10px">No se encontraron productos</div></div>';
+    return;
+  }
+  cont.innerHTML = lista.map(function(p){
+    const codigoEscapado = String(p.codigo).replace(/'/g, "\\'");
+    return '<div class="tgmCard tgmCardTappable" onclick="tgmAbrirDetalleProducto(\'' + codigoEscapado + '\')">' +
+      '<div style="display:flex;gap:12px;align-items:flex-start">' +
+        '<div style="width:40px;height:40px;border-radius:10px;background:var(--color-danger-bg);color:var(--guinda);display:flex;align-items:center;justify-content:center;flex-shrink:0">' + tgmIcon("paquete", 20) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + p.producto + '</div>' +
+          '<div style="font-size:12px;color:var(--text-muted)">' + p.codigo + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div style="font-weight:800;font-size:15.5px;white-space:nowrap">' + p.existencia + ' <span style="font-size:11.5px;font-weight:700">' + p.udm + '</span></div>' +
+        '</div>' +
+        '<span class="tgmChevron">' + tgmIcon("chevronDerecha", 18) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-left:52px;gap:8px">' +
+        '<div style="font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+          (p.rack ? p.rack + ' · ' : '') + p.ubicacion + ' · Mín ' + p.minimo + ' Máx ' + p.maximo +
+        '</div>' +
+        '<span class="tgmEstado ' + tgmClaseEstado_(p.estado) + '" style="flex-shrink:0">' + p.estado + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+function tgmDibujarRacks_(racks){
+  const cont = document.getElementById("tgmInvContenido");
+  if(!racks || !racks.length){
+    cont.innerHTML = '<div class="tgmVacio">No hay racks registrados</div>';
+    return;
+  }
+  cont.innerHTML = racks.map(function(r){
+    const escapado = String(r).replace(/'/g, "\\'");
+    return '<div class="tgmCard tgmCardTappable" onclick="tgmInvFiltrarPorRack_(\'' + escapado + '\')" style="display:flex;align-items:center;gap:12px">' +
+      '<div style="width:40px;height:40px;border-radius:10px;background:var(--color-info-bg);color:var(--color-info);display:flex;align-items:center;justify-content:center;flex-shrink:0">' + tgmIcon("ubicacion", 20) + '</div>' +
+      '<div style="flex:1;font-weight:700">' + r + '</div>' +
+      '<span class="tgmChevron">' + tgmIcon("chevronDerecha", 18) + '</span>' +
+    '</div>';
+  }).join("");
+}
+
+function tgmDibujarUbicaciones_(lista){
+  const cont = document.getElementById("tgmInvContenido");
+  if(!lista || !lista.length){
+    cont.innerHTML = '<div class="tgmVacio">No hay ubicaciones registradas</div>';
+    return;
+  }
+  cont.innerHTML = lista.map(function(u){
+    const escapado = String(u).replace(/'/g, "\\'");
+    return '<div class="tgmCard tgmCardTappable" onclick="tgmInvFiltrarPorUbicacion_(\'' + escapado + '\')" style="display:flex;align-items:center;gap:12px">' +
+      '<div style="width:40px;height:40px;border-radius:10px;background:var(--color-info-bg);color:var(--color-info);display:flex;align-items:center;justify-content:center;flex-shrink:0">' + tgmIcon("ubicacion", 20) + '</div>' +
+      '<div style="flex:1;font-weight:700">' + u + '</div>' +
+      '<span class="tgmChevron">' + tgmIcon("chevronDerecha", 18) + '</span>' +
+    '</div>';
+  }).join("");
+}
+
+// ============================================
+// FICHA DE PRODUCTO — hoja inferior compartida por Inventario (tap en
+// tarjeta) y el Escáner (detección exitosa desde el atajo de Inicio, el
+// buscador de Inventario, o cualquier otro punto de entrada futuro).
+// ============================================
+function tgmAbrirDetalleProducto(codigo){
+  document.getElementById("tgmHojaFondo").classList.add("mostrar");
+  document.getElementById("tgmHojaDetalleProducto").classList.add("mostrar");
+  document.getElementById("tgmDetalleNombre").textContent = "Cargando…";
+  document.getElementById("tgmDetalleCodigo").textContent = codigo;
+  document.getElementById("tgmDetalleContenido").innerHTML =
+    '<div class="tgmSkeleton" style="height:16px;width:50%"></div>' +
+    '<div class="tgmSkeleton" style="height:70px;margin-top:10px"></div>';
+
+  google.script.run
+    .withSuccessHandler(function(producto){
+      if(!producto){
+        document.getElementById("tgmDetalleNombre").textContent = "No encontrado";
+        document.getElementById("tgmDetalleContenido").innerHTML = '<div class="tgmVacio">No se encontró ningún producto con este código.</div>';
+        return;
+      }
+      tgmDibujarDetalleProducto_(producto);
+    })
+    .withFailureHandler(function(e){
+      document.getElementById("tgmDetalleContenido").innerHTML = '<div class="tgmVacio">' + (e && e.message ? e.message : "No se pudo cargar el producto") + '</div>';
+    })
+    .obtenerDetalleProductoApp(codigo, tgmObtenerToken());
+}
+
+function tgmDibujarDetalleProducto_(p){
+  document.getElementById("tgmDetalleNombre").textContent = p.producto;
+  document.getElementById("tgmDetalleCodigo").textContent = p.codigo;
+
+  const estado = p.existencia <= 0 ? "Agotado" : (p.existencia <= p.minimo ? "Bajo" : "Óptimo");
+  const codigoEscapado = String(p.codigo).replace(/'/g, "\\'");
+
+  document.getElementById("tgmDetalleContenido").innerHTML =
+    '<span class="tgmEstado ' + tgmClaseEstado_(estado) + '">' + (estado === "Bajo" ? "Bajo mínimo" : estado) + '</span>' +
+    '<div class="tgmUbicacionDestacada">' + tgmIcon("ubicacion", 20) +
+      '<span>' + (p.rack ? p.rack + ' — ' : '') + p.ubicacion + '</span>' +
+    '</div>' +
+    '<div class="tgmDetalleGrid">' +
+      '<div class="tgmDetalleItem"><div class="lbl">Existencia</div><div class="val">' + p.existencia + ' ' + p.udm + '</div></div>' +
+      '<div class="tgmDetalleItem"><div class="lbl">Mínimo / Máximo</div><div class="val">' + p.minimo + ' / ' + p.maximo + '</div></div>' +
+      '<div class="tgmDetalleItem"><div class="lbl">Proveedor</div><div class="val" style="font-size:13.5px">' + (p.proveedor || "—") + '</div></div>' +
+      '<div class="tgmDetalleItem"><div class="lbl">Último ingreso</div><div class="val" style="font-size:13.5px">' + (p.ultimoIngreso || "—") + '</div></div>' +
+    '</div>' +
+    '<div class="tgmHojaAcciones">' +
+      '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirEntrada(\'' + codigoEscapado + '\')">' + tgmIcon("entrada", 20) + 'Entrada</button>' +
+      '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirSalida(\'' + codigoEscapado + '\')">' + tgmIcon("salida", 20) + 'Salida</button>' +
+      '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmIrATab(\'operaciones\')">' + tgmIcon("documento", 20) + 'Contar</button>' +
+    '</div>';
+}
+
+function tgmCerrarDetalleProducto(){
+  document.getElementById("tgmHojaFondo").classList.remove("mostrar");
+  document.getElementById("tgmHojaDetalleProducto").classList.remove("mostrar");
+}
+
+// ============================================
+// BOOTSTRAP
+// ============================================
+window.addEventListener("load", function(){
+  tgmVerificarSesion(function(){
+    tgmAbrirInicio();
+  });
+});
+</script>
+
+</body>
+</html>
