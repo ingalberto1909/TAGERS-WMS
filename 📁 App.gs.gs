@@ -5998,9 +5998,12 @@ function obtenerAccesoSucursalApp(token){
  * hoy. La lista crece sola en cuanto una sucursal nueva (S07, S08...)
  * tenga al menos un usuario o un movimiento — no requiere tocar código.
  */
-function obtenerSucursalesConocidasApp(token){
-  requerirSesionActivaApp_(token);
-
+/**
+ * Extraído de obtenerSucursalesConocidasApp para que asegurarHojaSucursales_
+ * (Sucursales.gs) pueda sembrar el catálogo nuevo con los mismos códigos
+ * reales que ya estaban en uso, sin duplicar la lógica de escaneo.
+ */
+function descubrirCodigosSucursalReales_(){
   const encontradas = {};
   encontradas[SUCURSAL_DEFAULT_] = true;
 
@@ -6021,6 +6024,36 @@ function obtenerSucursalesConocidasApp(token){
   }
 
   return Object.keys(encontradas).sort();
+}
+
+/**
+ * Auditoría de arquitectura (evolución continua): si ya existe un catálogo
+ * real de sucursales (hoja SUCURSALES, ver Sucursales.gs), esta función
+ * regresa solo las ACTIVAS del catálogo — así un ADMIN puede dar de baja
+ * una sucursal y que deje de ofrecerse en Transferencias/Devoluciones sin
+ * tocar esas 2 pantallas. Mientras nadie haya abierto la pantalla de
+ * administración de Sucursales todavía (la hoja no existe), el
+ * comportamiento es EXACTAMENTE el de antes: descubrir códigos reales en
+ * uso en USUARIOS/EXISTENCIAS_SUCURSAL.
+ */
+function obtenerSucursalesConocidasApp(token){
+  requerirSesionActivaApp_(token);
+
+  const hojaCatalogo = SpreadsheetApp.getActive().getSheetByName(SUCURSALES_HOJA_);
+  if(hojaCatalogo){
+    const activas = {};
+    activas[SUCURSAL_DEFAULT_] = true; // el almacén principal siempre debe poder elegirse, defensivo
+    if(hojaCatalogo.getLastRow() > 1){
+      hojaCatalogo.getRange(2, 1, hojaCatalogo.getLastRow() - 1, 3).getValues().forEach(f => {
+        const codigo = normalizarSucursal_(f[0]);
+        const estado = String(f[2] || "ACTIVO").toUpperCase();
+        if(codigo && estado === "ACTIVO") activas[codigo] = true;
+      });
+    }
+    return Object.keys(activas).sort();
+  }
+
+  return descubrirCodigosSucursalReales_();
 }
 
 // Mismo patrón que obtenerNombreDesdeToken/obtenerRolDesdeToken de

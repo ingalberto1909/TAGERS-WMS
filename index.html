@@ -6796,7 +6796,7 @@ function abrirFormularioUsuario(correoExistente){
         </div>
         <div class="campo">
           <label>Sucursal (opcional)</label>
-          <input id="usuarioFormSucursal" placeholder="Ej. S01, TODAS...">
+          <select id="usuarioFormSucursal"><option value="">Cargando...</option></select>
         </div>
       </div>
 
@@ -6815,22 +6815,48 @@ function abrirFormularioUsuario(correoExistente){
     </div>
   `;
 
-  if(correoExistente){
-    google.script.run
-      .withSuccessHandler(function(lista){
-        const datos = lista.find(function(u){ return u.correo === correoExistente; });
-        if(!datos) return;
-        document.getElementById("usuarioFormCorreo").value = datos.correo;
-        document.getElementById("usuarioFormNombre").value = datos.nombre;
-        document.getElementById("usuarioFormRol").value = datos.rol;
-        document.getElementById("usuarioFormArea").value = datos.area || "";
-        document.getElementById("usuarioFormSucursal").value = datos.sucursal || "";
-      })
-      .withFailureHandler(function(e){
-        mostrarMensajeTemporal("mensajeFormUsuario", "⚠️ " + e.message, "error");
-      })
-      .obtenerUsuariosApp(obtenerTokenSesion());
-  }
+  google.script.run
+    .withSuccessHandler(function(catalogo){
+
+      const selSucursal = document.getElementById("usuarioFormSucursal");
+      if(!selSucursal) return;
+
+      selSucursal.innerHTML = '<option value="">Sin asignar</option>' +
+        catalogo.map(function(s){ return `<option value="${s.codigo}">${s.codigo} — ${s.nombre}</option>`; }).join("");
+
+      if(correoExistente){
+        google.script.run
+          .withSuccessHandler(function(lista){
+            const datos = lista.find(function(u){ return u.correo === correoExistente; });
+            if(!datos) return;
+            document.getElementById("usuarioFormCorreo").value = datos.correo;
+            document.getElementById("usuarioFormNombre").value = datos.nombre;
+            document.getElementById("usuarioFormRol").value = datos.rol;
+            document.getElementById("usuarioFormArea").value = datos.area || "";
+
+            const sucursalGuardada = datos.sucursal || "";
+            // Si el valor ya guardado no está en el catálogo (dato viejo,
+            // typo, o una sucursal desactivada desde entonces), se agrega
+            // como opción extra para no perderlo silenciosamente al guardar.
+            if(sucursalGuardada && !catalogo.some(function(s){ return s.codigo === sucursalGuardada; })){
+              const opcionExtra = document.createElement("option");
+              opcionExtra.value = sucursalGuardada;
+              opcionExtra.textContent = sucursalGuardada + " (no está en el catálogo actual)";
+              selSucursal.appendChild(opcionExtra);
+            }
+            selSucursal.value = sucursalGuardada;
+          })
+          .withFailureHandler(function(e){
+            mostrarMensajeTemporal("mensajeFormUsuario", "⚠️ " + e.message, "error");
+          })
+          .obtenerUsuariosApp(obtenerTokenSesion());
+      }
+
+    })
+    .withFailureHandler(function(e){
+      mostrarMensajeTemporal("mensajeFormUsuario", "⚠️ " + e.message, "error");
+    })
+    .obtenerSucursalesParaSelectorApp(obtenerTokenSesion());
 
 }
 
@@ -6881,6 +6907,193 @@ function guardarUsuario(){
       .withSuccessHandler(handlerExito)
       .withFailureHandler(handlerError)
       .crearUsuarioApp(datos, obtenerTokenSesion());
+  }
+
+}
+
+// ===============================
+// CATÁLOGO DE SUCURSALES (administración, solo ADMIN)
+// ===============================
+
+function abrirSucursales(){
+
+  marcarActivo("btnSucursales");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("ubicacion",20)} Sucursales</h2>
+      <div class="boton" style="width:auto;padding:10px 16px;margin:0" onclick="abrirFormularioSucursal()">${tgIcon("mas",16)} Nueva Sucursal</div>
+    </div>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-4px">Solo visible y editable por administradores. Una sucursal desactivada deja de ofrecerse en Transferencias y Devoluciones, pero su historial no se pierde.</p>
+
+    <div class="cardProducto">
+      <div id="listaSucursales">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+        <div class="skeleton skeletonLinea" style="width:65%"></div>
+      </div>
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarListaSucursales)
+    .withFailureHandler(function(e){
+      document.getElementById("listaSucursales").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerSucursalesApp(obtenerTokenSesion());
+
+}
+
+function dibujarListaSucursales(lista){
+
+  const cont = document.getElementById("listaSucursales");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("ubicacion", "No hay sucursales registradas todavía");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(s => {
+          const activo = String(s.estado).toUpperCase() === "ACTIVO";
+          const esPrincipal = s.codigo === "S01";
+          return `
+            <tr>
+              <td>${s.codigo}${esPrincipal ? ' <span style="font-size:10.5px;color:var(--text-muted)">(principal)</span>' : ""}</td>
+              <td>${s.nombre}</td>
+              <td><span class="badgeEstado ${s.estado}">${s.estado}</span></td>
+              <td style="text-align:right;white-space:nowrap">
+                <span class="boton secundario" style="width:auto;padding:6px 10px;margin:0 4px 0 0;font-size:12px" onclick='abrirFormularioSucursal(${JSON.stringify(s.codigo)})'>Editar</span>
+                ${esPrincipal ? "" : `<span class="boton ${activo ? "danger" : "success"}" style="width:auto;padding:6px 10px;margin:0;font-size:12px" onclick='cambiarEstadoSucursalAccion(${JSON.stringify(s.codigo)}, ${JSON.stringify(s.estado)})'>${activo ? "Desactivar" : "Reactivar"}</span>`}
+              </td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function cambiarEstadoSucursalAccion(codigo, estadoActual){
+
+  const activo = String(estadoActual).toUpperCase() === "ACTIVO";
+  const nuevoEstado = activo ? "INACTIVO" : "ACTIVO";
+
+  tgConfirmar(
+    activo
+      ? `¿Desactivar la sucursal ${codigo}? Dejará de ofrecerse en Transferencias y Devoluciones hasta que la reactives.`
+      : `¿Reactivar la sucursal ${codigo}?`,
+    { titulo: activo ? "Desactivar sucursal" : "Reactivar sucursal", textoConfirmar: activo ? "Desactivar" : "Reactivar", peligroso: activo }
+  ).then(function(confirmado){
+    if(!confirmado) return;
+    google.script.run
+      .withSuccessHandler(function(){ abrirSucursales(); })
+      .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+      .cambiarEstadoSucursalApp(codigo, nuevoEstado, obtenerTokenSesion());
+  });
+
+}
+
+function abrirFormularioSucursal(codigoExistente){
+
+  window.sucursalFormEsEdicion = !!codigoExistente;
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirSucursales()">${tgIcon("chevronIzquierda",15)} Sucursales</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${codigoExistente ? tgIcon("editar",18) + " Editar Sucursal" : tgIcon("mas",18) + " Nueva Sucursal"}</h2>
+    </div>
+
+    <div class="cardProducto" style="max-width:520px">
+
+      <label>Código</label>
+      <input id="sucursalFormCodigo" placeholder="Ej. S02" ${codigoExistente ? "disabled" : ""}>
+
+      <label>Nombre</label>
+      <input id="sucursalFormNombre" placeholder="Ej. Sucursal Centro">
+
+      <div id="mensajeFormSucursal" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirSucursales()">Cancelar</div>
+        <div class="boton" id="btnGuardarSucursal" onclick='guardarSucursal(${JSON.stringify(codigoExistente || "")})'>💾 Guardar</div>
+      </div>
+
+    </div>
+
+    </div>
+  `;
+
+  if(codigoExistente){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        const datos = lista.find(function(s){ return s.codigo === codigoExistente; });
+        if(!datos) return;
+        document.getElementById("sucursalFormCodigo").value = datos.codigo;
+        document.getElementById("sucursalFormNombre").value = datos.nombre;
+      })
+      .withFailureHandler(function(e){
+        mostrarMensajeTemporal("mensajeFormSucursal", "⚠️ " + e.message, "error");
+      })
+      .obtenerSucursalesApp(obtenerTokenSesion());
+  }
+
+}
+
+function guardarSucursal(codigoExistente){
+
+  const datos = {
+    codigo: document.getElementById("sucursalFormCodigo").value.trim(),
+    nombre: document.getElementById("sucursalFormNombre").value.trim(),
+  };
+
+  if(!datos.codigo){
+    mostrarMensajeTemporal("mensajeFormSucursal", "Captura el código de la sucursal", "error");
+    return;
+  }
+  if(!datos.nombre){
+    mostrarMensajeTemporal("mensajeFormSucursal", "Captura el nombre de la sucursal", "error");
+    return;
+  }
+
+  const handlerExito = function(){
+    activarCargaBoton("btnGuardarSucursal", false);
+    alert("✓ Sucursal " + (window.sucursalFormEsEdicion ? "actualizada" : "creada") + " correctamente");
+    abrirSucursales();
+  };
+
+  const handlerError = function(e){
+    activarCargaBoton("btnGuardarSucursal", false);
+    mostrarMensajeTemporal("mensajeFormSucursal", "⚠️ " + e.message, "error");
+  };
+
+  activarCargaBoton("btnGuardarSucursal", true);
+
+  if(window.sucursalFormEsEdicion){
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .editarSucursalApp(codigoExistente, datos, obtenerTokenSesion());
+  } else {
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .crearSucursalApp(datos, obtenerTokenSesion());
   }
 
 }
@@ -15702,6 +15915,7 @@ function aplicarFiltros(){
   </button>
   <div class="submenu" id="grupoAdministracion">
     <button class="menuLateralBtn sub" id="btnUsuarios" onclick="abrirUsuarios()" title="Usuarios"><span class="icono">👤</span><span class="textoMenu">Usuarios</span></button>
+    <button class="menuLateralBtn sub" id="btnSucursales" onclick="abrirSucursales()" title="Sucursales"><span class="icono">🏬</span><span class="textoMenu">Sucursales</span></button>
     <button class="menuLateralBtn sub" id="btnAuditoria" onclick="abrirAuditoria()" title="Auditoría"><span class="icono">🛡️</span><span class="textoMenu">Auditoría</span></button>
   </div>
 </div>
