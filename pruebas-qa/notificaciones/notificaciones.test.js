@@ -131,6 +131,77 @@ prueba({
 });
 
 prueba({
+  id: 'NOTIF-007', grupo: 'notificaciones', nombre: 'COM-03: variación de precio >=20% en los últimos 7 días genera alerta', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerNotificacionesApp debe incluir una alerta tipo "variacion-precio" cuando HISTORIAL_PRECIOS tiene un cambio reciente con |%Cambio| >= 20, y NO incluirla para un cambio pequeño (5%) en el mismo folio',
+  ejecutar() {
+    const hoy = new Date();
+    const { entorno, token: tokenAdmin } = entornoConLogin(
+      { correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' },
+      { HISTORIAL_PRECIOS: [
+        ['Fecha', 'Código', 'Producto', 'Proveedor', 'Precio Anterior', 'Precio Nuevo', 'Diferencia', '% Cambio', 'Usuario', 'OC'],
+        [hoy, 'COD-001', 'HARINA DE TRIGO', 'Proveedor Genérico', 100, 130, 30, 30, 'Admin', 'OC-1'], // +30% -> sí alerta
+        [hoy, 'COD-002', 'AZUCAR ESTANDAR', 'Proveedor Genérico', 20, 21, 1, 5, 'Admin', 'OC-2'],       // +5%  -> no alerta
+      ] }
+    );
+    const notis = entorno.invocar('obtenerNotificacionesApp', tokenAdmin);
+    const alertas = notis.filter(n => n.tipo === 'variacion-precio');
+    return {
+      datos: 'COD-001 +30% hoy, COD-002 +5% hoy',
+      esperado: 'exactamente 1 alerta "variacion-precio", del producto COD-001, sin urgente (30% < 40%)',
+      obtenido: `cantidad=${alertas.length}, detalle="${alertas[0] ? alertas[0].detalle : ''}", urgente=${alertas[0] ? alertas[0].urgente : 'n/a'}`,
+      pasa: alertas.length === 1 && /HARINA DE TRIGO/.test(alertas[0].titulo) && alertas[0].urgente === false,
+    };
+  },
+});
+
+prueba({
+  id: 'NOTIF-008', grupo: 'notificaciones', nombre: 'COM-03: variación de precio >=40% se marca urgente, y una fuera de la ventana de 7 días no aparece', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerNotificacionesApp debe marcar urgente=true cuando |%Cambio| >= 40, e ignorar cambios de precio de hace más de 7 días aunque el porcentaje sea grande',
+  ejecutar() {
+    const hoy = new Date();
+    const haceDiezDias = new Date(hoy.getTime() - 10 * 86400000);
+    const { entorno, token: tokenAdmin } = entornoConLogin(
+      { correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' },
+      { HISTORIAL_PRECIOS: [
+        ['Fecha', 'Código', 'Producto', 'Proveedor', 'Precio Anterior', 'Precio Nuevo', 'Diferencia', '% Cambio', 'Usuario', 'OC'],
+        [hoy, 'COD-001', 'HARINA DE TRIGO', 'Proveedor Genérico', 100, 150, 50, 50, 'Admin', 'OC-1'],       // +50% hoy -> urgente
+        [haceDiezDias, 'COD-002', 'AZUCAR ESTANDAR', 'Proveedor Genérico', 20, 40, 20, 100, 'Admin', 'OC-0'], // +100% hace 10 días -> fuera de ventana
+      ] }
+    );
+    const notis = entorno.invocar('obtenerNotificacionesApp', tokenAdmin);
+    const alertas = notis.filter(n => n.tipo === 'variacion-precio');
+    return {
+      datos: 'COD-001 +50% hoy, COD-002 +100% hace 10 días (fuera de la ventana de 7 días)',
+      esperado: 'solo 1 alerta (COD-001), marcada urgente=true; COD-002 no aparece pese al 100%',
+      obtenido: `cantidad=${alertas.length}, códigos=${alertas.map(a => a.datos.codigo).join(',')}, urgente=${alertas[0] ? alertas[0].urgente : 'n/a'}`,
+      pasa: alertas.length === 1 && alertas[0].datos.codigo === 'COD-001' && alertas[0].urgente === true,
+    };
+  },
+});
+
+prueba({
+  id: 'NOTIF-009', grupo: 'notificaciones', nombre: 'COM-03: un usuario que no es Admin no ve alertas de variación de precio', metodo: 'EMPÍRICO',
+  objetivo: 'La alerta de variación de precio vive en la misma sección admin-only de obtenerNotificacionesApp que conteos/requisiciones — un OPERADOR de área no debe verla aunque exista',
+  ejecutar() {
+    const hoy = new Date();
+    const { entorno, token } = entornoConLogin(
+      { correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' },
+      { HISTORIAL_PRECIOS: [
+        ['Fecha', 'Código', 'Producto', 'Proveedor', 'Precio Anterior', 'Precio Nuevo', 'Diferencia', '% Cambio', 'Usuario', 'OC'],
+        [hoy, 'COD-001', 'HARINA DE TRIGO', 'Proveedor Genérico', 100, 150, 50, 50, 'Admin', 'OC-1'],
+      ] }
+    );
+    const notis = entorno.invocar('obtenerNotificacionesApp', token);
+    return {
+      datos: 'cambio de precio +50% hoy, usuario=Cocina (OPERADOR de área, no Almacén)',
+      esperado: 'ninguna alerta tipo "variacion-precio" en el resultado',
+      obtenido: `tipos=${notis.map(n => n.tipo).join(',') || '(vacío)'}`,
+      pasa: !notis.some(n => n.tipo === 'variacion-precio'),
+    };
+  },
+});
+
+prueba({
   id: 'NOTIF-006', grupo: 'notificaciones', nombre: 'Token inválido es rechazado', metodo: 'EMPÍRICO',
   objetivo: 'obtenerNotificacionesApp debe exigir sesión activa (requerirSesionActivaApp_), igual que el resto de los endpoints autenticados',
   ejecutar() {

@@ -1,4 +1,144 @@
 
+/**
+ * TAGERS WMS 2.0 — Sugerencias automáticas de requisición (pedido del
+ * usuario, punto 5): "el siguiente paso natural [a las proyecciones
+ * estacionales] es generar sugerencias de requisición automáticas cuando
+ * stock < mínimo, cruzando con el histórico de 12 meses".
+ *
+ * calcularSugeridoCompra_ (ya existente, usada en Centro de
+ * Reabastecimiento) sugiere por FÓRMULA — el punto medio entre Mínimo y
+ * Máximo, sin ver qué tanto se ha comprado realmente. Esta función agrega
+ * una segunda sugerencia basada en el CONSUMO histórico real (promedio
+ * mensual de los últimos 12 meses de DETALLE_OC) y se queda con la mayor
+ * de las dos — nunca sugiere menos de lo que la fórmula ya sugería, pero
+ * sí más si el histórico real (ej. temporada alta) lo pide.
+ *
+ * Es de solo lectura — genera la sugerencia, no crea ninguna requisición
+ * ni orden de compra por su cuenta. El usuario decide qué hacer con ella
+ * (ej. en Centro de Reabastecimiento).
+ */
+function obtenerSugerenciasRequisicionAutomaticaApp(token){
+
+  requerirSesionActivaApp_(token);
+
+  const datosMatriz = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
+
+  const productosCriticos = datosMatriz
+    .filter(function(f){
+      const ubicacion = String(f[9]||"").trim();
+      if(ubicacionVacia_(ubicacion)) return false;
+      const existencia = Number(f[10]) || 0;
+      const minimo = Number(f[11]) || 0;
+      return minimo > 0 && existencia <= minimo;
+    })
+    .map(function(f){
+      return {
+        codigo: String(f[4]||"").trim(),
+        producto: f[0],
+        udm: f[1],
+        existencia: Number(f[10]) || 0,
+        minimo: Number(f[11]) || 0,
+        maximo: Number(f[12]) || 0,
+        proveedor: obtenerProveedorProducto_(f)
+      };
+    })
+    .filter(function(p){ return p.codigo; });
+
+  if(!productosCriticos.length) return [];
+
+  const historialPorCodigo = obtenerHistorialComprasPorCodigo_();
+
+  return productosCriticos
+    .map(function(p){
+
+      const historial = historialPorCodigo[p.codigo] || null;
+      const sugeridoPorFormula = calcularSugeridoCompra_(p.existencia, p.minimo, p.maximo);
+      const sugeridoPorHistorial = historial ? historial.promedioMensual : 0;
+
+      return {
+        codigo: p.codigo,
+        producto: p.producto,
+        udm: p.udm,
+        existencia: p.existencia,
+        minimo: p.minimo,
+        maximo: p.maximo,
+        proveedor: p.proveedor,
+        deficit: Math.round((p.minimo - p.existencia) * 1000) / 1000,
+        sugeridoPorFormula: sugeridoPorFormula,
+        sugeridoPorHistorial: Math.round(sugeridoPorHistorial * 1000) / 1000,
+        cantidadSugerida: Math.max(sugeridoPorFormula, Math.round(sugeridoPorHistorial)),
+        totalUltimos12Meses: historial ? historial.totalUltimos12Meses : 0,
+        tieneHistorial: !!historial
+      };
+
+    })
+    .sort(function(a,b){ return b.deficit - a.deficit; }); // más urgente (mayor déficit) primero
+
+}
+
+/**
+ * Suma, en UNA sola pasada por DETALLE_OC/ORDENES_COMPRA, cuánto se
+ * recibió realmente de cada código en los últimos 12 meses — misma regla
+ * que obtenerAnalisisProductoComprasApp (ignora OC canceladas, solo cuenta
+ * líneas con algo ya recibido), pero para TODOS los productos a la vez en
+ * vez de un producto buscado por texto, para no releer la hoja completa
+ * una vez por cada producto bajo mínimo.
+ */
+function obtenerHistorialComprasPorCodigo_(){
+
+  const ss = SpreadsheetApp.getActive();
+  const ordenes = ss.getSheetByName("ORDENES_COMPRA");
+  const detalle = ss.getSheetByName("DETALLE_OC");
+
+  if(!ordenes || !detalle || detalle.getLastRow() < 2) return {};
+
+  const datosOrdenes = ordenes.getRange(2, 1, ordenes.getLastRow()-1, 7).getValues();
+  const mapaOrdenes = {};
+  datosOrdenes.forEach(function(f){
+    mapaOrdenes[String(f[0]||"").trim().toUpperCase()] = { fecha: f[1], estado: f[4] };
+  });
+
+  const anchoDetalle = Math.min(detalle.getLastColumn(), 10);
+  const datosDetalle = detalle.getRange(2, 1, detalle.getLastRow()-1, anchoDetalle).getValues();
+
+  const ahora = new Date();
+  const hace12Meses = new Date(ahora.getFullYear(), ahora.getMonth() - 11, 1);
+
+  const acumuladoPorCodigo = {};
+
+  datosDetalle.forEach(function(f){
+
+    const codigo = String(f[1]||"").trim();
+    if(!codigo) return;
+
+    const oc = String(f[0]||"").trim().toUpperCase();
+    const infoOrden = mapaOrdenes[oc];
+    if(!infoOrden) return;
+    if(String(infoOrden.estado||"").toUpperCase() === "CANCELADA") return;
+
+    const recibido = Number(f[7]) || 0;
+    if(recibido <= 0) return;
+
+    const fecha = infoOrden.fecha instanceof Date ? infoOrden.fecha : new Date(infoOrden.fecha);
+    if(isNaN(fecha.getTime()) || fecha < hace12Meses) return;
+
+    acumuladoPorCodigo[codigo] = (acumuladoPorCodigo[codigo] || 0) + recibido;
+
+  });
+
+  const resultado = {};
+  Object.keys(acumuladoPorCodigo).forEach(function(codigo){
+    const total = acumuladoPorCodigo[codigo];
+    resultado[codigo] = {
+      totalUltimos12Meses: Math.round(total * 1000) / 1000,
+      promedioMensual: Math.round((total / 12) * 1000) / 1000
+    };
+  });
+
+  return resultado;
+
+}
+
 function obtenerAnalisisProductoComprasApp(busqueda, token){
 
   requerirSesionActivaApp_(token);

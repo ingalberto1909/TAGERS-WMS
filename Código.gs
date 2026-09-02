@@ -51,38 +51,6 @@ function onOpen() {
 
 }
 
-function debugKardex(){
-
-  const ss = SpreadsheetApp.getActive();
-  const hoja = ss.getSheetByName("KARDEX");
-
-  if (!hoja) {
-    Logger.log("❌ NO SE ENCONTRÓ una hoja llamada exactamente 'KARDEX'.");
-    Logger.log("Hojas que sí existen en este archivo:");
-    ss.getSheets().forEach(h => Logger.log(" - " + h.getName()));
-    return;
-  }
-
-  Logger.log("✅ Hoja encontrada: " + hoja.getName());
-  Logger.log("Última fila con datos (getLastRow): " + hoja.getLastRow());
-  Logger.log("Última columna con datos (getLastColumn): " + hoja.getLastColumn());
-
-  if (hoja.getLastRow() >= 2) {
-
-    const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 12).getValues();
-
-    Logger.log("Filas de datos encontradas: " + datos.length);
-    Logger.log("Primera fila de datos: " + JSON.stringify(datos[0]));
-    Logger.log("Última fila de datos: " + JSON.stringify(datos[datos.length - 1]));
-
-  } else {
-
-    Logger.log("⚠️ getLastRow() dio menos de 2 — el script piensa que la hoja no tiene datos, solo encabezado.");
-
-  }
-
-}
-
 function nuevaSalida() {
 
   const ss = SpreadsheetApp.getActive();
@@ -362,7 +330,11 @@ function abrirCapturaConteo(){
 
 }
 
-function buscarCodigoConteo(codigo, folio){
+function buscarCodigoConteo(codigo, folio, token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // activamente la pantalla "Capturar conteo" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -399,7 +371,11 @@ function buscarCodigoConteo(codigo, folio){
 
 }
 
-function obtenerSiguientePendiente(folio) {
+function obtenerSiguientePendiente(folio, token) {
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // activamente la pantalla "Capturar conteo" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -610,56 +586,6 @@ function abrirKardex(){
 
 }
 
-function obtenerHistorialKardex(codigo){
-
-  const hoja = SpreadsheetApp.getActive().getSheetByName("KARDEX");
-
-  if (hoja.getLastRow() < 2) return [];
-
-  const datos = hoja
-    .getRange(2, 1, hoja.getLastRow() - 1, 12)
-    .getValues();
-
-  const codigoBuscado = codigo.toString().trim().toUpperCase();
-
-  let movimientos = [];
-
-  datos.forEach(fila => {
-
-    const codigoFila = fila[4].toString().trim().toUpperCase();
-
-    if (codigoFila == codigoBuscado) {
-
-      movimientos.push({
-        fecha: Utilities.formatDate(
-          new Date(fila[0]),
-          Session.getScriptTimeZone(),
-          "dd/MM/yyyy"
-        ),
-        fechaOrden: new Date(fila[0]).getTime(),
-        hora: fila[1],
-        tipo: fila[2],
-        folio: fila[3],
-        codigo: fila[4],
-        producto: fila[5],
-        entrada: fila[6],
-        salida: fila[7],
-        existenciaAnterior: fila[8],
-        existenciaNueva: fila[9],
-        usuario: fila[10],
-        observacion: fila[11]
-      });
-
-    }
-
-  });
-
-  movimientos.sort((a, b) => b.fechaOrden - a.fechaOrden);
-
-  return movimientos;
-
-}
-
 function obtenerUltimosMovimientosKardex(limite) {
   limite = limite || 8;
 
@@ -696,17 +622,6 @@ function obtenerUltimosMovimientosKardex(limite) {
   movimientos.sort((a, b) => b.fechaOrden - a.fechaOrden);
 
   return movimientos.slice(0, limite);
-}
-
-function formatoNumero(valor) {
-  const numero = Number(valor);
-
-  if (isNaN(numero)) return "-";
-
-  return numero.toLocaleString("es-MX", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  });
 }
 
 function onEdit(e) {
@@ -853,7 +768,11 @@ observacion
 
 }
 
-function obtenerFoliosAbiertos(){
+function obtenerFoliosAbiertos(token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usan
+  // activamente "Capturar conteo" y "Cerrar conteo" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja =
     SpreadsheetApp
@@ -956,6 +875,15 @@ function obtenerNombreUsuario(){
 
 }
 
+// ⚠️ NO BORRAR — dependencia viva de 📁 App.gs.gs (auditoría de arquitectura,
+// Fase de evolución): pese a que este archivo es en su mayoría el sistema
+// legado de diálogos de Sheets (ya no alcanzable desde doGet()), Apps
+// Script comparte un único espacio de nombres entre archivos, y
+// requerirAccesoAlmacenLegadoApp_/requerirNoConsultaLegadoApp_ en
+// 📁 App.gs.gs SÍ llaman esta función en producción real (flujo activo
+// de aprobar/rechazar discrepancia sin token). Borrar o mover este
+// archivo sin antes mover esta función rompería ese flujo en silencio
+// (sin error visible al guardar, solo al ejecutarse).
 function obtenerUsuario(){
   return Session.getActiveUser().getEmail();
 }
@@ -1191,7 +1119,11 @@ function revisarDiscrepancias(){
 
 }
 
-function obtenerDiscrepanciasPendientes(){
+function obtenerDiscrepanciasPendientes(token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // activamente "Aprobar discrepancias" del sidebar.
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp
     .getActive()
@@ -1401,6 +1333,56 @@ function aprobarDiscrepanciasLoteApp(lista, token){
   return { exitosas: exitosas, fallidas: fallidas };
 }
 
+/**
+ * Herramienta de verificación (no corrige nada, solo informa): busca en
+ * KARDEX si algún código quedó con más de un renglón "AJUSTE" para el
+ * mismo folio de conteo. Es la huella de una aprobación de discrepancias
+ * que se duplicó por una interrupción a medio proceso (ver
+ * aprobarDiscrepanciasLoteApp / aprobarTodasLasDiscrepancias en index.html
+ * — antes mandaba todo el folio en una sola ejecución, que podía tardar
+ * tanto que Apps Script la mataba a la mitad).
+ */
+function verificarDuplicadosAjusteFolioApp(folio, token){
+
+  requerirAccesoAlmacenLegadoApp_(token);
+
+  const folioBuscado = String(folio||"").trim();
+  if(!folioBuscado) throw new Error("Indica el folio del conteo a verificar.");
+
+  const hoja = SpreadsheetApp.getActive().getSheetByName("KARDEX");
+  const ultimaFila = hoja.getLastRow();
+  if(ultimaFila < 2) return { folio: folioBuscado, duplicados: [] };
+
+  const datos = hoja.getRange(2,1,ultimaFila-1,12).getValues();
+
+  const porCodigo = {};
+
+  datos.forEach((fila,index)=>{
+    const tipo = String(fila[2]||"").trim().toUpperCase();
+    const folioFila = String(fila[3]||"").trim();
+    if(tipo !== "AJUSTE" || folioFila !== folioBuscado) return;
+
+    const codigo = String(fila[4]||"").trim();
+    if(!porCodigo[codigo]){
+      porCodigo[codigo] = { codigo: codigo, producto: fila[5], veces: 0, filas: [] };
+    }
+    porCodigo[codigo].veces++;
+    porCodigo[codigo].filas.push({
+      fila: index+2,
+      fecha: fila[0],
+      entrada: fila[6],
+      salida: fila[7],
+      existenciaAnterior: fila[8],
+      existenciaNueva: fila[9]
+    });
+  });
+
+  const duplicados = Object.values(porCodigo).filter(p => p.veces > 1);
+
+  return { folio: folioBuscado, duplicados: duplicados };
+
+}
+
 function obtenerRacks(){
 
   const ss = SpreadsheetApp.getActive();
@@ -1422,7 +1404,12 @@ function obtenerRacks(){
 
 }
 
-function obtenerUbicacionesRack(rack){
+function obtenerUbicacionesRack(rack, token){
+
+  // Mismo hallazgo que obtenerInventario (ver 📁 App.gs.gs) — la usa
+  // Mapa del Almacén (?page=mapa), que además nunca tuvo control de sesión
+  // propio (ver MapaAlmacenV3.html).
+  requerirSesionActivaApp_(token);
 
   const ss = SpreadsheetApp.getActive();
   const hoja = ss.getSheetByName("MATRIZ");
@@ -1479,7 +1466,10 @@ function obtenerUbicacionesRack(rack){
 
 }
 
-function buscarProducto(texto) {
+function buscarProducto(texto, token) {
+
+  // Mismo hallazgo que obtenerUbicacionesRack (ver arriba).
+  requerirSesionActivaApp_(token);
 
   if (!texto || texto.length < 2) return [];
 
@@ -1520,7 +1510,10 @@ function buscarProducto(texto) {
 
 }
 
-function obtenerResumenRacks() {
+function obtenerResumenRacks(token) {
+
+  // Mismo hallazgo que obtenerUbicacionesRack (ver arriba).
+  requerirSesionActivaApp_(token);
 
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   const datos = hoja.getRange(2,1,hoja.getLastRow()-1,17).getValues();
@@ -1571,6 +1564,10 @@ function obtenerResumenRacks() {
   }));
 }
 
+// ⚠️ NO BORRAR — dependencia viva de 📁 App.gs.gs: generarConteoRacksApp
+// (el flujo REAL de "Generar Conteo Cíclico" desde la SPA) llama esta
+// función para registrar el folio en CONTROL_CONTEOS. No es código
+// muerto del sistema legado — es el único lugar que escribe esa hoja.
 function registrarControlConteo(
 folio,
 fecha,

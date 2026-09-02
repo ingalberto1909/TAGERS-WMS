@@ -19,7 +19,7 @@
 
 const { prueba } = require('../lib/runner');
 const { crearEntorno } = require('../lib/cargar-backend');
-const { hojasBase } = require('../lib/datos-prueba');
+const { hojasBase, filaProducto } = require('../lib/datos-prueba');
 
 prueba({
   id: 'REND-001', grupo: 'rendimiento', nombre: 'Caché de 20s evita relecturas repetidas de MATRIZ', metodo: 'EMPÍRICO',
@@ -85,6 +85,56 @@ prueba({
 });
 
 prueba({
+  id: 'REND-008', grupo: 'rendimiento', nombre: 'La caché de 20s sigue funcionando con un catálogo grande (>100KB en JSON)', metodo: 'EMPÍRICO',
+  objetivo: 'CacheService rechaza cualquier valor de más de 100KB — con un MATRIZ grande, cache.put() del valor completo tronaba en silencio y la caché de 20s nunca se guardaba, así que CADA lectura (búsqueda del header, Inicio, escáner, etc.) volvía a leer la hoja completa. obtenerFilasHojaCacheadas_ debe trocear el JSON en varias llaves para seguir cacheando sin importar el tamaño.',
+  ejecutar() {
+    const hojas = hojasBase();
+    // Genera suficientes filas para que JSON.stringify(MATRIZ) pase de 100KB
+    // (cada fila ronda ~150-200 bytes serializada) — 1200 productos ya es
+    // un catálogo realista para una operación con varios racks y meses de
+    // altas, y sobra margen para superar el límite con certeza.
+    for (let i = 0; i < 1200; i++) {
+      hojas.MATRIZ.push(filaProducto({
+        producto: 'PRODUCTO DE CATALOGO GRANDE NUMERO ' + i,
+        codigo: 'CAT-' + String(i).padStart(5, '0'),
+        rack: 'R' + (i % 20),
+        ubicacion: 'R' + (i % 20) + '-N01-P01',
+        existencia: i,
+        minimo: 5,
+        maximo: 50,
+        proveedor: 'PROVEEDOR ' + (i % 15),
+        costo: 12.5,
+      }));
+    }
+
+    const tamanoJson = JSON.stringify(hojas.MATRIZ).length;
+
+    const entorno = crearEntorno({ hojas });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    const hojaReal = entorno.hojas.MATRIZ;
+    let lecturasReales = 0;
+    const getDataRangeOriginal = hojaReal.getDataRange.bind(hojaReal);
+    hojaReal.getDataRange = function () { lecturasReales++; return getDataRangeOriginal(); };
+
+    // 3 búsquedas seguidas (misma función que usa el buscador del header) —
+    // dentro de los 20s de TTL, solo la primera debería tocar la hoja real.
+    entorno.invocar('busquedaGlobalHeaderApp', 'CAT-00500', token);
+    entorno.invocar('busquedaGlobalHeaderApp', 'CAT-00700', token);
+    const resultado = entorno.invocar('busquedaGlobalHeaderApp', 'CAT-00999', token);
+
+    const encontroElProducto = resultado.productos.some(p => p.codigo === 'CAT-00999');
+
+    return {
+      datos: `MATRIZ con 1200 productos extra, JSON.stringify=${(tamanoJson/1024).toFixed(1)}KB (excede el límite de 100KB por valor de CacheService)`,
+      esperado: '1 sola lectura real de MATRIZ (getDataRange) en las 3 búsquedas, y el resultado sigue siendo correcto',
+      obtenido: `lecturasReales=${lecturasReales}, encontroElProducto=${encontroElProducto}`,
+      pasa: tamanoJson > 100 * 1024 && lecturasReales === 1 && encontroElProducto,
+    };
+  },
+});
+
+prueba({
   id: 'REND-004', grupo: 'rendimiento', nombre: 'Fase 7: obtenerContadoresControl ya comparte la caché de 20s de DISCREPANCIAS/CONTROL_CONTEOS', metodo: 'EMPÍRICO',
   objetivo: 'Antes, obtenerContadoresControl leía DISCREPANCIAS y CONTROL_CONTEOS directo de la hoja en cada llamada — era la única lectura del Dashboard sin caché. Ahora, igual que MATRIZ/KARDEX, una fila agregada directo a la hoja (sin invalidar) no debe verse hasta que la caché expire o se invalide explícitamente',
   ejecutar() {
@@ -130,6 +180,54 @@ prueba({
       esperado: 'obtenerResumenInicioApp.discrepancias y obtenerNotificacionesApp coinciden entre sí (ambos con caché tibia, ambos en 0) — no uno actualizado y el otro no',
       obtenido: `resumen.discrepancias=${resumen.discrepancias}, notificaciones-tipo-conteo=${discrepanciasEnNotificaciones}`,
       pasa: resumen.discrepancias === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'REND-006', grupo: 'rendimiento', nombre: 'Auditoría de rendimiento: búsqueda global del header ya comparte la caché de 20s de MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'busquedaGlobalHeaderApp se llama en cada tecleo del buscador global — antes leía MATRIZ completa en cada llamada; ahora, igual que el Dashboard, 3 llamadas seguidas deben traducirse en 1 sola lectura real de la hoja',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const hojaReal = entorno.hojas.MATRIZ;
+    let lecturasReales = 0;
+    const getDataRangeOriginal = hojaReal.getDataRange.bind(hojaReal);
+    hojaReal.getDataRange = function () { lecturasReales++; return getDataRangeOriginal(); };
+
+    entorno.invocar('busquedaGlobalHeaderApp', 'harina', token);
+    entorno.invocar('busquedaGlobalHeaderApp', 'harin', token);
+    entorno.invocar('busquedaGlobalHeaderApp', 'hari', token);
+
+    return {
+      datos: '3 tecleos seguidos en el buscador global ("harina" -> "harin" -> "hari") dentro de la misma ventana de 20s',
+      esperado: '1 sola lectura real de MATRIZ, las otras 2 servidas desde caché',
+      obtenido: `lecturasReales=${lecturasReales}`,
+      pasa: lecturasReales === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'REND-007', grupo: 'rendimiento', nombre: 'Auditoría de rendimiento: un cambio de Presentación/Costo en MATRIZ invalida la caché correctamente', metodo: 'EMPÍRICO',
+  objetivo: 'Al extender el caché de MATRIZ a más lecturas (búsquedas/catálogo), toda escritura directa a MATRIZ que antes NO invalidaba la caché (sincronizarPresentacionMatriz_, procesarCambioPrecioProducto_) ahora debe hacerlo — si no, buscarProductoCatalogoApp podría mostrar precio/presentación viejos hasta por 20s',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    const antes = entorno.invocar('buscarProductoCatalogoApp', 'harina', token); // puebla la caché
+    const precioAntes = antes[0] && antes[0].precio;
+
+    entorno.invocar('procesarCambioPrecioProducto_', 'COD-001', 'HARINA DE TRIGO', 'Proveedor X', 999, 'Usuario', 'OC-1');
+
+    const despues = entorno.invocar('buscarProductoCatalogoApp', 'harina', token); // ¿lee el precio nuevo, o el viejo cacheado?
+    const precioDespues = despues[0] && despues[0].precio;
+
+    return {
+      datos: `precio antes del cambio: ${precioAntes}, cambiado a 999 vía procesarCambioPrecioProducto_`,
+      esperado: 'la búsqueda del catálogo refleja el precio nuevo (999) de inmediato, no el viejo cacheado',
+      obtenido: `precioAntes=${precioAntes}, precioDespues=${precioDespues}`,
+      pasa: precioDespues === 999,
     };
   },
 });

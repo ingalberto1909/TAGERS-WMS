@@ -444,14 +444,37 @@ function volverAInicioApp(){
 window.top.location.href = URL_APP + "?page=index";
 }
 
+// Hallazgo de seguridad (auditoría de rendimiento, ago-2026): esta página
+// se sirve con su propia URL (?page=mapa, access:ANYONE) y nunca implementó
+// ningún control de sesión propio — index.html navega aquí con
+// window.top.location.href (recarga completa, sin pasar el token por JS),
+// así que se lee del mismo localStorage que ya usa index.html (mismo
+// origen: el token que dejó el login sigue disponible aquí). Si no hay
+// token, ni se intenta cargar el mapa — se manda directo a login.
+function obtenerTokenSesion(){
+  return localStorage.getItem("tagers_token");
+}
+
+function manejarErrorSesionMapa_(error){
+  alert("⚠️ " + (error && error.message ? error.message : "Tu sesión expiró o no es válida.") + "\nVuelve a iniciar sesión.");
+  localStorage.removeItem("tagers_token");
+  window.top.location.href = URL_APP + "?page=login";
+}
+
 let rackActualDatos = [];
 
 let racks=[];
 
 let rackActual="";
-google.script.run
-.withSuccessHandler(cargarDashboard)
-.obtenerResumenRacks();
+
+if(!obtenerTokenSesion()){
+  window.top.location.href = URL_APP + "?page=login";
+} else {
+  google.script.run
+  .withSuccessHandler(cargarDashboard)
+  .withFailureHandler(manejarErrorSesionMapa_)
+  .obtenerResumenRacks(obtenerTokenSesion());
+}
 
 function cargarDashboard(datos){
 
@@ -552,7 +575,8 @@ function filtrarRacks(){
 
     google.script.run
       .withSuccessHandler(mostrarResultadosProducto)
-      .buscarProducto(texto);
+      .withFailureHandler(manejarErrorSesionMapa_)
+      .buscarProducto(texto, obtenerTokenSesion());
 
   }, 300);
 
@@ -615,7 +639,9 @@ google.script.run
 
 .withSuccessHandler(mostrarRack)
 
-.obtenerUbicacionesRack(rack);
+.withFailureHandler(manejarErrorSesionMapa_)
+
+.obtenerUbicacionesRack(rack, obtenerTokenSesion());
 
 }
 

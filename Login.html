@@ -917,7 +917,7 @@ function entrar(){
 
       } else {
         restaurarBoton();
-        mensaje.innerText = "Correo o contraseña incorrectos";
+        mensaje.innerText = res.mensaje || "Correo o contraseña incorrectos";
       }
 
     })

@@ -97,6 +97,42 @@ prueba({
 });
 
 prueba({
+  id: 'REC-007', grupo: 'recetas', nombre: 'AUDITORÍA: la entrega de una requisición de receta descuenta MATRIZ en la UDM real del producto, no en la UDM de la receta', metodo: 'EMPÍRICO',
+  objetivo: 'Cadena completa receta→requisición→cálculo→entrega: una receta que pide el ingrediente en GRAMOS, sobre un producto que MATRIZ controla en KILOGRAMOS, debe descontar 0.5 (convertido), NUNCA 500 (el número crudo de la receta) — ese bug dejaría la existencia negativa/corrupta',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    // HARINA DE TRIGO (COD-001) en MATRIZ está en KG, existencia=100 (fixture estándar).
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [{ nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }], // 500 GRAMOS por tanda
+    }, token);
+
+    const tokenCocina = entorno.invocar('crearSesion_', 'cocina@tagers.com', 'Cocina', 'OPERADOR');
+    const req = entorno.invocar('crearRequisicionRecetaApp', '', [{ codigoReceta: 'REC-0001', cantidadSolicitada: 1 }], tokenCocina);
+
+    const calculo = entorno.invocar('obtenerCalculoIngredientesRequisicionApp', req.folio, token);
+    const ingHarina = calculo.ingredientes.find(i => i.codigo === 'COD-001');
+
+    // El frontend real siempre manda lo que este cálculo ya sugiere/convirtió
+    // (entregarSugerido + udm) — nunca el número crudo de la receta.
+    entorno.invocar('confirmarEntregaRequisicionRecetaApp', req.folio, [
+      { codigo: ingHarina.codigo, nombre: ingHarina.nombre, cantidadEntregada: ingHarina.entregarSugerido, udm: ingHarina.udm },
+    ], token);
+
+    const existenciaFinal = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+    const kardex = entorno.leerHoja('KARDEX').slice(1);
+
+    return {
+      datos: `receta pide 500 G de HARINA por tanda; MATRIZ controla HARINA en KG con existencia=100; cálculo convertido: necesario=${ingHarina.necesario} ${ingHarina.udm}, entregarSugerido=${ingHarina.entregarSugerido}`,
+      esperado: 'entregarSugerido=0.5 (500g convertidos a KG), existencia final=99.5 (NO 100 sin descontar, NI -400 por tratar 500 como si fueran 500 KG)',
+      obtenido: `entregarSugerido=${ingHarina.entregarSugerido} ${ingHarina.udm}, existenciaFinal=${existenciaFinal}, filasKardex=${kardex.length}`,
+      pasa: ingHarina.entregarSugerido === 0.5 && ingHarina.udm === 'KG' && existenciaFinal === 99.5 && kardex.length === 1,
+    };
+  },
+});
+
+prueba({
   id: 'REC-006', grupo: 'recetas', nombre: 'Una receta INACTIVA no se puede requisitar', metodo: 'EMPÍRICO',
   objetivo: 'crearRequisicionRecetaApp debe rechazar una receta que ya no está ACTIVA',
   ejecutar() {
@@ -108,5 +144,50 @@ prueba({
     try { entorno.invocar('crearRequisicionRecetaApp', '', [{ codigoReceta: 'REC-0001', cantidadSolicitada: 1 }], tokenCocina); }
     catch (e) { bloqueado = true; }
     return { datos: 'receta INACTIVA', esperado: 'bloqueado', obtenido: bloqueado ? 'bloqueado' : 'PERMITIDO', pasa: bloqueado };
+  },
+});
+
+prueba({
+  id: 'REC-008', grupo: 'recetas', nombre: 'Costeo de receta suma el costo de cada ingrediente convertido a la UDM de MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'PROD-01: obtenerCostoRecetaApp debe reutilizar buscarProductoEnMatrizPorNombre_/factorConversionUDM_ para calcular el costo total de una tanda de receta, incluso cuando un ingrediente está capturado en una UDM distinta a la de MATRIZ',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // HARINA DE TRIGO (COD-001): costo=10/KG. SAL DE MESA (COD-003): costo=10/KG.
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [
+        { nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }, // 0.5 KG × 10 = 5
+        { nombre: 'SAL DE MESA', cantidad: 1, udm: 'KG' },      // 1 KG × 10 = 10
+      ],
+    }, token);
+    const costeo = entorno.invocar('obtenerCostoRecetaApp', 'SALSA X', token);
+    return {
+      datos: '500 G de harina (0.5 KG × $10) + 1 KG de sal ($10) — ambos ingredientes existen en MATRIZ',
+      esperado: 'costoTotal=15, ingredientesSinCosto=0, totalIngredientes=2',
+      obtenido: `costoTotal=${costeo.costoTotal}, sinCosto=${costeo.ingredientesSinCosto}, total=${costeo.totalIngredientes}`,
+      pasa: costeo.costoTotal === 15 && costeo.ingredientesSinCosto === 0 && costeo.totalIngredientes === 2,
+    };
+  },
+});
+
+prueba({
+  id: 'REC-009', grupo: 'recetas', nombre: 'Costeo de receta marca ingredientes sin coincidencia en MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'PROD-01: un ingrediente que no existe en el catálogo (o con UDM incompatible) no debe romper el cálculo — se excluye del costoTotal y se cuenta en ingredientesSinCosto',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA Y', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [
+        { nombre: 'HARINA DE TRIGO', cantidad: 1, udm: 'KG' }, // costo=10, sí existe
+        { nombre: 'INGREDIENTE FANTASMA', cantidad: 1, udm: 'KG' }, // no existe en MATRIZ
+      ],
+    }, token);
+    const costeo = entorno.invocar('obtenerCostoRecetaApp', 'SALSA Y', token);
+    return {
+      datos: '1 ingrediente con costo conocido (=10) + 1 ingrediente inexistente en MATRIZ',
+      esperado: 'costoTotal=10 (solo el ingrediente conocido), ingredientesSinCosto=1, totalIngredientes=2',
+      obtenido: `costoTotal=${costeo.costoTotal}, sinCosto=${costeo.ingredientesSinCosto}, total=${costeo.totalIngredientes}`,
+      pasa: costeo.costoTotal === 10 && costeo.ingredientesSinCosto === 1 && costeo.totalIngredientes === 2,
+    };
   },
 });

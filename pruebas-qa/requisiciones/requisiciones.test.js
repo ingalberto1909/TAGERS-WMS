@@ -333,3 +333,175 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'REQ-018', grupo: 'requisiciones', nombre: 'INV-06: crear una requisición de Área reserva la cantidad contra S01', metodo: 'EMPÍRICO',
+  objetivo: 'crearRequisicionApp debe reservar (EXISTENCIAS_SUCURSAL, mismo libro que usa el pipeline de Sucursal) la cantidad solicitada contra S01 — la existencia física de MATRIZ no cambia, solo el disponible',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 30 }], token);
+
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    const existenciaMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+
+    return {
+      datos: 'COD-001 con existencia=100 (fixture estándar), se solicitan 30 en una requisición de Área',
+      esperado: 'reservado=30, disponible=70, existencia física de MATRIZ sigue en 100 (nada se descontó todavía)',
+      obtenido: `reservado=${disponible.reservado}, disponible=${disponible.disponible}, existenciaMatriz=${existenciaMatriz}`,
+      pasa: disponible.reservado === 30 && disponible.disponible === 70 && existenciaMatriz === 100,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-019', grupo: 'requisiciones', nombre: 'INV-06: no se puede reservar más de lo disponible, y se revierte todo si un producto de la requisición falla', metodo: 'EMPÍRICO',
+  objetivo: 'Una segunda requisición que pediría más de lo que queda disponible (existencia menos lo ya reservado por la primera) debe rechazarse completa, sin dejar ninguna reserva parcial de los demás productos de esa misma requisición',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+
+    // Primera requisición: reserva 90 de los 100 de COD-001. Quedan 10 disponibles.
+    entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 90 }], token);
+
+    // Segunda requisición: pide SAL (existencia=50, sin problema) + HARINA (pide 20, solo hay 10 disponibles) — debe rechazarse COMPLETA.
+    let bloqueado = false, mensaje = '';
+    try {
+      entorno.invocar('crearRequisicionApp', '', [
+        { codigo: 'COD-003', producto: 'SAL DE MESA', unidad: 'KG', solicitado: 5 },
+        { codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 },
+      ], token);
+    } catch (e) { bloqueado = true; mensaje = e.message; }
+
+    const disponibleSal = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-003', 'S01', tokenAdmin);
+    const disponibleHarina = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+
+    return {
+      datos: 'COD-001: 100 existencia, 90 ya reservados (10 disponibles). Segunda requisición pide SAL=5 + HARINA=20',
+      esperado: 'bloqueado, y la reserva de SAL (5) se revierte — SAL disponible sigue en 50 (no se queda "a medias" reservada)',
+      obtenido: `bloqueado=${bloqueado} (${mensaje}), disponibleSal=${disponibleSal.disponible}, disponibleHarina=${disponibleHarina.disponible}`,
+      pasa: bloqueado && /disponible/i.test(mensaje) && disponibleSal.disponible === 50 && disponibleHarina.disponible === 10,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-020', grupo: 'requisiciones', nombre: 'INV-06: cancelar una requisición de Área libera su reserva', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarRequisicionApp debe liberar exactamente lo que se reservó al crear la requisición',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 30 }], token);
+
+    entorno.invocar('cancelarRequisicionApp', req.folio, 'Ya no se necesita', tokenAdmin);
+
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+
+    return {
+      datos: 'se reservaron 30 de COD-001 y se cancela la requisición',
+      esperado: 'reservado vuelve a 0, disponible vuelve a 100',
+      obtenido: `reservado=${disponible.reservado}, disponible=${disponible.disponible}`,
+      pasa: disponible.reservado === 0 && disponible.disponible === 100,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-021', grupo: 'requisiciones', nombre: 'INV-06: confirmar la entrega (aunque sea parcial) libera toda la reserva original', metodo: 'EMPÍRICO',
+  objetivo: 'confirmarEntregaRequisicionApp debe liberar la reserva completa al cerrar la requisición, incluso si se entregó menos de lo solicitado — el modelo de Área no tiene un estado "parcialmente pendiente"',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin', 'ADMIN');
+    const req = entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 30 }], token);
+
+    // Solo se entregan 20 de los 30 solicitados (entrega parcial).
+    entorno.invocar('confirmarEntregaRequisicionApp', req.folio, [{ codigo: 'COD-001', cantidadEntregada: 20 }], tokenAdmin);
+
+    const disponible = entorno.invocar('obtenerDisponibleSucursalApp', 'COD-001', 'S01', tokenAdmin);
+    const existenciaMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[10];
+
+    return {
+      datos: 'se reservaron 30, pero solo se entregaron 20 (real salida de existencia)',
+      esperado: 'reservado=0 (la reserva de los 30 se libera completa al cerrar), existencia física=80 (100-20 entregados), disponible=80',
+      obtenido: `reservado=${disponible.reservado}, existenciaMatriz=${existenciaMatriz}, disponible=${disponible.disponible}`,
+      pasa: disponible.reservado === 0 && existenciaMatriz === 80 && disponible.disponible === 80,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-022', grupo: 'requisiciones', nombre: 'INV-06: una requisición de Receta no toca la reserva de MATRIZ', metodo: 'EMPÍRICO',
+  objetivo: 'Los folios de tipo RECETA (crearRequisicionRecetaApp) guardan un código de receta en el detalle, no un código de MATRIZ — cancelarRequisicionApp/confirmarEntregaRequisicionApp deben detectar el tipo y NUNCA intentar reservar/liberar contra ese "código" (rompería con "producto no encontrado" si no se protegiera)',
+  ejecutar() {
+    const { entorno, token: tokenAdmin } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    entorno.invocar('crearRecetaApp', {
+      nombre: 'SALSA X', rendimiento: '1 tanda', categoria: 'GENERAL',
+      ingredientes: [{ nombre: 'HARINA DE TRIGO', cantidad: 500, udm: 'G' }],
+    }, tokenAdmin);
+    const tokenCocina = entorno.invocar('crearSesion_', 'cocina@tagers.com', 'Cocina', 'OPERADOR');
+    const req = entorno.invocar('crearRequisicionRecetaApp', '', [{ codigoReceta: 'REC-0001', cantidadSolicitada: 1 }], tokenCocina);
+
+    let error = null;
+    try { entorno.invocar('cancelarRequisicionApp', req.folio, 'prueba', tokenAdmin); }
+    catch (e) { error = e.message; }
+
+    return {
+      datos: `folio de receta ${req.folio} (código de detalle = REC-0001, no un código de MATRIZ)`,
+      esperado: 'cancelarRequisicionApp NO truena (detecta tipo=RECETA y salta la lógica de reserva de Área)',
+      obtenido: error ? `ERROR: ${error}` : 'sin error',
+      pasa: error === null,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-023', grupo: 'requisiciones', nombre: 'INV-06: buscarProductoParaRequisicionApp expone disponible (existencia menos reservado)', metodo: 'EMPÍRICO',
+  objetivo: 'El buscador de productos para armar una requisición de Área debe mostrar disponible real, no solo la existencia física, para que el usuario no capture una cantidad que se va a rechazar',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    entorno.invocar('crearRequisicionApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 40 }], token);
+
+    const resultados = entorno.invocar('buscarProductoParaRequisicionApp', 'HARINA', token);
+    const harina = resultados.find(r => r.codigo === 'COD-001');
+
+    return {
+      datos: 'COD-001 existencia=100, ya con 40 reservados por una requisición pendiente',
+      esperado: 'existencia=100, reservado=40, disponible=60',
+      obtenido: harina ? `existencia=${harina.existencia}, reservado=${harina.reservado}, disponible=${harina.disponible}` : 'HARINA no encontrada',
+      pasa: !!harina && harina.existencia === 100 && harina.reservado === 40 && harina.disponible === 60,
+    };
+  },
+});
+
+prueba({
+  id: 'REQ-024', grupo: 'requisiciones', nombre: 'ALM-201: obtenerDetalleRequisicionApp ordena el picking por ubicación, no por orden de captura', metodo: 'EMPÍRICO',
+  objetivo: 'Quien surte una requisición debe recorrer el almacén en orden, no saltar de un extremo a otro siguiendo el orden en que se solicitaron los productos — el detalle debe traer cada item con su ubicación y venir ordenado alfabéticamente por ella (sin ubicación al final)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'cocina@tagers.com', nombre: 'Cocina', rol: 'OPERADOR' });
+    const matriz = entorno.leerHoja('MATRIZ');
+    matriz.find(f => f[4] === 'COD-001')[9] = 'C-03-N01-P01'; // HARINA
+    matriz.find(f => f[4] === 'COD-002')[9] = 'A-01-N02-P01'; // AZUCAR
+    matriz.find(f => f[4] === 'COD-003')[9] = 'B-02-N01-P03'; // SAL
+    matriz.find(f => f[4] === 'COD-005')[9] = '--'; // sin ubicación real (marcador del fixture)
+    matriz.find(f => f[4] === 'COD-005')[10] = 5; // el fixture estándar lo trae en 0 — se sube para poder reservarlo
+
+    // Se solicitan en un orden que NO coincide con el orden físico del almacén.
+    const req = entorno.invocar('crearRequisicionApp', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 5 },
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', unidad: 'KG', solicitado: 2 },
+      { codigo: 'COD-003', producto: 'SAL DE MESA', unidad: 'KG', solicitado: 1 },
+      { codigo: 'COD-005', producto: 'PRODUCTO SIN UBICACION', unidad: 'PZ', solicitado: 1 },
+    ], token);
+
+    const detalle = entorno.invocar('obtenerDetalleRequisicionApp', req.folio, token);
+    const ordenCodigos = detalle.items.map(it => it.codigo);
+    const ordenUbicaciones = detalle.items.map(it => it.ubicacion);
+
+    return {
+      datos: 'solicitado en orden COD-001(C-03), COD-002(A-01), COD-003(B-02), COD-005(sin ubicación)',
+      esperado: 'devuelto en orden de ubicación: COD-002(A-01) → COD-003(B-02) → COD-001(C-03) → COD-005(al final, sin ubicación)',
+      obtenido: `orden=${ordenCodigos.join(',')}, ubicaciones=${ordenUbicaciones.join('|')}`,
+      pasa: ordenCodigos.join(',') === 'COD-002,COD-003,COD-001,COD-005' && ordenUbicaciones[3] === '',
+    };
+  },
+});

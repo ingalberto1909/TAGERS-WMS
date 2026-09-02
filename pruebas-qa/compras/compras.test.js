@@ -68,6 +68,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
     const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     return {
@@ -87,6 +88,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 8 }], token);
     const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
@@ -108,6 +110,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 30 }], token);
     const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
     return {
@@ -143,6 +146,7 @@ prueba({
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10 }], token);
     let bloqueado = false, mensaje = '';
     try { entorno.invocar('cancelarOrdenCompraApp', oc.folio, token); } catch (e) { bloqueado = true; mensaje = e.message; }
@@ -151,21 +155,23 @@ prueba({
 });
 
 prueba({
-  id: 'COM-008', grupo: 'compras', nombre: 'Cambio de precio en recepción queda en HISTORIAL_PRECIOS', metodo: 'EMPÍRICO',
-  objetivo: 'Si el precio de factura llega distinto al de MATRIZ, se actualiza el costo y se registra el histórico',
+  id: 'COM-008', grupo: 'compras', nombre: 'ARQ-03: cambio de precio en recepción actualiza MATRIZ al costo PROMEDIO PONDERADO y queda en HISTORIAL_PRECIOS', metodo: 'EMPÍRICO',
+  objetivo: 'Si el precio de factura llega distinto al de MATRIZ, el nuevo costo maestro debe ser el promedio ponderado entre la existencia ya en MATRIZ (a su costo actual) y lo recién recibido (al precio de esta factura) — no simplemente el último precio facturado — y debe quedar registrado en el histórico',
   ejecutar() {
     const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
     const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
       { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
     ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    // COD-001 (fixture estándar): existencia=100, costo=10 ANTES de recibir.
     entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10, precioFactura: 18 }], token);
     const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[17];
     const historial = entorno.leerHoja('HISTORIAL_PRECIOS').length - 1;
     return {
-      datos: 'MATRIZ tenía costo=10, llega factura con precio=18',
-      esperado: 'MATRIZ.CostoUnitario=18, 1 fila en HISTORIAL_PRECIOS',
+      datos: 'MATRIZ tenía existencia=100 a costo=10, llegan 10 KG más facturados a $18 c/u',
+      esperado: 'MATRIZ.CostoUnitario=10.73 ((100×10 + 10×18) / 110), 1 fila en HISTORIAL_PRECIOS',
       obtenido: `costoMatriz=${costoMatriz}, filasHistorial=${historial}`,
-      pasa: costoMatriz === 18 && historial === 1,
+      pasa: costoMatriz === 10.73 && historial === 1,
     };
   },
 });
@@ -217,6 +223,7 @@ prueba({
     const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
 
     const ocParcial = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 }], token);
+    entorno.invocar('aprobarOrdenCompraApp', ocParcial.folio, token);
     entorno.invocar('registrarRecepcionOCApp', ocParcial.folio, [{ codigo: 'COD-001', cantidadRecibida: 4 }], token);
     let bloqueadoParcial = false;
     try { entorno.invocar('editarOrdenCompraApp', ocParcial.folio, 'OTRO', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 1, udm: 'KG', precio: 1 }], token); }
@@ -334,6 +341,556 @@ prueba({
       esperado: `sin capturarla en la línea queda igual (${presentacionOriginal}, no se borra); al capturarla explícitamente pasa a 10`,
       obtenido: `sinCapturar=${presentacionTrasEdicionSinCapturar}, capturada=${presentacionTrasEdicionCapturada}`,
       pasa: presentacionTrasEdicionSinCapturar === presentacionOriginal && presentacionTrasEdicionCapturada === 10,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-016', grupo: 'compras', nombre: 'Sugerencias de requisición: combina fórmula Min/Máx con el consumo histórico real', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerSugerenciasRequisicionAutomaticaApp debe traer los productos bajo mínimo con ambas sugerencias, y quedarse con la MAYOR de las dos como cantidadSugerida',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    // Se compraron 120 en el año, pero ya se consumieron — hoy vuelve a estar
+    // bajo mínimo (existencia=5, mínimo=10, máximo=100). El historial de LO
+    // COMPRADO no depende de la existencia actual, son cosas distintas.
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 120, udm: 'KG', precio: 22 },
+    ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-002', cantidadRecibida: 120 }], token);
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 5; // simula que ya se consumió lo recibido
+    entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
+
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const linea = sugerencias.find(s => s.codigo === 'COD-002');
+
+    // Fórmula: puntoMedio(10,100)=55, existencia=5 -> sugeridoPorFormula=50.
+    // Historial: 120 recibidos en los últimos 12 meses -> promedioMensual=10.
+    return {
+      datos: 'COD-002: existencia=5, mínimo=10, máximo=100, se recibieron 120 en una sola compra reciente',
+      esperado: 'sugeridoPorFormula=50 (fórmula Min/Máx), sugeridoPorHistorial=10 (120/12 meses), cantidadSugerida=50 (la mayor de las dos)',
+      obtenido: linea ? `sugeridoPorFormula=${linea.sugeridoPorFormula}, sugeridoPorHistorial=${linea.sugeridoPorHistorial}, cantidadSugerida=${linea.cantidadSugerida}, tieneHistorial=${linea.tieneHistorial}` : 'NO ENCONTRADO',
+      pasa: !!linea && linea.sugeridoPorFormula === 50 && linea.sugeridoPorHistorial === 10 && linea.cantidadSugerida === 50 && linea.tieneHistorial === true,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-017', grupo: 'compras', nombre: 'Sugerencias de requisición: sin historial de compras, se queda solo con la fórmula', metodo: 'EMPÍRICO',
+  objetivo: 'Un producto bajo mínimo que nunca se ha comprado (sin líneas en DETALLE_OC) debe aparecer con tieneHistorial=false y cantidadSugerida=sugeridoPorFormula, sin tronar por falta de datos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // COD-002 bajo mínimo por defecto, CERO compras registradas en esta prueba.
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const linea = sugerencias.find(s => s.codigo === 'COD-002');
+
+    return {
+      datos: 'COD-002 bajo mínimo, sin ninguna OC recibida en el historial',
+      esperado: 'tieneHistorial=false, sugeridoPorHistorial=0, cantidadSugerida=sugeridoPorFormula',
+      obtenido: linea ? `tieneHistorial=${linea.tieneHistorial}, sugeridoPorHistorial=${linea.sugeridoPorHistorial}, cantidadSugerida=${linea.cantidadSugerida}, sugeridoPorFormula=${linea.sugeridoPorFormula}` : 'NO ENCONTRADO',
+      pasa: !!linea && linea.tieneHistorial === false && linea.sugeridoPorHistorial === 0 && linea.cantidadSugerida === linea.sugeridoPorFormula,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-018', grupo: 'compras', nombre: 'Sugerencias de requisición: una compra de hace más de 12 meses no cuenta en el histórico', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerHistorialComprasPorCodigo_ debe ignorar recepciones cuya OC tiene fecha anterior a hace 12 meses — el consumo histórico es una ventana móvil, no "desde siempre"',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 240, udm: 'KG', precio: 22 },
+    ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-002', cantidadRecibida: 240 }], token);
+    entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-002')[10] = 5; // simula que ya se consumió lo recibido — vuelve a estar bajo mínimo
+
+    // Se "envejece" la OC a hace 13 meses, directo en la hoja (no hay parámetro de fecha en generarOrdenCompraApp).
+    const filaOC = entorno.leerHoja('ORDENES_COMPRA').find(f => f[0] === oc.folio);
+    const hace13Meses = new Date();
+    hace13Meses.setMonth(hace13Meses.getMonth() - 13);
+    filaOC[1] = hace13Meses;
+    entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
+
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const linea = sugerencias.find(s => s.codigo === 'COD-002');
+
+    return {
+      datos: '240 unidades recibidas, pero la OC se fechó hace 13 meses (fuera de la ventana de 12 meses)',
+      esperado: 'tieneHistorial=false — la compra existe pero está fuera de la ventana de 12 meses, no debe contarse',
+      obtenido: linea ? `tieneHistorial=${linea.tieneHistorial}, totalUltimos12Meses=${linea.totalUltimos12Meses}` : 'NO ENCONTRADO',
+      pasa: !!linea && linea.tieneHistorial === false && linea.totalUltimos12Meses === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-019', grupo: 'compras', nombre: 'Sugerencias de requisición: solo lista productos bajo mínimo, ordenados por déficit', metodo: 'EMPÍRICO',
+  objetivo: 'Productos con existencia por ENCIMA de su mínimo no deben aparecer en la lista; los que sí aparecen deben venir ordenados de mayor a menor déficit (más urgente primero)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const matriz = entorno.leerHoja('MATRIZ');
+    // COD-001 HARINA: por defecto existencia=100/mínimo=10 (muy por encima) -> no debe aparecer.
+    // COD-002 AZUCAR: existencia=5/mínimo=10 (déficit=5) -> sí aparece.
+    // COD-003 SAL: se baja a existencia=1/mínimo=5 (déficit=4) -> sí aparece, pero con menos urgencia que COD-002... (déficit menor)
+    matriz.find(f => f[4] === 'COD-003')[10] = 1;
+    entorno.invocar('invalidarCacheHoja_', 'MATRIZ');
+
+    const sugerencias = entorno.invocar('obtenerSugerenciasRequisicionAutomaticaApp', token);
+    const codigos = sugerencias.map(s => s.codigo);
+
+    return {
+      datos: 'COD-001 muy por encima de su mínimo; COD-002 déficit=5; COD-003 déficit=4',
+      esperado: 'COD-001 NO aparece; COD-002 y COD-003 sí, con COD-002 primero (mayor déficit)',
+      obtenido: `códigos en orden=[${codigos.join(', ')}]`,
+      pasa: !codigos.includes('COD-001') && codigos.indexOf('COD-002') === 0 && codigos.includes('COD-003'),
+    };
+  },
+});
+
+prueba({
+  id: 'COM-020', grupo: 'compras', nombre: 'COM-02: OC con descuento/IVA/flete calcula el total con impuestos, sin alterar el subtotal', metodo: 'EMPÍRICO',
+  objetivo: 'generarOrdenCompraApp debe aceptar un 5º parámetro opcional {descuento, ivaPorcentaje, flete} y calcular totalConImpuestos = (subtotal - descuento) * (1 + iva%) + flete, dejando "total" (el subtotal de siempre) sin tocar',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const r = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token, { descuento: 20, ivaPorcentaje: 16, flete: 50 });
+
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
+    const lista = entorno.invocar('obtenerOrdenesCompraApp', token);
+    const filaLista = lista.find(o => o.oc === r.folio);
+
+    // subtotal=150, -20 descuento=130, +16% IVA(130)=20.8 => 150.8, +50 flete => 200.8
+    const esperado = 200.8;
+
+    return {
+      datos: 'subtotal=150 (10×15), descuento=20, IVA=16%, flete=50',
+      esperado: `total (subtotal) sigue en 150; totalConImpuestos=${esperado} tanto en el detalle como en la lista`,
+      obtenido: `total=${detalle.total}, ivaMonto=${detalle.ivaMonto}, totalConImpuestos(detalle)=${detalle.totalConImpuestos}, totalConImpuestos(lista)=${filaLista.totalConImpuestos}`,
+      pasa: detalle.total === 150 && detalle.ivaMonto === 20.8 && detalle.totalConImpuestos === esperado && filaLista.totalConImpuestos === esperado,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-021', grupo: 'compras', nombre: 'COM-02: sin descuento/IVA/flete, totalConImpuestos cae de vuelta al total de siempre', metodo: 'EMPÍRICO',
+  objetivo: 'Compatibilidad hacia atrás — una OC generada sin el 5º parámetro (como todas las anteriores a esta corrección) debe comportarse exactamente igual que antes: totalConImpuestos === total, descuento/iva/flete en 0',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const r = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
+
+    return {
+      datos: 'OC generada sin el parámetro extras (llamada tal cual la hacía el frontend antes de este cambio)',
+      esperado: 'descuento=0, ivaPorcentaje=0, flete=0, totalConImpuestos=total=150',
+      obtenido: `total=${detalle.total}, descuento=${detalle.descuento}, ivaPorcentaje=${detalle.ivaPorcentaje}, flete=${detalle.flete}, totalConImpuestos=${detalle.totalConImpuestos}`,
+      pasa: detalle.total === 150 && detalle.descuento === 0 && detalle.ivaPorcentaje === 0 && detalle.flete === 0 && detalle.totalConImpuestos === 150,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-022', grupo: 'compras', nombre: 'COM-02: editarOrdenCompraApp actualiza el desglose de impuestos de una OC PENDIENTE', metodo: 'EMPÍRICO',
+  objetivo: 'editarOrdenCompraApp debe aceptar el mismo 6º parámetro opcional y sobreescribir descuento/IVA/flete de la orden, igual que ya sobreescribe proveedor/observaciones/productos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const r = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token, { ivaPorcentaje: 16 });
+
+    entorno.invocar('editarOrdenCompraApp', r.folio, 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token, { ivaPorcentaje: 16, flete: 30 });
+
+    const detalle = entorno.invocar('obtenerDetalleOCApp', r.folio, token);
+
+    return {
+      datos: 'OC creada con solo IVA=16%, luego editada agregando flete=30',
+      esperado: 'el detalle refleja la edición: flete=30, totalConImpuestos=150*1.16+30=204',
+      obtenido: `flete=${detalle.flete}, totalConImpuestos=${detalle.totalConImpuestos}`,
+      pasa: detalle.flete === 30 && detalle.totalConImpuestos === 204,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-023', grupo: 'compras', nombre: 'COM-01: una OC nace PENDIENTE_APROBACION y no se puede recibir hasta aprobarse', metodo: 'EMPÍRICO',
+  objetivo: 'generarOrdenCompraApp debe crear la OC en PENDIENTE_APROBACION (no PENDIENTE) — registrarRecepcionOCApp debe rechazarla hasta que aprobarOrdenCompraApp la mueva a PENDIENTE',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    const estadoInicial = entorno.invocar('obtenerDetalleOCApp', oc.folio, token).estado;
+
+    let bloqueadoRecepcion = false, mensaje = '';
+    try { entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10 }], token); }
+    catch (e) { bloqueadoRecepcion = true; mensaje = e.message; }
+
+    const resultadoAprobar = entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    const estadoTrasAprobar = entorno.invocar('obtenerDetalleOCApp', oc.folio, token).estado;
+
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 10 }], token);
+    const estadoFinal = entorno.invocar('obtenerDetalleOCApp', oc.folio, token).estado;
+
+    return {
+      datos: 'OC recién generada, se intenta recibir antes de aprobar, luego se aprueba y se recibe',
+      esperado: 'estadoInicial=PENDIENTE_APROBACION, recepción bloqueada antes de aprobar, tras aprobar queda PENDIENTE, tras recibir queda RECIBIDA',
+      obtenido: `estadoInicial=${estadoInicial}, bloqueadoRecepcion=${bloqueadoRecepcion} ("${mensaje}"), estadoTrasAprobar=${estadoTrasAprobar} (${resultadoAprobar.estado}), estadoFinal=${estadoFinal}`,
+      pasa: estadoInicial === 'PENDIENTE_APROBACION' && bloqueadoRecepcion && estadoTrasAprobar === 'PENDIENTE' && estadoFinal === 'RECIBIDA',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-024', grupo: 'compras', nombre: 'COM-01: solo ADMIN puede aprobar una OC — ni Almacén ni Supervisor pueden', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarOrdenCompraApp debe exigir rol ADMIN específicamente — a propósito distinto de requerirAccesoAlmacenApp_ (que ya permite generar/recibir a Supervisor), para separar quién genera de quién aprueba',
+  ejecutar() {
+    const { entorno, token: tokenAdmin } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], tokenAdmin);
+
+    const tokenSupervisor = entorno.invocar('crearSesion_', 'supervisor@tagers.com', 'Supervisor', 'SUPERVISOR');
+
+    let bloqueado = false;
+    try { entorno.invocar('aprobarOrdenCompraApp', oc.folio, tokenSupervisor); }
+    catch (e) { bloqueado = true; }
+
+    const estado = entorno.invocar('obtenerDetalleOCApp', oc.folio, tokenAdmin).estado;
+
+    return {
+      datos: 'usuario SUPERVISOR (que sí puede generar/recibir OC) intenta aprobarla',
+      esperado: 'bloqueado, la OC sigue PENDIENTE_APROBACION',
+      obtenido: `bloqueado=${bloqueado}, estado=${estado}`,
+      pasa: bloqueado && estado === 'PENDIENTE_APROBACION',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-025', grupo: 'compras', nombre: 'COM-01: no se puede aprobar dos veces ni una OC que no está pendiente de aprobación', metodo: 'EMPÍRICO',
+  objetivo: 'aprobarOrdenCompraApp debe rechazar la aprobación si el estado actual no es PENDIENTE_APROBACION (ya aprobada, o cualquier otro estado)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+    ], token);
+
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+
+    let bloqueadoSegunda = false;
+    try { entorno.invocar('aprobarOrdenCompraApp', oc.folio, token); }
+    catch (e) { bloqueadoSegunda = true; }
+
+    return {
+      datos: 'OC ya aprobada (PENDIENTE), se intenta aprobar de nuevo',
+      esperado: 'bloqueado',
+      obtenido: bloqueadoSegunda ? 'bloqueado' : 'PERMITIDO',
+      pasa: bloqueadoSegunda,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-026', grupo: 'compras', nombre: 'COM-05: gasto por proveedor agrega el total y ordena de mayor a menor', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerGastoPorProveedorApp debe sumar el Total de cada OC (no CANCELADA) agrupado por proveedor, y ordenar el resultado de mayor a menor gasto',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // PROVEEDOR A: 2 OC (100 + 50 = 150). PROVEEDOR B: 1 OC (30).
+    entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 10 }], token);
+    entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 }], token);
+    entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR B', '', [{ codigo: 'COD-003', producto: 'SAL DE MESA', cantidad: 3, udm: 'KG', precio: 10 }], token);
+
+    const gasto = entorno.invocar('obtenerGastoPorProveedorApp', 6, token);
+
+    return {
+      datos: 'PROVEEDOR A: OC de $100 + OC de $50 ($150 total, 2 órdenes). PROVEEDOR B: OC de $30 (1 orden)',
+      esperado: 'proveedores[0]=PROVEEDOR A ($150, 2 órdenes, promedio $75), proveedores[1]=PROVEEDOR B ($30, 1 orden)',
+      obtenido: JSON.stringify(gasto.proveedores.map(p => ({ p: p.proveedor, t: p.totalGastado, n: p.totalOrdenes, prom: p.promedioPorOrden }))),
+      pasa: gasto.proveedores.length === 2 &&
+        gasto.proveedores[0].proveedor === 'PROVEEDOR A' && gasto.proveedores[0].totalGastado === 150 &&
+        gasto.proveedores[0].totalOrdenes === 2 && gasto.proveedores[0].promedioPorOrden === 75 &&
+        gasto.proveedores[1].proveedor === 'PROVEEDOR B' && gasto.proveedores[1].totalGastado === 30,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-027', grupo: 'compras', nombre: 'COM-05: una OC cancelada no cuenta como gasto', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerGastoPorProveedorApp debe excluir las OC en estado CANCELADA — nunca representaron un gasto real',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const ocViva = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 10 }], token);
+    const ocCancelada = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 }], token);
+    entorno.invocar('cancelarOrdenCompraApp', ocCancelada.folio, token);
+
+    const gasto = entorno.invocar('obtenerGastoPorProveedorApp', 6, token);
+    const proveedorA = gasto.proveedores.find(p => p.proveedor === 'PROVEEDOR A');
+
+    return {
+      datos: `OC viva de $100 (${ocViva.folio}) + OC cancelada de $50 (${ocCancelada.folio}, mismo proveedor)`,
+      esperado: 'totalGastado=100, totalOrdenes=1 (la cancelada no cuenta)',
+      obtenido: proveedorA ? `totalGastado=${proveedorA.totalGastado}, totalOrdenes=${proveedorA.totalOrdenes}` : 'PROVEEDOR A no aparece',
+      pasa: !!proveedorA && proveedorA.totalGastado === 100 && proveedorA.totalOrdenes === 1,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-028', grupo: 'compras', nombre: 'COM-05: una OC fuera del rango de meses no se cuenta, y sí aparece en la serie mensual dentro del rango', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerGastoPorProveedorApp debe filtrar por rangoMeses y agrupar lo que sí cae en la ventana en su serie mensual (mes "yyyy-MM")',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const ocReciente = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 10 }], token);
+    const ocVieja = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR A', '', [{ codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 }], token);
+
+    // Se empuja la OC "vieja" 8 meses atrás directamente en la hoja — igual
+    // que prepararRequisicionEntregada en produccion.test.js mutando la fila
+    // ya escrita, en vez de reinventar el flujo de creación con otra fecha.
+    const filaVieja = entorno.leerHoja('ORDENES_COMPRA').find(f => f[0] === ocVieja.folio);
+    filaVieja[1] = entorno.crearFechaDesdeHoy(-240);
+
+    const gasto = entorno.invocar('obtenerGastoPorProveedorApp', 6, token);
+    const proveedorA = gasto.proveedores.find(p => p.proveedor === 'PROVEEDOR A');
+    const mesHoy = new Date().toISOString().slice(0, 7);
+
+    return {
+      datos: `OC reciente de $100 (${ocReciente.folio}) + OC de $50 movida a hace 240 días (${ocVieja.folio}), rangoMeses=6`,
+      esperado: `totalGastado=100 (solo la reciente), serie mensual con exactamente 1 mes (${mesHoy}) por $100`,
+      obtenido: proveedorA ? `totalGastado=${proveedorA.totalGastado}, series=${JSON.stringify(proveedorA.series)}` : 'PROVEEDOR A no aparece',
+      pasa: !!proveedorA && proveedorA.totalGastado === 100 && proveedorA.series.length === 1 &&
+        proveedorA.series[0].mes === mesHoy && proveedorA.series[0].total === 100,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-029', grupo: 'compras', nombre: 'ARQ-03: calcularCostoPromedioPonderado_ mezcla existencia y entrada, y no inventa nada con existencia/cantidad en 0', metodo: 'EMPÍRICO',
+  objetivo: 'La función pura de costo promedio ponderado debe: (a) mezclar existencia+entrada correctamente, (b) devolver el costo nuevo tal cual cuando no había existencia previa (producto agotado o nuevo), (c) devolver el costo anterior sin cambios cuando la cantidad nueva es 0 — nunca dividir entre cero',
+  ejecutar() {
+    const { entorno } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+
+    const mezcla = entorno.invocar('calcularCostoPromedioPonderado_', 100, 10, 10, 18); // (100×10 + 10×18)/110 = 10.7272...
+    const sinExistenciaPrevia = entorno.invocar('calcularCostoPromedioPonderado_', 0, 10, 5, 20); // producto agotado: el nuevo costo entra directo
+    const sinCantidadNueva = entorno.invocar('calcularCostoPromedioPonderado_', 100, 10, 0, 999); // nada que mezclar: se queda igual
+
+    return {
+      datos: 'mezcla(100,10,10,18) / sinExistenciaPrevia(0,10,5,20) / sinCantidadNueva(100,10,0,999)',
+      esperado: 'mezcla=10.73, sinExistenciaPrevia=20 (el nuevo costo, no un promedio con 0), sinCantidadNueva=10 (sin cambio)',
+      obtenido: `mezcla=${mezcla}, sinExistenciaPrevia=${sinExistenciaPrevia}, sinCantidadNueva=${sinCantidadNueva}`,
+      pasa: mezcla === 10.73 && sinExistenciaPrevia === 20 && sinCantidadNueva === 10,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-030', grupo: 'compras', nombre: 'ARQ-03: primera recepción de un producto sin existencia previa toma el precio de factura tal cual', metodo: 'EMPÍRICO',
+  objetivo: 'Cuando el producto llega a MATRIZ con existencia=0 (nunca se había comprado, o se agotó), el promedio ponderado colapsa al costo de esta entrada — el comportamiento visible debe seguir siendo el mismo que antes de ARQ-03 para este caso',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // COD-005 (fixture estándar): existencia=0.
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-005', producto: 'PRODUCTO SIN UBICACION', cantidad: 10, udm: 'PZ', precio: 15 },
+    ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-005', cantidadRecibida: 10, precioFactura: 22 }], token);
+    const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-005')[17];
+    return {
+      datos: 'COD-005 con existencia=0 antes de recibir, factura llega a $22',
+      esperado: 'MATRIZ.CostoUnitario=22 (sin existencia previa que promediar)',
+      obtenido: `costoMatriz=${costoMatriz}`,
+      pasa: costoMatriz === 22,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-031', grupo: 'compras', nombre: 'ARQ-03: el ajuste manual de precio en Proveedores sigue sobreescribiendo directo, sin promediar', metodo: 'EMPÍRICO',
+  objetivo: 'ajustarProductoProveedorApp es una CORRECCIÓN del costo maestro (p. ej. se había capturado el precio de una caja completa por error), no una entrada de inventario — debe seguir llamando a procesarCambioPrecioProducto_ directo, nunca pasar por el promedio ponderado (que perpetuaría el precio incorrecto)',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    // COD-001: existencia=100, costo=10. Si esto promediara, el resultado
+    // sería (100×10 + ?×50)/... — pero un ajuste manual no tiene "cantidad",
+    // así que promediar aquí no tendría ni sentido matemático: debe quedar
+    // exactamente en 50, el valor capturado.
+    entorno.invocar('ajustarProductoProveedorApp', 'COD-001', { precioNuevo: 50 }, token);
+    const costoMatriz = entorno.leerHoja('MATRIZ').find(f => f[4] === 'COD-001')[17];
+    return {
+      datos: 'COD-001 con costo=10 y existencia=100, se corrige manualmente a $50 desde Proveedores',
+      esperado: 'MATRIZ.CostoUnitario=50 exacto (no un promedio con el costo viejo)',
+      obtenido: `costoMatriz=${costoMatriz}`,
+      pasa: costoMatriz === 50,
+    };
+  },
+});
+
+function generarOcConImpuestos_(entorno, token){
+  // subtotal=150, descuento=20, IVA=16%, flete=50 -> totalConImpuestos=200.8
+  // (mismo caso que COM-020) — el saldo pendiente de pago SIEMPRE debe
+  // calcularse contra este total real, nunca contra el subtotal de 150.
+  return entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+    { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 10, udm: 'KG', precio: 15 },
+  ], token, { descuento: 20, ivaPorcentaje: 16, flete: 50 });
+}
+
+prueba({
+  id: 'COM-201', grupo: 'compras', nombre: 'COM-201: registrar un pago calcula el saldo contra el TOTAL CON IMPUESTOS, no el subtotal', metodo: 'EMPÍRICO',
+  objetivo: 'Con descuento/IVA/flete capturados (totalConImpuestos=200.8, no el subtotal de 150), un abono de 100 debe dejar saldoPendiente=100.8 y estadoPago=PARCIAL',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+
+    const resultado = entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 100, 'Transferencia', 'Anticipo', token);
+
+    return {
+      datos: `OC ${r.folio} con totalConImpuestos=200.8 (subtotal=150 + IVA/descuento/flete), abono de $100`,
+      esperado: 'montoPagado=100, saldoPendiente=100.8 (200.8-100, NO 50=150-100), estadoPago=PARCIAL',
+      obtenido: `montoPagado=${resultado.montoPagado}, saldoPendiente=${resultado.saldoPendiente}, estadoPago=${resultado.estadoPago}`,
+      pasa: resultado.montoPagado === 100 && resultado.saldoPendiente === 100.8 && resultado.estadoPago === 'PARCIAL',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-202', grupo: 'compras', nombre: 'COM-201: dos abonos parciales se acumulan hasta liquidar la orden (PAGADA)', metodo: 'EMPÍRICO',
+  objetivo: 'Un libro de pagos, no un campo único — dos abonos de la misma OC deben sumarse, y al llegar al total la orden queda PAGADA',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+
+    entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 100.8, 'Transferencia', 'Anticipo', token);
+    const segundo = entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 100, 'Efectivo', 'Liquidación', token);
+
+    const consulta = entorno.invocar('obtenerPagosOrdenCompraApp', r.folio, token);
+
+    return {
+      datos: 'OC con totalConImpuestos=200.8, abonos de 100.8 y 100 (suman exactamente el total)',
+      esperado: 'tras el 2º abono: montoPagado=200.8, saldoPendiente=0, estadoPago=PAGADA; el historial trae los 2 pagos, más reciente primero',
+      obtenido: `montoPagado=${segundo.montoPagado}, saldoPendiente=${segundo.saldoPendiente}, estadoPago=${segundo.estadoPago}, ` +
+        `historial=${consulta.pagos.length} pagos, primero.observaciones="${consulta.pagos[0].observaciones}"`,
+      pasa: segundo.montoPagado === 200.8 && segundo.saldoPendiente === 0 && segundo.estadoPago === 'PAGADA' &&
+        consulta.pagos.length === 2 && consulta.pagos[0].observaciones === 'Liquidación',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-203', grupo: 'compras', nombre: 'COM-201: no se puede registrar un pago que exceda el saldo pendiente', metodo: 'EMPÍRICO',
+  objetivo: 'Un monto mayor al saldo pendiente (más allá del margen de un centavo por redondeo) debe rechazarse, sin escribir nada en PAGOS_OC',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+
+    let error = '';
+    try { entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 500, 'Transferencia', '', token); }
+    catch (e) { error = e.message; }
+
+    const consulta = entorno.invocar('obtenerPagosOrdenCompraApp', r.folio, token);
+
+    return {
+      datos: 'OC con saldo pendiente de 200.8, se intenta pagar 500',
+      esperado: 'lanza error explícito mencionando el saldo, y no queda ningún pago registrado',
+      obtenido: `error="${error}", pagosRegistrados=${consulta.pagos.length}`,
+      pasa: !!error && /saldo pendiente/i.test(error) && consulta.pagos.length === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-204', grupo: 'compras', nombre: 'COM-201: solo ADMIN puede registrar un pago — Almacén/Supervisor no', metodo: 'EMPÍRICO',
+  objetivo: 'Es dinero, mismo criterio que aprobarOrdenCompraApp — ni SUPERVISOR (que sí puede generar/recibir OC) puede registrar un pago',
+  ejecutar() {
+    const { entorno, token: tokenAdmin } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, tokenAdmin);
+
+    const tokenSup = entorno.invocar('crearSesion_', 'supervisor@tagers.com', 'Sup', 'SUPERVISOR');
+    let error = '';
+    try { entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 50, '', '', tokenSup); }
+    catch (e) { error = e.message; }
+
+    return {
+      datos: 'token de SUPERVISOR intentando registrar un pago',
+      esperado: 'bloqueado con error explícito',
+      obtenido: `error="${error}"`,
+      pasa: !!error,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-205', grupo: 'compras', nombre: 'COM-201: no se puede pagar una OC cancelada', metodo: 'EMPÍRICO',
+  objetivo: 'Una orden CANCELADA no debe aceptar pagos nuevos',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const r = generarOcConImpuestos_(entorno, token);
+    entorno.invocar('aprobarOrdenCompraApp', r.folio, token);
+    entorno.invocar('cancelarOrdenCompraApp', r.folio, token);
+
+    let error = '';
+    try { entorno.invocar('registrarPagoOrdenCompraApp', r.folio, 50, '', '', token); }
+    catch (e) { error = e.message; }
+
+    return {
+      datos: `OC ${r.folio} cancelada`,
+      esperado: 'lanza error explícito mencionando que está cancelada',
+      obtenido: `error="${error}"`,
+      pasa: !!error && /cancelada/i.test(error),
+    };
+  },
+});
+
+prueba({
+  id: 'COM-206', grupo: 'compras', nombre: 'COM-201: obtenerOrdenesCompraApp incluye el estado de pago de cada orden, sin recalcularlo mal en la lista', metodo: 'EMPÍRICO',
+  objetivo: 'La lista de Órdenes de Compra debe traer montoPagado/saldoPendiente/estadoPago consistentes con obtenerPagosOrdenCompraApp para la misma orden, y PENDIENTE (no PAGADA/PARCIAL) para una orden sin ningún pago',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'Admin', rol: 'ADMIN' });
+    const pagada = generarOcConImpuestos_(entorno, token);
+    entorno.invocar('registrarPagoOrdenCompraApp', pagada.folio, 100, '', '', token);
+
+    const sinPagos = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-002', producto: 'AZUCAR ESTANDAR', cantidad: 5, udm: 'KG', precio: 10 },
+    ], token);
+
+    const lista = entorno.invocar('obtenerOrdenesCompraApp', token);
+    const filaPagada = lista.find(o => o.oc === pagada.folio);
+    const filaSinPagos = lista.find(o => o.oc === sinPagos.folio);
+
+    return {
+      datos: `${pagada.folio} con un abono de 100 sobre 200.8; ${sinPagos.folio} sin ningún pago (subtotal=50)`,
+      esperado: `${pagada.folio}: estadoPago=PARCIAL, saldoPendiente=100.8. ${sinPagos.folio}: estadoPago=PENDIENTE, saldoPendiente=50, montoPagado=0`,
+      obtenido: `pagada: estado=${filaPagada.estadoPago}, saldo=${filaPagada.saldoPendiente} | sinPagos: estado=${filaSinPagos.estadoPago}, saldo=${filaSinPagos.saldoPendiente}, pagado=${filaSinPagos.montoPagado}`,
+      pasa: filaPagada.estadoPago === 'PARCIAL' && filaPagada.saldoPendiente === 100.8 &&
+        filaSinPagos.estadoPago === 'PENDIENTE' && filaSinPagos.saldoPendiente === 50 && filaSinPagos.montoPagado === 0,
+    };
+  },
+});
+
+prueba({
+  id: 'COM-207', grupo: 'compras', nombre: 'No se puede cancelar una OC con recepción parcial', metodo: 'EMPÍRICO',
+  objetivo: 'cancelarOrdenCompraApp debe rechazar cancelar una OC en estado PARCIAL — ya tiene mercancía real recibida y aplicada a existencia, cancelarla dejaría un registro contradictorio',
+  ejecutar() {
+    const { entorno, token } = entornoConLogin({ correo: 'admin@tagers.com', nombre: 'A', rol: 'ADMIN' });
+    const oc = entorno.invocar('generarOrdenCompraApp', 'PROVEEDOR GENERICO', '', [
+      { codigo: 'COD-001', producto: 'HARINA DE TRIGO', cantidad: 20, udm: 'KG', precio: 15 },
+    ], token);
+    entorno.invocar('aprobarOrdenCompraApp', oc.folio, token);
+    entorno.invocar('registrarRecepcionOCApp', oc.folio, [{ codigo: 'COD-001', cantidadRecibida: 12 }], token);
+    let bloqueado = false, mensaje = '';
+    try { entorno.invocar('cancelarOrdenCompraApp', oc.folio, token); } catch (e) { bloqueado = true; mensaje = e.message; }
+    const detalle = entorno.invocar('obtenerDetalleOCApp', oc.folio, token);
+    return {
+      datos: 'pedido=20, recibido=12 (PARCIAL), intenta cancelar',
+      esperado: 'bloqueado, mensaje menciona la recepción parcial, la orden sigue en PARCIAL (no queda CANCELADA)',
+      obtenido: `bloqueado=${bloqueado}, mensaje="${mensaje}", estado=${detalle.estado}`,
+      pasa: bloqueado && /parcial/i.test(mensaje) && detalle.estado === 'PARCIAL',
     };
   },
 });

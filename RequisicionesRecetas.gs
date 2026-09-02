@@ -87,9 +87,12 @@ function crearRequisicionRecetaApp(observaciones, items, token){
 
 }
 
-function obtenerTipoRequisicionApp(folio, token){
-
-  requerirSesionActivaApp_(token);
+// Versión interna sin guard propio — usada también por INV-06 (reserva de
+// Requisiciones de Área) para saber si un folio es de receta ANTES de
+// tocar la reserva de MATRIZ/EXISTENCIAS_SUCURSAL: el "código" de una fila
+// de receta es un código de receta (REC-0001), nunca un código de MATRIZ,
+// así que esa lógica debe saltarse por completo para estos folios.
+function obtenerTipoRequisicion_(folio){
 
   const detalle = obtenerHojaDetalleRequisiciones_();
   if(detalle.getLastRow() < 2) return "PRODUCTO";
@@ -106,6 +109,11 @@ function obtenerTipoRequisicionApp(folio, token){
 
   return "PRODUCTO";
 
+}
+
+function obtenerTipoRequisicionApp(folio, token){
+  requerirSesionActivaApp_(token);
+  return obtenerTipoRequisicion_(folio);
 }
 
 // Versión interna sin guard propio — token sigue siendo opcional aquí,
@@ -180,13 +188,17 @@ function buscarProductoEnMatrizPorNombre_(nombre){
   const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
   if(hoja.getLastRow() < 2) return null;
 
-  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 11).getValues(); // A..K
+  // PROD-01: se amplía de 11 a 18 columnas (hasta R=Costo Unitario) para
+  // que el costeo de recetas (Recetas.gs) pueda reusar esta misma
+  // búsqueda por nombre sin duplicar la lectura de MATRIZ — costoUnitario
+  // es un campo aditivo, ningún llamador existente lo leía antes.
+  const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, 18).getValues(); // A..R
 
   for(let i=0;i<datos.length;i++){
     const ubicacion = String(datos[i][9]||"").trim();
     if(ubicacionVacia_(ubicacion)) continue;
     if(normalizarTexto_(datos[i][0]) === buscado){
-      return { codigo: datos[i][4], producto: datos[i][0], udm: datos[i][1], existencia: Number(datos[i][10])||0 };
+      return { codigo: datos[i][4], producto: datos[i][0], udm: datos[i][1], existencia: Number(datos[i][10])||0, costoUnitario: Number(datos[i][17])||0 };
     }
   }
 
@@ -195,8 +207,18 @@ function buscarProductoEnMatrizPorNombre_(nombre){
 }
 
 function obtenerCalculoIngredientesRequisicionApp(folio, token){
-
   requerirSesionActivaApp_(token);
+  return obtenerCalculoIngredientesRequisicionApp_(folio, token);
+}
+
+// Versión interna sin sesión — la usa construirHtmlRequisicionReceta_ (PDF),
+// que corre DESPUÉS de que confirmarEntregaRequisicionRecetaApp/
+// obtenerPDFRequisicionRecetaApp ya validaron acceso de Almacén; llamarla sin
+// token (como hacía antes la función pública, causando el error "Tu sesión
+// expiró" en cualquier PDF de receta) se evita del todo. token sigue siendo
+// opcional aquí a propósito, igual que en obtenerDetalleRequisicionRecetaApp_:
+// si viene (llamada pública), se preserva el filtro por área.
+function obtenerCalculoIngredientesRequisicionApp_(folio, token){
 
   const detalleReceta = obtenerDetalleRequisicionRecetaApp_(folio, token);
 
@@ -322,7 +344,7 @@ function confirmarEntregaRequisicionRecetaApp(folio, entregas, token){
 
 function construirHtmlRequisicionReceta_(folio){
 
-  const datos = obtenerCalculoIngredientesRequisicionApp(folio);
+  const datos = obtenerCalculoIngredientesRequisicionApp_(folio);
 
   const filasRecetas = datos.recetas.map(r => `
     <tr>

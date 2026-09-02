@@ -204,6 +204,21 @@ function obtenerAccionesRequeridasApp(token){
     });
   }
 
+  // COM-01: desde que la OC nace en PENDIENTE_APROBACION (antes nacía
+  // directo en PENDIENTE, que es el mismo estado que ya "espera
+  // recepción" abajo), una OC sin aprobar es una categoría de atención
+  // propia — de lo contrario, quedaría invisible en este panel hasta que
+  // alguien la aprobara, aunque llevara días esperando.
+  const ocPorAprobar = obtenerOrdenesCompraApp(token).filter(o => o.estado === "PENDIENTE_APROBACION");
+  if(ocPorAprobar.length){
+    atencion.push({
+      tipo: "ordenes-compra-por-aprobar", cantidad: ocPorAprobar.length,
+      titulo: ocPorAprobar.length + " orden(es) de compra sin aprobar",
+      detalle: "Esperando aprobación de un administrador",
+      accion: { vista: "ordenes-compra" }
+    });
+  }
+
   const ocPendientes = obtenerOrdenesCompraApp(token).filter(o => o.estado === "PENDIENTE" || o.estado === "PARCIAL");
   if(ocPendientes.length){
     atencion.push({

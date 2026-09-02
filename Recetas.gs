@@ -286,3 +286,35 @@ function cambiarEstadoRecetaApp(nombreReceta, nuevoEstado, token){
   return { ok: true, estado: estado };
 
 }
+
+// ---------------- PROD-01: costeo de receta ----------------
+// Suma costoUnitario (MATRIZ, columna R) de cada ingrediente, convertido
+// a la UDM del producto en catálogo — reutiliza buscarProductoEnMatrizPorNombre_
+// y factorConversionUDM_, que ya usa obtenerCalculoIngredientesRequisicionApp_
+// (RequisicionesRecetas.gs), en vez de duplicar esa búsqueda/conversión.
+function calcularCostoRecetaApp_(nombreReceta){
+
+  const receta = obtenerDetalleRecetaApp_(nombreReceta);
+  let costoTotal = 0;
+  let ingredientesSinCosto = 0;
+
+  receta.ingredientes.forEach(function(ing){
+    const producto = buscarProductoEnMatrizPorNombre_(ing.nombre);
+    if(!producto){ ingredientesSinCosto++; return; }
+    const factor = factorConversionUDM_(ing.udm, producto.udm);
+    if(factor === null){ ingredientesSinCosto++; return; }
+    costoTotal += (ing.cantidad * factor) * producto.costoUnitario;
+  });
+
+  return {
+    costoTotal: Math.round(costoTotal * 100) / 100,
+    ingredientesSinCosto: ingredientesSinCosto,
+    totalIngredientes: receta.ingredientes.length
+  };
+
+}
+
+function obtenerCostoRecetaApp(nombreReceta, token){
+  requerirSesionActivaApp_(token);
+  return calcularCostoRecetaApp_(nombreReceta);
+}

@@ -378,3 +378,260 @@ prueba({
     };
   },
 });
+
+// Hallazgo de la auditoría de rendimiento (ago-2026): estas 10 funciones se
+// escaparon del barrido de Fase 6 porque ese barrido buscó específicamente
+// el sufijo "...App" — estas nunca lo tuvieron (7 viven en 📁 App.gs.gs y
+// Código.gs pero las llama activamente index.html; las otras 3 son de
+// Código.gs y las llama MapaAlmacenV3.html, página que además nunca tuvo
+// NINGÚN control de sesión propio — se detectaron auditando manualmente
+// cada llamada de google.script.run que NO terminaba en "App(" en ambos
+// archivos HTML activos.
+const FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_ = [
+  // 📁 App.gs.gs — index.html
+  { nombre: 'obtenerInventario', args: [] },
+  { nombre: 'obtenerKardex', args: [200] },
+  { nombre: 'obtenerProductosPorEstadoStock', args: ['critico'] },
+  // Código.gs — index.html (pantalla "Capturar/Cerrar conteo", "Aprobar discrepancias")
+  { nombre: 'buscarCodigoConteo', args: ['COD-001', 'CC-1'] },
+  { nombre: 'obtenerSiguientePendiente', args: ['CC-1'] },
+  { nombre: 'obtenerFoliosAbiertos', args: [] },
+  { nombre: 'obtenerDiscrepanciasPendientes', args: [] },
+  // Código.gs — MapaAlmacenV3.html (?page=mapa, sin login propio hasta esta corrección)
+  { nombre: 'obtenerResumenRacks', args: [] },
+  { nombre: 'buscarProducto', args: ['harina'] },
+  { nombre: 'obtenerUbicacionesRack', args: ['A'] },
+];
+
+prueba({
+  id: 'SEG-020', grupo: 'seguridad', nombre: 'Auditoría de rendimiento — 10 funciones sin sufijo "App" que se escaparon de Fase 6 ahora exigen sesión', metodo: 'EMPÍRICO',
+  objetivo: 'Cada función listada debe rechazar una llamada sin token válido — incluye las 3 que sirven al Mapa del Almacén (?page=mapa), página que antes de esta corrección no validaba sesión en NINGUNA de sus funciones',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const sinBloquear = [];
+
+    FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_.forEach(({ nombre, args }) => {
+      let bloqueado = false;
+      try {
+        entorno.invocar(nombre, ...args, undefined);
+      } catch (e) {
+        bloqueado = /sesión/i.test(e.message);
+      }
+      if (!bloqueado) sinBloquear.push(nombre);
+    });
+
+    return {
+      datos: FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_.length + ' funciones probadas sin token (7 de index.html + 3 de MapaAlmacenV3.html)',
+      esperado: 'las ' + FUNCIONES_CORREGIDAS_AUDITORIA_RENDIMIENTO_.length + ' rechazan la llamada con el mensaje de sesión inválida',
+      obtenido: sinBloquear.length ? 'NO bloquearon: ' + sinBloquear.join(', ') : 'todas bloquearon correctamente',
+      pasa: sinBloquear.length === 0,
+    };
+  },
+});
+
+/*
+ * AUD-01 (auditoría comparativa vs. MarketMan): login/logout no dejaban
+ * NINGÚN rastro en AUDITORIA, y no había límite de intentos fallidos —
+ * relevante porque el despliegue es access:ANYONE. Estas pruebas cubren
+ * el registro de éxito/fallo/logout y el bloqueo temporal tras repetidos
+ * intentos fallidos.
+ */
+
+function entornoConPassword_(correo, password) {
+  const entorno = crearEntorno({ hojas: hojasBase() });
+  const fila = entorno.leerHoja('USUARIOS').find(f => f[0] === correo);
+  fila[2] = password; // texto plano — validarUsuario lo migra a hash en el primer login exitoso
+  return entorno;
+}
+
+prueba({
+  id: 'SEG-021', grupo: 'seguridad', nombre: 'AUD-01: login exitoso queda en AUDITORIA', metodo: 'EMPÍRICO',
+  objetivo: 'validarUsuario debe registrar una fila en AUDITORIA (módulo SEGURIDAD, acción LOGIN EXITOSO) cuando las credenciales son correctas',
+  ejecutar() {
+    const entorno = entornoConPassword_('operador@tagers.com', 'clave123');
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    const res = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave123');
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const filaNueva = auditoria[auditoria.length - 1];
+    return {
+      datos: 'login correcto de operador@tagers.com',
+      esperado: 'ok=true con token, +1 fila en AUDITORIA con acción LOGIN EXITOSO',
+      obtenido: `ok=${res.ok}, tieneToken=${!!res.token}, filasNuevas=${auditoria.length - auditoriaAntes}, accion=${filaNueva[5]}, modulo=${filaNueva[4]}`,
+      pasa: res.ok === true && !!res.token && (auditoria.length - auditoriaAntes) === 1 && filaNueva[5] === 'LOGIN EXITOSO' && filaNueva[4] === 'SEGURIDAD',
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-022', grupo: 'seguridad', nombre: 'AUD-01: login fallido queda en AUDITORIA y no crea sesión', metodo: 'EMPÍRICO',
+  objetivo: 'validarUsuario debe registrar una fila en AUDITORIA (acción LOGIN FALLIDO) cuando la contraseña no coincide, sin regresar token',
+  ejecutar() {
+    const entorno = entornoConPassword_('operador@tagers.com', 'clave123');
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    const res = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave-equivocada');
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const filaNueva = auditoria[auditoria.length - 1];
+    return {
+      datos: 'contraseña incorrecta para operador@tagers.com',
+      esperado: 'ok=false sin token, +1 fila en AUDITORIA con acción LOGIN FALLIDO',
+      obtenido: `ok=${res.ok}, tieneToken=${!!res.token}, filasNuevas=${auditoria.length - auditoriaAntes}, accion=${filaNueva[5]}`,
+      pasa: res.ok === false && !res.token && (auditoria.length - auditoriaAntes) === 1 && filaNueva[5] === 'LOGIN FALLIDO',
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-023', grupo: 'seguridad', nombre: 'AUD-01: 5 intentos fallidos bloquean el 6º intento aunque la contraseña sea correcta', metodo: 'EMPÍRICO',
+  objetivo: 'Tras UMBRAL_INTENTOS_LOGIN_ (5) intentos fallidos seguidos, validarUsuario debe rechazar cualquier intento siguiente (incluso con la contraseña correcta) hasta que pase la ventana de bloqueo',
+  ejecutar() {
+    const entorno = entornoConPassword_('operador@tagers.com', 'clave123');
+
+    for (let i = 0; i < 5; i++) {
+      entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave-equivocada');
+    }
+
+    const intentoConClaveCorrecta = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave123');
+
+    return {
+      datos: '5 intentos fallidos seguidos, luego un 6º intento con la contraseña CORRECTA',
+      esperado: 'el 6º intento también se rechaza (bloqueado=true), aunque la contraseña sea correcta',
+      obtenido: `ok=${intentoConClaveCorrecta.ok}, bloqueado=${intentoConClaveCorrecta.bloqueado}, mensaje="${intentoConClaveCorrecta.mensaje || ''}"`,
+      pasa: intentoConClaveCorrecta.ok === false && intentoConClaveCorrecta.bloqueado === true,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-029', grupo: 'seguridad', nombre: 'Auditoría de arquitectura: un contador de intentos corrupto se autocorrige en vez de desbloquear en silencio', metodo: 'EMPÍRICO',
+  objetivo: 'Si el valor guardado en PropertiesService para el contador de intentos de login no es JSON válido (corrupción), obtenerEstadoIntentosLogin_ debe: (1) no tronar, (2) tratarlo como 0 intentos (única opción segura sin poder reconstruir el valor real), (3) borrar la clave corrupta para no repetir el fallo, y (4) dejar constancia en AUDITORIA — antes fallaba exactamente igual pero en silencio, sin el paso 3 ni el 4',
+  ejecutar() {
+    const entorno = entornoConPassword_('operador@tagers.com', 'clave123');
+    const clave = entorno.invocar('obtenerClaveIntentosLogin_', 'operador@tagers.com');
+    entorno.propiedades.getScriptProperties().setProperty(clave, '{esto no es json valido');
+
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    const res = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave123');
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const filasNuevas = auditoria.slice(auditoriaAntes);
+    const registroCorrupcion = filasNuevas.find(f => f[5] === 'ESTADO DE INTENTOS CORRUPTO');
+    const claveSigueGuardada = entorno.propiedades.getScriptProperties().getProperty(clave);
+
+    return {
+      datos: 'PropertiesService["' + clave + '"] = "{esto no es json valido" (corrupto), luego un login con la contraseña correcta',
+      esperado: 'el login funciona con normalidad (ok=true, no bloqueado), la clave corrupta se borra, y alguna fila nueva en AUDITORIA queda con acción "ESTADO DE INTENTOS CORRUPTO"',
+      obtenido: `ok=${res.ok}, claveSigueGuardada=${!!claveSigueGuardada}, filasNuevasAuditoria=${filasNuevas.length}, huboRegistroCorrupcion=${!!registroCorrupcion}`,
+      pasa: res.ok === true && !claveSigueGuardada && !!registroCorrupcion,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-024', grupo: 'seguridad', nombre: 'AUD-01: un login exitoso limpia el contador de intentos fallidos previos', metodo: 'EMPÍRICO',
+  objetivo: 'Si el usuario acierta la contraseña ANTES de llegar al umbral de bloqueo, el contador de fallos se reinicia — fallos viejos no se acumulan contra un futuro error',
+  ejecutar() {
+    const entorno = entornoConPassword_('operador@tagers.com', 'clave123');
+
+    entorno.invocar('validarUsuario', 'operador@tagers.com', 'mal-1');
+    entorno.invocar('validarUsuario', 'operador@tagers.com', 'mal-2');
+    entorno.invocar('validarUsuario', 'operador@tagers.com', 'mal-3'); // 3 de 5 — todavía no bloquea
+    const exitoso = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave123'); // acierta, limpia el contador
+
+    // 3 fallos más — si el contador NO se hubiera limpiado, este sería el 6º fallo acumulado y bloquearía.
+    entorno.invocar('validarUsuario', 'operador@tagers.com', 'mal-4');
+    entorno.invocar('validarUsuario', 'operador@tagers.com', 'mal-5');
+    entorno.invocar('validarUsuario', 'operador@tagers.com', 'mal-6');
+    const siguienteCorrecto = entorno.invocar('validarUsuario', 'operador@tagers.com', 'clave123');
+
+    return {
+      datos: '3 fallos, 1 acierto, 3 fallos más, 1 acierto — nunca llega a 5 fallos SEGUIDOS',
+      esperado: 'ambos aciertos tienen éxito (el contador se reinicia en cada login exitoso, no se acumula entre rachas)',
+      obtenido: `primerAcierto.ok=${exitoso.ok}, segundoAcierto.ok=${siguienteCorrecto.ok}, segundoAcierto.bloqueado=${siguienteCorrecto.bloqueado}`,
+      pasa: exitoso.ok === true && siguienteCorrecto.ok === true && !siguienteCorrecto.bloqueado,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-025', grupo: 'seguridad', nombre: 'AUD-01: logout queda en AUDITORIA y el token deja de ser válido', metodo: 'EMPÍRICO',
+  objetivo: 'cerrarSesionApp debe registrar una fila en AUDITORIA (acción LOGOUT) con el usuario correcto ANTES de borrar el token, y la sesión debe quedar inválida después',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+
+    const auditoriaAntes = entorno.leerHoja('AUDITORIA').length;
+    entorno.invocar('cerrarSesionApp', token);
+    const auditoria = entorno.leerHoja('AUDITORIA');
+    const filaNueva = auditoria[auditoria.length - 1];
+
+    const sesionValidaDespues = entorno.invocar('validarSesionApp', token);
+
+    return {
+      datos: 'sesión de Admin Prueba, se cierra con cerrarSesionApp',
+      esperado: '+1 fila en AUDITORIA con acción LOGOUT y usuario=Admin Prueba; el token ya no valida sesión',
+      obtenido: `filasNuevas=${auditoria.length - auditoriaAntes}, accion=${filaNueva[5]}, usuario=${filaNueva[3]}, sesionValidaDespues=${sesionValidaDespues.ok}`,
+      pasa: (auditoria.length - auditoriaAntes) === 1 && filaNueva[5] === 'LOGOUT' && filaNueva[3] === 'Admin Prueba' && sesionValidaDespues.ok === false,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-026', grupo: 'seguridad', nombre: 'SEG-02: iniciar sesión de nuevo invalida la sesión anterior del mismo usuario', metodo: 'EMPÍRICO',
+  objetivo: 'crearSesion_ debe implementar sesión única por usuario — un segundo login del mismo correo (otro dispositivo/pestaña) debe dejar el primer token inválido de inmediato',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenViejo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+    const validaAntes = entorno.invocar('validarSesionApp', tokenViejo);
+
+    const tokenNuevo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+
+    const validaViejoDespues = entorno.invocar('validarSesionApp', tokenViejo);
+    const validaNuevo = entorno.invocar('validarSesionApp', tokenNuevo);
+
+    return {
+      datos: 'admin@tagers.com inicia sesión, y luego vuelve a iniciar sesión (otro dispositivo)',
+      esperado: 'el token viejo era válido antes, deja de serlo después del segundo login; el token nuevo sí es válido',
+      obtenido: `validaAntes=${validaAntes.ok}, validaViejoDespues=${validaViejoDespues.ok}, validaNuevo=${validaNuevo.ok}, mismoToken=${tokenViejo === tokenNuevo}`,
+      pasa: validaAntes.ok === true && validaViejoDespues.ok === false && validaNuevo.ok === true && tokenViejo !== tokenNuevo,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-027', grupo: 'seguridad', nombre: 'SEG-02: la sesión única es por usuario, no global', metodo: 'EMPÍRICO',
+  objetivo: 'Iniciar sesión con un correo NO debe afectar la sesión activa de otro correo distinto',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenAdmin = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+    entorno.invocar('crearSesion_', 'supervisor@tagers.com', 'Supervisor Prueba', 'SUPERVISOR');
+
+    const validaAdmin = entorno.invocar('validarSesionApp', tokenAdmin);
+
+    return {
+      datos: 'admin@tagers.com inicia sesión, luego supervisor@tagers.com inicia sesión (correo distinto)',
+      esperado: 'la sesión de admin@tagers.com sigue siendo válida — la restricción es por usuario, no global',
+      obtenido: `validaAdmin=${validaAdmin.ok}`,
+      pasa: validaAdmin.ok === true,
+    };
+  },
+});
+
+prueba({
+  id: 'SEG-028', grupo: 'seguridad', nombre: 'SEG-02: cerrar sesión no borra el índice de una sesión más nueva del mismo usuario', metodo: 'EMPÍRICO',
+  objetivo: 'Si el token viejo ya fue invalidado por un segundo login (SEG-02) y luego alguien llama cerrarSesionApp con ese token viejo, no debe borrar por accidente el índice que ya apunta a la sesión nueva',
+  ejecutar() {
+    const entorno = crearEntorno({ hojas: hojasBase() });
+    const tokenViejo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+    const tokenNuevo = entorno.invocar('crearSesion_', 'admin@tagers.com', 'Admin Prueba', 'ADMIN');
+
+    entorno.invocar('cerrarSesionApp', tokenViejo); // token viejo, ya inválido por SEG-02
+
+    const validaNuevoDespues = entorno.invocar('validarSesionApp', tokenNuevo);
+
+    return {
+      datos: 'token viejo (ya invalidado por el segundo login) se manda a cerrarSesionApp',
+      esperado: 'la sesión nueva sigue siendo válida — cerrarSesionApp con un token ya inválido no debe afectarla',
+      obtenido: `validaNuevoDespues=${validaNuevoDespues.ok}`,
+      pasa: validaNuevoDespues.ok === true,
+    };
+  },
+});

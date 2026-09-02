@@ -725,3 +725,53 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'RS-035', grupo: 'requisiciones-sucursal', nombre: 'SEG-01: un OPERADOR con Sucursal="TODAS" no puede aprobar/surtir/despachar requisiciones de sucursal', metodo: 'EMPÍRICO',
+  objetivo: 'Auditoría comparativa vs. MarketMan — antes, el único filtro de aprobarLineaRequisicionSucursalApp/surtirRequisicionSucursalApp/despacharRequisicionSucursalApp era acceso.esTodasLasSucursales (rol ADMIN, O el atributo Sucursal="TODAS" capturado a mano en USUARIOS), sin revisar el rol. Un OPERADOR o CONSULTA con Sucursal="TODAS" por error de captura podía aprobar/despachar cualquier requisición de cualquier sucursal. Las 3 acciones deben quedar bloqueadas para ese usuario aunque su sucursal sea TODAS',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+
+    // Usuario capturado con Sucursal="TODAS" pero rol OPERADOR (no ADMIN ni
+    // SUPERVISOR) — antes de SEG-01, obtenerAccesoSucursalApp ya lo trataba
+    // como esTodasLasSucursales=true por el simple hecho de tener esa
+    // sucursal, sin importar el rol.
+    entorno.leerHoja('USUARIOS').push(['operador.todas@tagers.com', 'Operador Todas', '', 'OPERADOR', 'ACTIVO', '', 'TODAS']);
+    const tokenOperadorTodas = entorno.invocar('crearSesion_', 'operador.todas@tagers.com', 'Operador Todas', 'OPERADOR');
+
+    let aprobarBloqueado = false, surtirBloqueado = false, despacharBloqueado = false;
+    try { entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadAprobada: 10 }], tokenOperadorTodas); }
+    catch (e) { aprobarBloqueado = /rol/i.test(e.message); }
+    try { entorno.invocar('surtirRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadSurtida: 10 }], tokenOperadorTodas); }
+    catch (e) { surtirBloqueado = /rol/i.test(e.message); }
+    try { entorno.invocar('despacharRequisicionSucursalApp', req.folio, tokenOperadorTodas); }
+    catch (e) { despacharBloqueado = /rol/i.test(e.message); }
+
+    return {
+      datos: `${req.folio} pendiente, usuario con rol OPERADOR y Sucursal="TODAS" intenta aprobar, surtir y despachar`,
+      esperado: 'las 3 acciones se bloquean con un error que menciona el rol',
+      obtenido: `aprobarBloqueado=${aprobarBloqueado}, surtirBloqueado=${surtirBloqueado}, despacharBloqueado=${despacharBloqueado}`,
+      pasa: aprobarBloqueado && surtirBloqueado && despacharBloqueado,
+    };
+  },
+});
+
+prueba({
+  id: 'RS-036', grupo: 'requisiciones-sucursal', nombre: 'SEG-01: un SUPERVISOR corporativo (Sucursal="TODAS") SÍ puede aprobar — el fix no bloquea el caso legítimo', metodo: 'EMPÍRICO',
+  objetivo: 'Control positivo de RS-035: la validación de rol nueva debe seguir permitiendo ADMIN y SUPERVISOR con Sucursal="TODAS" (ej. el usuario corporativo ya definido en el fixture base), para confirmar que SEG-01 no restringe de más',
+  ejecutar() {
+    const { entorno, token: tokenS02 } = entornoConLogin({ correo: 'sucursal2@tagers.com', nombre: 'Operador S02', rol: 'OPERADOR' });
+    const req = entorno.invocar('crearRequisicionSucursalApp', '', [{ codigo: 'COD-001', producto: 'HARINA DE TRIGO', unidad: 'KG', solicitado: 20 }], tokenS02);
+    const tokenCorporativo = entorno.invocar('crearSesion_', 'corporativo@tagers.com', 'Corporativo', 'SUPERVISOR');
+
+    const resultado = entorno.invocar('aprobarLineaRequisicionSucursalApp', req.folio, [{ codigo: 'COD-001', cantidadAprobada: 10 }], tokenCorporativo);
+
+    return {
+      datos: `${req.folio} pendiente, usuario corporativo@tagers.com (rol SUPERVISOR, Sucursal="TODAS" ya en el fixture base) aprueba 10 de 20`,
+      esperado: 'la aprobación se permite y queda APROBADA_PARCIAL',
+      obtenido: `estado=${resultado.estado}, lineasAprobadas=${resultado.lineasAprobadas}`,
+      pasa: resultado.estado === 'APROBADA_PARCIAL' && resultado.lineasAprobadas === 1,
+    };
+  },
+});
