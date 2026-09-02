@@ -449,6 +449,11 @@ input,select,textarea{ font-family:inherit; }
 /* Filtro activo (chip) en el título de sección de Inventario */
 .tgmFiltroQuitar{ background:none; border:none; color:var(--guinda); font-weight:700; font-size:11.5px; margin-left:8px; text-decoration:underline; padding:2px; }
 
+/* Mensaje de confirmación/error en formularios (Entrada, Salida, etc.) */
+.tgmMensaje{ padding:12px 14px; border-radius:var(--radius-md); font-size:13.5px; font-weight:700; margin-bottom:14px; display:none; }
+.tgmMensaje.ok{ background:var(--color-success-bg); color:var(--color-success); display:block; }
+.tgmMensaje.error{ background:var(--color-danger-bg); color:var(--color-danger); display:block; }
+
 </style>
 
 </head>
@@ -681,10 +686,14 @@ function tgmAbrirInicio(){
     '</div>' +
     '<div class="tgmSeccionTitulo">Acciones rápidas</div>' +
     '<div class="tgmAccionesRapidas">' +
-      '<button class="tgmAccionRapida" onclick="tgmAbrirEntrada()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("entrada", 22) + '</span><span class="tgmAccionRapidaTexto">Entrada</span></button>' +
-      '<button class="tgmAccionRapida" onclick="tgmAbrirSalida()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("salida", 22) + '</span><span class="tgmAccionRapidaTexto">Salida</span></button>' +
+      (USUARIO_ACTUAL.rol !== "CONSULTA" ?
+        '<button class="tgmAccionRapida" onclick="tgmAbrirEntrada()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("entrada", 22) + '</span><span class="tgmAccionRapidaTexto">Entrada</span></button>' +
+        '<button class="tgmAccionRapida" onclick="tgmAbrirSalida()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("salida", 22) + '</span><span class="tgmAccionRapidaTexto">Salida</span></button>'
+        : '') +
       '<button class="tgmAccionRapida tgmAccionHero" onclick="tgmAbrirEscanerGeneral()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("camara", 26) + '</span><span class="tgmAccionRapidaTexto">Escanear</span></button>' +
-      '<button class="tgmAccionRapida" onclick="tgmAbrirConteoDesdeAtajo()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("documento", 22) + '</span><span class="tgmAccionRapidaTexto">Conteo</span></button>' +
+      (USUARIO_ACTUAL.rol !== "CONSULTA" ?
+        '<button class="tgmAccionRapida" onclick="tgmAbrirConteoDesdeAtajo()"><span class="tgmAccionRapidaCirculo">' + tgmIcon("documento", 22) + '</span><span class="tgmAccionRapidaTexto">Conteo</span></button>'
+        : '') +
       '<button class="tgmAccionRapida" onclick="tgmIrATab(\'mas\')"><span class="tgmAccionRapidaCirculo">' + tgmIcon("menu", 22) + '</span><span class="tgmAccionRapidaTexto">Más</span></button>' +
     '</div>';
 
@@ -915,8 +924,229 @@ function tgmPantallaPendiente_(titulo){
 function tgmAbrirOperaciones(){ tgmPantallaPendiente_("Operaciones"); }
 function tgmAbrirRequisiciones(){ tgmPantallaPendiente_("Requisiciones"); }
 function tgmAbrirMas(){ tgmPantallaPendiente_("Más"); }
-function tgmAbrirEntrada(codigoPrefill){ tgmPantallaPendiente_("Entrada" + (codigoPrefill ? " — " + codigoPrefill : "")); }
-function tgmAbrirSalida(codigoPrefill){ tgmPantallaPendiente_("Salida" + (codigoPrefill ? " — " + codigoPrefill : "")); }
+// ============================================
+// Utilidades compartidas por los formularios (Entrada, Salida, y las
+// que sigan) — mensaje de confirmación/error con auto-cierre, y estado
+// de "guardando" en el botón principal para evitar doble envío.
+// ============================================
+function tgmMensaje_(idContenedor, texto, tipo){
+  const el = document.getElementById(idContenedor);
+  if(!el) return;
+  el.textContent = texto;
+  el.className = "tgmMensaje " + (tipo === "error" ? "error" : "ok");
+  clearTimeout(el._tgmTimer);
+  el._tgmTimer = setTimeout(function(){ el.style.display = "none"; }, 3500);
+}
+
+function tgmBotonCargando_(idBoton, cargando, htmlNormal){
+  const btn = document.getElementById(idBoton);
+  if(!btn) return;
+  btn.disabled = cargando;
+  btn.innerHTML = cargando ? "Guardando…" : htmlNormal;
+}
+
+// ============================================
+// ENTRADA — mismos campos y mismo endpoint (guardarEntradaApp) que la
+// pantalla de Desktop (abrirEntradas en index.html): código, producto,
+// cantidad, UDM, lote, caducidad, ubicación. Desktop tampoco captura
+// proveedor en este flujo (no existe esa columna en guardarEntradaApp),
+// así que Mobile no lo inventa aquí tampoco.
+// ============================================
+function tgmAbrirEntrada(codigoPrefill){
+
+  tgmRenderHeaderPantalla("Entrada", true);
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmMensaje" id="tgmEntradaMensaje"></div>' +
+    '<div class="tgmCampo tgmCampoConIcono">' +
+      '<label>Código</label>' +
+      '<input type="text" id="tgmEntradaCodigo" placeholder="Escanear o escribir código" onchange="tgmBuscarProductoEntrada_()">' +
+      '<button type="button" class="tgmCampoIcono" onclick="tgmEntradaEscanear_()" title="Escanear">' + tgmIcon("camara", 18) + '</button>' +
+    '</div>' +
+    '<div class="tgmCampo"><label>Producto</label><input type="text" id="tgmEntradaProducto" readonly></div>' +
+    '<div class="tgmCampo"><label>Cantidad</label><input type="number" id="tgmEntradaCantidad" placeholder="0" inputmode="decimal"></div>' +
+    '<div class="tgmCampo"><label>UDM</label><input type="text" id="tgmEntradaUdm" placeholder="KG, PZ, L..."></div>' +
+    '<div class="tgmCampo"><label>Ubicación</label><input type="text" id="tgmEntradaUbicacion" placeholder="Rack - Nivel - Posición"></div>' +
+    '<div class="tgmCampo"><label>Lote (opcional)</label><input type="text" id="tgmEntradaLote"></div>' +
+    '<div class="tgmCampo"><label>Caducidad (opcional)</label><input type="date" id="tgmEntradaCaducidad"></div>' +
+    '<button class="tgmBotonPrimario" id="tgmEntradaBtnConfirmar" onclick="tgmGuardarEntrada_()">' + tgmIcon("checkCirculo", 18) + ' Confirmar entrada</button>';
+
+  if(codigoPrefill){
+    document.getElementById("tgmEntradaCodigo").value = codigoPrefill;
+    tgmBuscarProductoEntrada_();
+  } else {
+    document.getElementById("tgmEntradaCodigo").focus();
+  }
+
+}
+
+function tgmBuscarProductoEntrada_(){
+  const codigo = document.getElementById("tgmEntradaCodigo").value.trim();
+  if(!codigo) return;
+  google.script.run
+    .withSuccessHandler(function(producto){
+      if(!producto){
+        tgmMensaje_("tgmEntradaMensaje", "Producto no encontrado — puedes capturarlo manualmente", "error");
+        return;
+      }
+      document.getElementById("tgmEntradaProducto").value = producto.producto;
+      document.getElementById("tgmEntradaUdm").value = producto.udm;
+      document.getElementById("tgmEntradaUbicacion").value = producto.ubicacion === "Sin ubicación" ? "" : producto.ubicacion;
+      document.getElementById("tgmEntradaCantidad").focus();
+    })
+    .withFailureHandler(function(e){ tgmMensaje_("tgmEntradaMensaje", e.message, "error"); })
+    .buscarProductoApp(codigo, tgmObtenerToken());
+}
+
+function tgmEntradaEscanear_(){
+  tgmAbrirEscaner({ titulo: "Escanear producto", onDetectado: function(codigo){
+    document.getElementById("tgmEntradaCodigo").value = codigo;
+    tgmBuscarProductoEntrada_();
+  }});
+}
+
+function tgmGuardarEntrada_(){
+
+  const datos = {
+    codigo: document.getElementById("tgmEntradaCodigo").value.trim(),
+    producto: document.getElementById("tgmEntradaProducto").value.trim(),
+    cantidad: document.getElementById("tgmEntradaCantidad").value,
+    udm: document.getElementById("tgmEntradaUdm").value.trim(),
+    lote: document.getElementById("tgmEntradaLote").value.trim(),
+    caducidad: document.getElementById("tgmEntradaCaducidad").value,
+    ubicacion: document.getElementById("tgmEntradaUbicacion").value.trim(),
+    token: tgmObtenerToken()
+  };
+
+  if(!datos.codigo || !datos.cantidad || Number(datos.cantidad) <= 0){
+    tgmMensaje_("tgmEntradaMensaje", "Completa código y una cantidad válida", "error");
+    return;
+  }
+
+  tgmBotonCargando_("tgmEntradaBtnConfirmar", true);
+
+  google.script.run
+    .withSuccessHandler(function(){
+      tgmBotonCargando_("tgmEntradaBtnConfirmar", false, tgmIcon("checkCirculo", 18) + " Confirmar entrada");
+      tgmMensaje_("tgmEntradaMensaje", "✓ Entrada registrada — listo para el siguiente producto", "ok");
+      ["tgmEntradaCodigo","tgmEntradaProducto","tgmEntradaCantidad","tgmEntradaUdm","tgmEntradaUbicacion","tgmEntradaLote","tgmEntradaCaducidad"]
+        .forEach(function(id){ document.getElementById(id).value = ""; });
+      document.getElementById("tgmEntradaCodigo").focus();
+    })
+    .withFailureHandler(function(e){
+      tgmBotonCargando_("tgmEntradaBtnConfirmar", false, tgmIcon("checkCirculo", 18) + " Confirmar entrada");
+      tgmMensaje_("tgmEntradaMensaje", e.message, "error");
+    })
+    .guardarEntradaApp(datos);
+
+}
+
+// ============================================
+// SALIDA — mismos campos y mismo endpoint (registrarSalidaApp) que
+// Desktop (abrirSalidas): código, producto/existencia/UDM de solo
+// lectura (vienen del catálogo), cantidad, lote, área de salida (mismas
+// 3 opciones que ya usa Desktop — no es un catálogo nuevo, es el mismo
+// dato), ubicación de solo lectura. Flujo deliberadamente corto:
+// Escanear → Cantidad → Confirmar.
+// ============================================
+function tgmAbrirSalida(codigoPrefill){
+
+  tgmRenderHeaderPantalla("Salida", true);
+
+  document.getElementById("tgmContenido").innerHTML =
+    '<div class="tgmMensaje" id="tgmSalidaMensaje"></div>' +
+    '<div class="tgmCampo tgmCampoConIcono">' +
+      '<label>Código</label>' +
+      '<input type="text" id="tgmSalidaCodigo" placeholder="Escanear o escribir código" onchange="tgmBuscarProductoSalida_()">' +
+      '<button type="button" class="tgmCampoIcono" onclick="tgmSalidaEscanear_()" title="Escanear">' + tgmIcon("camara", 18) + '</button>' +
+    '</div>' +
+    '<div class="tgmCampo"><label>Producto</label><input type="text" id="tgmSalidaProducto" readonly></div>' +
+    '<div class="tgmCampo"><label>Existencia disponible</label><input type="text" id="tgmSalidaExistencia" readonly></div>' +
+    '<div class="tgmCampo"><label>Cantidad a retirar</label><input type="number" id="tgmSalidaCantidad" placeholder="0" inputmode="decimal"></div>' +
+    '<div class="tgmCampo"><label>UDM</label><input type="text" id="tgmSalidaUdm" readonly></div>' +
+    '<div class="tgmCampo"><label>Lote (opcional)</label><input type="text" id="tgmSalidaLote"></div>' +
+    '<div class="tgmCampo"><label>Área de salida</label>' +
+      '<select id="tgmSalidaArea">' +
+        '<option value="">Seleccionar área</option>' +
+        '<option value="Cocina">Cocina</option>' +
+        '<option value="Panaderia">Panaderia</option>' +
+        '<option value="Reposteria">Reposteria</option>' +
+      '</select>' +
+    '</div>' +
+    '<div class="tgmCampo"><label>Ubicación</label><input type="text" id="tgmSalidaUbicacion" readonly></div>' +
+    '<button class="tgmBotonPrimario" id="tgmSalidaBtnConfirmar" onclick="tgmGuardarSalida_()">' + tgmIcon("checkCirculo", 18) + ' Confirmar salida</button>';
+
+  if(codigoPrefill){
+    document.getElementById("tgmSalidaCodigo").value = codigoPrefill;
+    tgmBuscarProductoSalida_();
+  } else {
+    document.getElementById("tgmSalidaCodigo").focus();
+  }
+
+}
+
+function tgmBuscarProductoSalida_(){
+  const codigo = document.getElementById("tgmSalidaCodigo").value.trim();
+  if(!codigo) return;
+  google.script.run
+    .withSuccessHandler(function(producto){
+      if(!producto){
+        tgmMensaje_("tgmSalidaMensaje", "Producto no encontrado", "error");
+        return;
+      }
+      document.getElementById("tgmSalidaProducto").value = producto.producto;
+      document.getElementById("tgmSalidaUdm").value = producto.udm;
+      document.getElementById("tgmSalidaUbicacion").value = producto.ubicacion === "Sin ubicación" ? "" : producto.ubicacion;
+      document.getElementById("tgmSalidaExistencia").value = producto.existencia + " " + producto.udm;
+      document.getElementById("tgmSalidaCantidad").focus();
+    })
+    .withFailureHandler(function(e){ tgmMensaje_("tgmSalidaMensaje", e.message, "error"); })
+    .buscarProductoApp(codigo, tgmObtenerToken());
+}
+
+function tgmSalidaEscanear_(){
+  tgmAbrirEscaner({ titulo: "Escanear producto", onDetectado: function(codigo){
+    document.getElementById("tgmSalidaCodigo").value = codigo;
+    tgmBuscarProductoSalida_();
+  }});
+}
+
+function tgmGuardarSalida_(){
+
+  const datos = {
+    codigo: document.getElementById("tgmSalidaCodigo").value.trim(),
+    producto: document.getElementById("tgmSalidaProducto").value.trim(),
+    cantidad: document.getElementById("tgmSalidaCantidad").value,
+    udm: document.getElementById("tgmSalidaUdm").value.trim(),
+    lote: document.getElementById("tgmSalidaLote").value.trim(),
+    area: document.getElementById("tgmSalidaArea").value,
+    ubicacion: document.getElementById("tgmSalidaUbicacion").value.trim(),
+    token: tgmObtenerToken()
+  };
+
+  if(!datos.codigo || !datos.cantidad || Number(datos.cantidad) <= 0){
+    tgmMensaje_("tgmSalidaMensaje", "Completa código y una cantidad válida", "error");
+    return;
+  }
+
+  tgmBotonCargando_("tgmSalidaBtnConfirmar", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      tgmBotonCargando_("tgmSalidaBtnConfirmar", false, tgmIcon("checkCirculo", 18) + " Confirmar salida");
+      tgmMensaje_("tgmSalidaMensaje", "✓ Salida registrada — existencia restante: " + resultado.existenciaRestante, "ok");
+      ["tgmSalidaCodigo","tgmSalidaProducto","tgmSalidaExistencia","tgmSalidaCantidad","tgmSalidaUdm","tgmSalidaLote","tgmSalidaUbicacion"]
+        .forEach(function(id){ document.getElementById(id).value = ""; });
+      document.getElementById("tgmSalidaArea").value = "";
+      document.getElementById("tgmSalidaCodigo").focus();
+    })
+    .withFailureHandler(function(e){
+      tgmBotonCargando_("tgmSalidaBtnConfirmar", false, tgmIcon("checkCirculo", 18) + " Confirmar salida");
+      tgmMensaje_("tgmSalidaMensaje", e.message, "error");
+    })
+    .registrarSalidaApp(datos);
+
+}
 
 // ============================================
 // INVENTARIO — búsqueda (nombre/código/rack/ubicación) + 3 pestañas
@@ -1195,11 +1425,13 @@ function tgmDibujarDetalleProducto_(p){
       '<div class="tgmDetalleItem"><div class="lbl">Proveedor</div><div class="val" style="font-size:13.5px">' + (p.proveedor || "—") + '</div></div>' +
       '<div class="tgmDetalleItem"><div class="lbl">Último ingreso</div><div class="val" style="font-size:13.5px">' + (p.ultimoIngreso || "—") + '</div></div>' +
     '</div>' +
-    '<div class="tgmHojaAcciones">' +
-      '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirEntrada(\'' + codigoEscapado + '\')">' + tgmIcon("entrada", 20) + 'Entrada</button>' +
-      '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirSalida(\'' + codigoEscapado + '\')">' + tgmIcon("salida", 20) + 'Salida</button>' +
-      '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmIrATab(\'operaciones\')">' + tgmIcon("documento", 20) + 'Contar</button>' +
-    '</div>';
+    (USUARIO_ACTUAL.rol !== "CONSULTA" ?
+      '<div class="tgmHojaAcciones">' +
+        '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirEntrada(\'' + codigoEscapado + '\')">' + tgmIcon("entrada", 20) + 'Entrada</button>' +
+        '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmAbrirSalida(\'' + codigoEscapado + '\')">' + tgmIcon("salida", 20) + 'Salida</button>' +
+        '<button class="tgmHojaAccionBtn" onclick="tgmCerrarDetalleProducto();tgmIrATab(\'operaciones\')">' + tgmIcon("documento", 20) + 'Contar</button>' +
+      '</div>'
+      : '');
 }
 
 function tgmCerrarDetalleProducto(){
