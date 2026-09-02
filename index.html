@@ -11309,7 +11309,81 @@ function marcarActivo(id){
 
   cerrarSidebarMovilSiAplica();
 
+  actualizarHistorialRuta_(id);
+
 }
+
+// ===============================
+// ROUTER DE HISTORIAL DEL NAVEGADOR
+//
+// Objetivo: URLs compartibles (ej. ".../exec#btnUsuarios" abre directo la
+// pantalla de Usuarios) y que el botón atrás/adelante del navegador
+// funcione, SIN tocar ninguna de las ~60 funciones abrirXxx() una por
+// una — todas ya llaman a marcarActivo(id) con el id real del botón de
+// sidebar, así que ese es el único punto que hace falta enganchar.
+//
+// Cómo funciona:
+//   1. marcarActivo(id) llama a actualizarHistorialRuta_(id), que empuja
+//      (o reemplaza, en la primera pantalla) "#"+id al historial — nunca
+//      re-ejecuta la función de la pantalla, solo anota en qué pantalla
+//      quedó el usuario.
+//   2. Al retroceder/avanzar con los botones del navegador, el evento
+//      "popstate" lee el hash resultante y hace click() en el botón real
+//      del sidebar con ese id — el click ya dispara exactamente el mismo
+//      onclick="abrirXxx()" que si el usuario lo hubiera tocado a mano,
+//      así que no hay una segunda copia de la lógica de cada pantalla.
+//   3. Al cargar la página con un hash en la URL (link compartido), se
+//      hace lo mismo una vez que la sesión ya cargó permisos — PERO solo
+//      si el botón de destino existe Y es visible para el rol actual
+//      (aplicarPermisosPorRol ya corrió). Si el rol no tiene acceso a esa
+//      pantalla (o el id no existe), cae a Inicio — un link jamás expone
+//      una pantalla restringida solo por conocer su hash.
+// ===============================
+
+window.__rutaInicialResuelta = false;
+
+function actualizarHistorialRuta_(id){
+  if(!id) return;
+  const destino = "#" + id;
+  if(!window.__rutaInicialResuelta){
+    window.__rutaInicialResuelta = true;
+    history.replaceState({ pantalla: id }, "", destino);
+    return;
+  }
+  if(location.hash !== destino){
+    history.pushState({ pantalla: id }, "", destino);
+  }
+}
+
+/** Un botón de pantalla es "visible por permiso" si ni él mismo ni su grupo fueron ocultados por aplicarPermisosPorRol() — independiente de si su acordeón está abierto o cerrado ahora mismo. */
+function botonSidebarVisiblePorPermiso_(el){
+  if(!el || !el.classList.contains("menuLateralBtn")) return false;
+  if(el.style.display === "none") return false;
+  const grupo = el.closest(".grupoMenu");
+  if(grupo && grupo.style.display === "none") return false;
+  return true;
+}
+
+/** Se llama una sola vez, después de que la sesión y los permisos del rol ya se aplicaron. */
+function abrirPantallaSegunHashInicial(){
+  const id = (location.hash || "").replace("#", "").trim();
+  const btn = id ? document.getElementById(id) : null;
+  if(btn && botonSidebarVisiblePorPermiso_(btn)){
+    btn.click();
+  } else {
+    volverInicio();
+  }
+}
+
+window.addEventListener("popstate", function(){
+  const id = (location.hash || "").replace("#", "").trim();
+  const btn = id ? document.getElementById(id) : null;
+  if(btn && botonSidebarVisiblePorPermiso_(btn)){
+    btn.click();
+  } else {
+    volverInicio();
+  }
+});
 
 // ===============================
 // NOTIFICACIONES / BAJO MINIMO
@@ -16431,7 +16505,7 @@ window.addEventListener("load", function(){
   inicializarObservadorTablasResponsive();
 
   verificarSesionTAGERS(function(){
-    volverInicio();
+    abrirPantallaSegunHashInicial();
   });
 
 });
