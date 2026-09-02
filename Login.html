@@ -880,6 +880,31 @@ function mostrarAyudaContrasena(){
   document.getElementById("mensaje").innerText = "¿Problemas para entrar? Contacta a tu supervisor.";
 }
 
+/**
+ * TAGERS WMS MOBILE — redirección inteligente tras el login: pantallas
+ * de teléfono (<768px de ANCHO REAL, vía screen.width — el mismo truco
+ * de arriba, porque el iframe de Apps Script no reporta el ancho real
+ * del dispositivo) entran a MobileApp.html; el resto entra a index.html
+ * (Desktop) exactamente como siempre.
+ *
+ * "Ver versión de escritorio" en el Más de Mobile guarda una preferencia
+ * (tagers_preferencia_plataforma="desktop") que esta función respeta
+ * incluso en un teléfono — así la próxima vez que ese usuario inicie
+ * sesión en ESE dispositivo, vuelve a Desktop sin tener que tocar el
+ * botón de nuevo. Límite conocido y aceptado: como esta misma
+ * instrucción del usuario prohíbe tocar Desktop, no existe un enlace
+ * recíproco "Ver versión móvil" ahí — quien quede en Desktop por esta
+ * preferencia puede volver a Mobile visitando ?page=mobile directo o
+ * borrando datos del sitio.
+ */
+function tgDeterminarDestinoLogin_(){
+  const urlBase = "<?= urlApp ?>";
+  const prefierePlataforma = localStorage.getItem("tagers_preferencia_plataforma");
+  const anchoReal = (window.screen && window.screen.width) || window.innerWidth || 0;
+  const esMovil = prefierePlataforma !== "desktop" && anchoReal > 0 && anchoReal < 768;
+  return urlBase + "?page=" + (esMovil ? "mobile" : "index");
+}
+
 function entrar(){
 
   const correo = document.getElementById("correo").value.trim();
@@ -913,7 +938,7 @@ function entrar(){
           rol: res.rol
         }));
 
-        reproducirTransicionEntrada(res.nombre, "<?= urlApp ?>?page=index");
+        reproducirTransicionEntrada(res.nombre, tgDeterminarDestinoLogin_());
 
       } else {
         restaurarBoton();
