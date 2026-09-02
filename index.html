@@ -3414,7 +3414,7 @@ const PERMISOS_ROL = {
     "btnInicio",
     "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas","btnClasificacionABC",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
-    "btnAprobarDiscrepancias","btnCerrarConteo","btnDashboard","btnRecetas",
+    "btnAprobarDiscrepancias","btnCerrarConteo","btnProgramacionConteos","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     "btnTransferenciasSucursal",
@@ -14463,6 +14463,234 @@ async function cerrarConteoDesdeApp(){
 }
 
 // ===============================
+// PROGRAMACIÓN DE CONTEOS (administración) — el motor de ejecución
+// automática (trigger diario 5am) ya corría desde antes; esta pantalla
+// solo administra las filas de PROGRAMACION_CONTEOS sin abrir el Sheet.
+// ===============================
+
+function abrirProgramacionConteos(){
+
+  marcarActivo("btnProgramacionConteos");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("documento",20)} Programación de Conteos</h2>
+      <div class="boton" style="width:auto;padding:10px 16px;margin:0" onclick="abrirFormularioProgramacionConteo()">${tgIcon("mas",16)} Nueva Programación</div>
+    </div>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-4px">Define qué rack se cuenta, qué día y quién es responsable — el sistema genera el conteo automáticamente cada día a las 5 a.m. según lo que esté ACTIVO aquí.</p>
+
+    <div class="cardProducto">
+      <div id="listaProgramacionConteos">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+        <div class="skeleton skeletonLinea" style="width:65%"></div>
+      </div>
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarListaProgramacionConteos)
+    .withFailureHandler(function(e){
+      document.getElementById("listaProgramacionConteos").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerProgramacionConteosApp(obtenerTokenSesion());
+
+}
+
+function dibujarListaProgramacionConteos(lista){
+
+  const cont = document.getElementById("listaProgramacionConteos");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("documento", "No hay programaciones de conteo todavía");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Rack</th><th>Día</th><th>Frecuencia</th><th>Responsable</th><th>Última generación</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(p => {
+          const activo = String(p.estado).toUpperCase() === "ACTIVO";
+          return `
+            <tr>
+              <td>${p.rack}</td>
+              <td>${p.dia}</td>
+              <td>${p.frecuencia}</td>
+              <td>${p.responsable}</td>
+              <td>${p.ultimaGeneracion || "—"}</td>
+              <td><span class="badgeEstado ${p.estado}">${p.estado}</span></td>
+              <td style="text-align:right;white-space:nowrap">
+                <span class="boton secundario" style="width:auto;padding:6px 10px;margin:0 4px 0 0;font-size:12px" onclick='abrirFormularioProgramacionConteo(${JSON.stringify(p.id)})'>Editar</span>
+                <span class="boton ${activo ? "danger" : "success"}" style="width:auto;padding:6px 10px;margin:0;font-size:12px" onclick='cambiarEstadoProgramacionConteoAccion(${JSON.stringify(p.id)}, ${JSON.stringify(p.estado)})'>${activo ? "Desactivar" : "Reactivar"}</span>
+              </td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function cambiarEstadoProgramacionConteoAccion(id, estadoActual){
+
+  const activo = String(estadoActual).toUpperCase() === "ACTIVO";
+  const nuevoEstado = activo ? "INACTIVO" : "ACTIVO";
+
+  tgConfirmar(
+    activo
+      ? `¿Desactivar la programación de ${id}? Dejará de generarse automáticamente hasta que la reactives.`
+      : `¿Reactivar la programación de ${id}?`,
+    { titulo: activo ? "Desactivar programación" : "Reactivar programación", textoConfirmar: activo ? "Desactivar" : "Reactivar", peligroso: activo }
+  ).then(function(confirmado){
+    if(!confirmado) return;
+    google.script.run
+      .withSuccessHandler(function(){ abrirProgramacionConteos(); })
+      .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+      .cambiarEstadoProgramacionConteoApp(id, nuevoEstado, obtenerTokenSesion());
+  });
+
+}
+
+function abrirFormularioProgramacionConteo(idExistente){
+
+  window.programacionConteoFormEsEdicion = !!idExistente;
+  window.programacionConteoFormId = idExistente || null;
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirProgramacionConteos()">${tgIcon("chevronIzquierda",15)} Programación de Conteos</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${idExistente ? tgIcon("editar",18) + " Editar Programación" : tgIcon("mas",18) + " Nueva Programación"}</h2>
+    </div>
+
+    <div class="cardProducto" style="max-width:520px">
+
+      <label>Rack</label>
+      <select id="programacionFormRack"><option value="">Cargando racks...</option></select>
+
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Día</label>
+          <select id="programacionFormDia"></select>
+        </div>
+        <div class="campo">
+          <label>Frecuencia</label>
+          <select id="programacionFormFrecuencia"></select>
+        </div>
+      </div>
+
+      <label>Responsable</label>
+      <input id="programacionFormResponsable" placeholder="Nombre de quién va a contar">
+
+      <div id="mensajeFormProgramacionConteo" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirProgramacionConteos()">Cancelar</div>
+        <div class="boton" id="btnGuardarProgramacionConteo" onclick="guardarProgramacionConteo()">💾 Guardar</div>
+      </div>
+
+    </div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(function(catalogos){
+
+      const selRack = document.getElementById("programacionFormRack");
+      const selDia = document.getElementById("programacionFormDia");
+      const selFrecuencia = document.getElementById("programacionFormFrecuencia");
+      if(!selRack || !selDia || !selFrecuencia) return;
+
+      selRack.innerHTML = catalogos.racks.length
+        ? catalogos.racks.map(r => `<option value="${r}">${r}</option>`).join("")
+        : "<option value=''>Sin racks en el catálogo</option>";
+
+      selDia.innerHTML = catalogos.dias.map(d => `<option value="${d}">${d.charAt(0) + d.slice(1).toLowerCase()}</option>`).join("");
+      selFrecuencia.innerHTML = catalogos.frecuencias.map(f => `<option value="${f}">${f.charAt(0) + f.slice(1).toLowerCase()}</option>`).join("");
+
+      if(idExistente){
+        google.script.run
+          .withSuccessHandler(function(lista){
+            const datos = lista.find(function(p){ return String(p.id) === String(idExistente); });
+            if(!datos) return;
+            selRack.value = datos.rack;
+            selDia.value = datos.dia;
+            selFrecuencia.value = datos.frecuencia;
+            document.getElementById("programacionFormResponsable").value = datos.responsable || "";
+          })
+          .withFailureHandler(function(e){
+            mostrarMensajeTemporal("mensajeFormProgramacionConteo", "⚠️ " + e.message, "error");
+          })
+          .obtenerProgramacionConteosApp(obtenerTokenSesion());
+      }
+
+    })
+    .withFailureHandler(function(e){
+      mostrarMensajeTemporal("mensajeFormProgramacionConteo", "⚠️ " + e.message, "error");
+    })
+    .obtenerCatalogosProgramacionConteoApp(obtenerTokenSesion());
+
+}
+
+function guardarProgramacionConteo(){
+
+  const datos = {
+    rack: document.getElementById("programacionFormRack").value,
+    dia: document.getElementById("programacionFormDia").value,
+    frecuencia: document.getElementById("programacionFormFrecuencia").value,
+    responsable: document.getElementById("programacionFormResponsable").value.trim(),
+  };
+
+  if(!datos.rack){
+    mostrarMensajeTemporal("mensajeFormProgramacionConteo", "Selecciona un rack", "error");
+    return;
+  }
+  if(!datos.responsable){
+    mostrarMensajeTemporal("mensajeFormProgramacionConteo", "Captura el responsable", "error");
+    return;
+  }
+
+  const handlerExito = function(){
+    activarCargaBoton("btnGuardarProgramacionConteo", false);
+    alert("✓ Programación " + (window.programacionConteoFormEsEdicion ? "actualizada" : "creada") + " correctamente");
+    abrirProgramacionConteos();
+  };
+
+  const handlerError = function(e){
+    activarCargaBoton("btnGuardarProgramacionConteo", false);
+    mostrarMensajeTemporal("mensajeFormProgramacionConteo", "⚠️ " + e.message, "error");
+  };
+
+  activarCargaBoton("btnGuardarProgramacionConteo", true);
+
+  if(window.programacionConteoFormEsEdicion){
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .editarProgramacionConteoApp(window.programacionConteoFormId, datos, obtenerTokenSesion());
+  } else {
+    google.script.run
+      .withSuccessHandler(handlerExito)
+      .withFailureHandler(handlerError)
+      .crearProgramacionConteoApp(datos, obtenerTokenSesion());
+  }
+
+}
+
+// ===============================
 // UBICACIONES
 // ===============================
 
@@ -15395,6 +15623,7 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnRevisarDiscrepancias" onclick="abrirRevisarDiscrepancias()" title="Revisar discrepancias"><span class="icono">🔎</span><span class="textoMenu">Revisar discrepancias</span></button>
     <button class="menuLateralBtn sub" id="btnAprobarDiscrepancias" onclick="abrirAprobarDiscrepancias()" title="Aprobar discrepancias"><span class="icono">✅</span><span class="textoMenu">Aprobar discrepancias</span></button>
     <button class="menuLateralBtn sub" id="btnCerrarConteo" onclick="abrirCerrarConteo()" title="Cerrar conteo"><span class="icono">📚</span><span class="textoMenu">Cerrar conteo</span></button>
+    <button class="menuLateralBtn sub" id="btnProgramacionConteos" onclick="abrirProgramacionConteos()" title="Programación de conteos"><span class="icono">🗓️</span><span class="textoMenu">Programación de conteos</span></button>
   </div>
 </div>
 
