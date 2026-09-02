@@ -141,6 +141,20 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
+  // TAGERS WMS MOBILE — experiencia dedicada para teléfono (interfaz de
+  // app, no una versión responsive de escritorio). Archivo independiente
+  // (MobileApp.html), comparte 100% el backend/permisos con el sistema
+  // de escritorio (index.html) vía las mismas funciones ...App(token) —
+  // ningún dato ni lógica de negocio se duplica, solo la presentación.
+  if (pagina === "mobile") {
+    const plantillaMobile = HtmlService.createTemplateFromFile("MobileApp");
+    plantillaMobile.urlApp = urlApp;
+    return plantillaMobile
+      .evaluate()
+      .setTitle("TAGERS WMS")
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   const plantillaIndex = HtmlService.createTemplateFromFile("index");
   plantillaIndex.urlApp = urlApp;
   return plantillaIndex
@@ -2289,11 +2303,55 @@ function obtenerResumenInicioApp(token){
     normal: dashboard.normal,
     bajo: dashboard.bajo,
     sinStock: dashboard.sinStock,
+    entradasHoy: dashboard.entradas,
+    salidasHoy: dashboard.salidas,
     discrepancias: contadores.discrepancias,
     conteosAbiertos: contadores.conteosAbiertos,
     semana: semana,
     mapaCalor: mapaCalor,
     actividad: actividad
+  };
+
+}
+
+/**
+ * TAGERS WMS MOBILE — un solo viaje al servidor para las 6 tarjetas del
+ * Inicio móvil (Agotados/Bajo mínimo/Conteos pendientes/Requisiciones/
+ * Órdenes de compra/Entradas hoy). Reusa obtenerResumenInicioApp (mismos
+ * números que ya ve Desktop, ningún cálculo nuevo) y solo agrega los 2
+ * contadores que Desktop no necesita en un solo número (requisiciones y
+ * OC pendientes) — mismo criterio de acceso que ya usa
+ * obtenerAccionesRequeridasApp (Inteligencia.gs): solo Admin/Almacén ve
+ * el detalle de compras/requisiciones de otras áreas, todos ven
+ * inventario.
+ */
+function obtenerResumenInicioMovilApp(token){
+
+  requerirSesionActivaApp_(token);
+
+  const base = obtenerResumenInicioApp(token);
+  const acceso = obtenerAccesoRequisicionesApp(token);
+
+  let requisicionesPendientes = 0;
+  let ordenesCompraPendientes = 0;
+
+  if(acceso.esAdmin){
+    const reqArea = obtenerRequisicionesApp(token).filter(r => r.estado === "PENDIENTE").length;
+    const reqSucursal = obtenerRequisicionesSucursalApp(token).filter(r => r.estado === "PENDIENTE").length;
+    requisicionesPendientes = reqArea + reqSucursal;
+
+    ordenesCompraPendientes = obtenerOrdenesCompraApp(token)
+      .filter(o => o.estado === "PENDIENTE" || o.estado === "PARCIAL" || o.estado === "PENDIENTE_APROBACION")
+      .length;
+  }
+
+  return {
+    agotados: base.sinStock,
+    bajoMinimo: base.bajo,
+    conteosAbiertos: base.conteosAbiertos,
+    requisicionesPendientes: requisicionesPendientes,
+    ordenesCompraPendientes: ordenesCompraPendientes,
+    entradasHoy: base.entradasHoy
   };
 
 }

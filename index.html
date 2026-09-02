@@ -127,7 +127,7 @@
 <title>TAGERS WMS</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="window.tgHtml5QrcodeFalloCarga=true"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
@@ -11838,11 +11838,33 @@ function confirmarEntradaManualEscaner_(){
   if(callback) callback(codigo);
 }
 
+/**
+ * Respaldo si Html5Qrcode.stop() falla (promesa rechazada) — busca
+ * cualquier <video> dentro del lector y detiene sus pistas a mano. Sin
+ * esto, un stop() fallido dejaba el LED de la cámara encendido y la
+ * siguiente apertura podía fallar con "cámara ocupada" sin ningún aviso
+ * (el .catch(()=>{}) anterior tragaba el error por completo).
+ */
+function detenerPistasCamaraManualmente_(){
+  try{
+    document.querySelectorAll("#lectorQr video").forEach(function(video){
+      const stream = video.srcObject;
+      if(stream && typeof stream.getTracks === "function"){
+        stream.getTracks().forEach(function(track){ track.stop(); });
+      }
+      video.srcObject = null;
+    });
+  }catch(e){ /* mejor esfuerzo — si el navegador no deja, no hay más que hacer */ }
+}
+
 function detenerMotorEscaner_(){
   window.tgEscanerCallbackActual = null;
   if(window.html5QrCode && window.tgEscanerActivo){
     window.tgEscanerActivo = false;
-    return window.html5QrCode.stop().catch(function(){});
+    return window.html5QrCode.stop().catch(function(e){
+      console.warn("html5QrCode.stop() falló, deteniendo pistas de video a mano:", e);
+      detenerPistasCamaraManualmente_();
+    });
   }
   window.tgEscanerActivo = false;
   return Promise.resolve();
@@ -11868,10 +11890,27 @@ async function iniciarMotorEscaner_(onDetectado){
     return; // cámara ya corriendo — solo se re-armó el callback arriba
   }
 
+  // Evita que un doble-tap (o dos llamadas casi simultáneas) dispare dos
+  // start() concurrentes sobre el mismo Html5Qrcode mientras el primero
+  // todavía está negociando la cámara — tgEscanerActivo solo se pone en
+  // true DESPUÉS de que start() resuelve, así que sin este guard sincrónico
+  // quedaba una ventana real donde ambas llamadas veían tgEscanerActivo
+  // en false y ambas intentaban iniciar la cámara, y la librería tronaba
+  // con un error interno de "transición ya en curso" que se mostraba como
+  // el genérico "no pudimos abrir la cámara", sin relación con el permiso
+  // o la cámara en sí.
+  if(window.tgEscanerIniciando){
+    return;
+  }
+
   if(typeof Html5Qrcode === "undefined"){
     mostrarMensajeEscaner_(construirPanelErrorEscaner_(
-      "Tu navegador no es compatible con el escáner de cámara.",
-      "Actualiza el navegador o introduce el código manualmente.", false
+      window.tgHtml5QrcodeFalloCarga
+        ? "No se pudo cargar el componente de escaneo (sin conexión al servicio externo)."
+        : "Tu navegador no es compatible con el escáner de cámara.",
+      window.tgHtml5QrcodeFalloCarga
+        ? "Revisa tu conexión a internet e intenta de nuevo, o introduce el código manualmente."
+        : "Actualiza el navegador o introduce el código manualmente.", false
     ));
     return;
   }
@@ -11887,6 +11926,8 @@ async function iniciarMotorEscaner_(onDetectado){
   if(!window.html5QrCode){
     window.html5QrCode = new Html5Qrcode("lectorQr", false);
   }
+
+  window.tgEscanerIniciando = true;
 
   try{
 
@@ -11925,6 +11966,8 @@ async function iniciarMotorEscaner_(onDetectado){
   }catch(e){
     window.tgEscanerActivo = false;
     manejarErrorCamaraEscaner_(e);
+  }finally{
+    window.tgEscanerIniciando = false;
   }
 
 }
@@ -15217,7 +15260,7 @@ function abrirUbicaciones(){
   <div class="filaConEscaner">
   <div>
   <label>Buscar por Rack o Producto/Codigo</label>
-  <input id="buscarUbicacion" placeholder="Ejemplo: A01 o nombre del producto" onkeyup="buscarUbicacionEnter(event)">
+  <input id="buscarUbicacion" placeholder="Ejemplo: A01 o nombre del producto" onkeyup="buscarUbicacionEnter(event)" onchange="ejecutarBusquedaUbicacion()">
   </div>
   <button type="button" class="btnEscaner" onclick="abrirEscaner('buscarUbicacion')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
   </div>
@@ -15329,7 +15372,7 @@ function abrirMermas(){
       <div class="filaConEscaner">
         <div>
           <label>Producto</label>
-          <input id="buscarProductoMerma" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaMerma()" autocomplete="off">
+          <input id="buscarProductoMerma" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaMerma()" onchange="buscarProductoParaMerma()" autocomplete="off">
         </div>
         <button type="button" class="btnEscaner" onclick="abrirEscaner('buscarProductoMerma')" title="Escanear con cámara">${tgIcon("camara",18)}</button>
       </div>
