@@ -3052,7 +3052,8 @@ const TG_ICONOS = {
   cajas: '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 8 10 5 10-5"/><path d="M12 13v8"/><path d="m22 8v8l-10 5-10-5V8"/>',
   enviar: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
   chevronIzquierda: '<path d="m15 18-6-6 6-6"/>',
-  imprimir: '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>'
+  imprimir: '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  etiqueta: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'
 };
 
 function tgIcon(nombre, tamano){
@@ -3080,7 +3081,13 @@ const ICONOS_MENU = {
   btnCapturarInventarioMensual:"camara", btnRevisarDiferenciasMensual:"buscar", btnCerrarInventarioMensual:"recibo",
   btnHistorialInventarioMensual:"reloj", btnDashboardInventarioMensual:"tendenciaSube",
   btnDashboard:"tendenciaSube", btnRecetas:"receta", btnUsuarios:"usuarios",
-  btnRegistrarProduccion:"fabrica", btnLotesProduccion:"paquete"
+  btnRegistrarProduccion:"fabrica", btnLotesProduccion:"paquete",
+  // Agregados después de la migración inicial a iconos SVG — sin esto se
+  // quedan con el emoji original, que rompe la consistencia visual del
+  // resto del sidebar (emoji a color mezclado con iconos de línea).
+  btnClasificacionABC:"etiqueta", btnEtiquetas:"etiqueta", btnProgramacionConteos:"calendario",
+  btnSucursales:"ubicacion", btnAuditoria:"candado",
+  btnConfigCongelarExistencia:"guardar", btnConfigMigrarCosto:"dinero"
 };
 
 function aplicarIconosSidebar(){
