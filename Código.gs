@@ -1411,15 +1411,13 @@ function obtenerUbicacionesRack(rack, token){
   // propio (ver MapaAlmacenV3.html).
   requerirSesionActivaApp_(token);
 
-  const ss = SpreadsheetApp.getActive();
-  const hoja = ss.getSheetByName("MATRIZ");
-
-  const datos = hoja.getRange(
-    2,
-    1,
-    hoja.getLastRow()-1,
-    17
-  ).getValues();
+  // RENDIMIENTO (mismo hallazgo que obtenerResumenRacks arriba): esta
+  // función es la que se dispara al abrir un rack específico dentro del
+  // Mapa — justo el siguiente clic después de la pantalla que se
+  // arregló arriba, y tenía el mismo problema (lectura sin caché de
+  // MATRIZ completa). Se corrige con el mismo patrón para que todo el
+  // flujo del Mapa quede consistente, no solo la primera pantalla.
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
 
   let ubicaciones = {};
 
@@ -1475,8 +1473,10 @@ function buscarProducto(texto, token) {
 
   texto = texto.toString().toUpperCase();
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 17).getValues();
+  // RENDIMIENTO (mismo hallazgo que obtenerResumenRacks/obtenerUbicacionesRack
+  // arriba) — el buscador del Mapa (input "Buscar Rack...") disparaba la
+  // misma lectura sin caché en cada tecleo. Se corrige con el mismo patrón.
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
 
   let resultados = [];
 
@@ -1515,8 +1515,15 @@ function obtenerResumenRacks(token) {
   // Mismo hallazgo que obtenerUbicacionesRack (ver arriba).
   requerirSesionActivaApp_(token);
 
-  const hoja = SpreadsheetApp.getActive().getSheetByName("MATRIZ");
-  const datos = hoja.getRange(2,1,hoja.getLastRow()-1,17).getValues();
+  // RENDIMIENTO (mismo hallazgo real que obtenerResumenInicioMovilApp en
+  // 📁 App.gs.gs — reportado por el usuario: la pantalla de Mapa se
+  // quedaba pegada en "Cargando racks..." contra datos reales): esta
+  // función leía MATRIZ completa SIN la caché de 20s que ya usa el resto
+  // del sistema, un getRange().getValues() directo a Sheets en cada
+  // apertura del Mapa. Ahora usa obtenerFilasHojaCacheadas_ (📁 App.gs.gs),
+  // la misma caché que ya comparten Dashboard e Inicio móvil — mismo dato,
+  // sin la lectura repetida sin caché.
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
 
   let resumen = {};
 
