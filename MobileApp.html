@@ -61,6 +61,51 @@
   setTimeout(ajustarViewportMovil, 3000);
 })();
 
+// ============================================
+// DIAGNÓSTICO TEMPORAL — el usuario reporta que en su teléfono real el
+// contenido se ve chico/alejado (como si el viewport efectivo fuera
+// mucho más ancho que la pantalla real), y ya se descartaron 2 causas
+// (reintentos de meta viewport sin efecto; "Solicitar sitio de
+// escritorio" de Chrome desactivado y sin cambio al alternarlo). Sin
+// acceso al dispositivo real ni a DevTools remoto, la única forma de
+// diagnosticar con datos reales es mostrar en pantalla los valores que
+// el navegador está usando de verdad. QUITAR este bloque en cuanto se
+// identifique la causa real — es solo para diagnóstico, no una función
+// del producto.
+// ============================================
+(function(){
+  function dibujarDiagnostico(){
+    var el = document.getElementById('tgmDiagViewport');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'tgmDiagViewport';
+      el.style.cssText = 'position:fixed;top:2px;left:2px;right:2px;z-index:999999;background:rgba(0,0,0,.85);color:#3f3;font:10px/1.4 monospace;padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre-wrap;word-break:break-all;';
+      (document.body || document.documentElement).appendChild(el);
+    }
+    var vp = document.getElementById('viewportMeta');
+    var vv = window.visualViewport;
+    el.textContent =
+      'screen: ' + (window.screen ? window.screen.width + 'x' + window.screen.height : '?') +
+      '  dpr: ' + (window.devicePixelRatio || '?') + '\n' +
+      'innerWidth/Height: ' + window.innerWidth + 'x' + window.innerHeight + '\n' +
+      'clientWidth/Height: ' + document.documentElement.clientWidth + 'x' + document.documentElement.clientHeight + '\n' +
+      'visualViewport: ' + (vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) + ' scale=' + vv.scale : 'no disponible') + '\n' +
+      'en iframe: ' + (window.self !== window.top) + '\n' +
+      'meta viewport actual: ' + (vp ? vp.getAttribute('content') : '?');
+  }
+  function iniciarDiagnostico(){
+    dibujarDiagnostico();
+    window.addEventListener('resize', dibujarDiagnostico);
+    window.addEventListener('load', dibujarDiagnostico);
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize', dibujarDiagnostico);
+    }
+    [150, 600, 1500, 3000].forEach(function(ms){ setTimeout(dibujarDiagnostico, ms); });
+  }
+  if(document.body) iniciarDiagnostico();
+  else document.addEventListener('DOMContentLoaded', iniciarDiagnostico);
+})();
+
 // Mismo interruptor manual de tema que Desktop (index.html), misma
 // llave de localStorage ("tagers-tema") — un solo estado compartido
 // entre las 2 experiencias, no dos toggles independientes que se
