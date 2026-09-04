@@ -27,22 +27,48 @@
 <meta name="apple-mobile-web-app-title" content="TAGERS WMS">
 
 <script>
-// Misma corrección que index.html: dentro del iframe que arma
-// script.google.com, el <meta viewport> no siempre se respeta con el
-// ancho real del teléfono — screen.width sí lo conoce.
+// CAUSA REAL confirmada con datos del overlay de diagnóstico en un
+// teléfono real (screen=384 correcto, pero innerWidth/clientWidth=980,
+// "en iframe: true"): Google envuelve TODO HtmlService dentro de un
+// <iframe> propio (script.google.com), y ese iframe tiene un ancho de
+// LAYOUT fijo (~980px, el clásico "ancho de escritorio" que los
+// navegadores asumen cuando no hay señal de que la página es
+// mobile-aware) — un valor que NO depende del teléfono real. La
+// corrección de <meta viewport> de abajo (screen.width, con
+// reintentos) SÍ queda bien puesta en el <head> de nuestro documento,
+// pero eso es irrelevante: un <meta viewport> únicamente controla el
+// contexto de navegación de NIVEL SUPERIOR — nunca el ancho de un
+// <iframe> anidado. Por eso los 2 intentos anteriores no cambiaron
+// nada visible: se estaba corrigiendo un valor que nunca pudo influir
+// en el ancho real renderizado.
 //
-// HALLAZGO REAL (reportado por el usuario con capturas de un teléfono
-// real): el contenido se veía correcto pero "alejado"/chico, ocupando
-// solo una franja angosta al centro de la pantalla — exactamente el
-// síntoma de que el ancho de layout efectivo NO es el ancho real del
-// dispositivo. La causa: esta corrección se aplicaba UNA sola vez, de
-// inmediato, sin reintentos — pero el wrapper de Google
-// (script.google.com) a veces monta/reajusta el iframe con un ancho de
-// layout equivocado (~980px, un "ancho de escritorio" típico) DESPUÉS
-// de esta primera pasada, y esa segunda pasada de Google pisaba el
-// valor correcto que ya habíamos puesto. index.html ya resolvió este
-// mismo problema reintentando varias veces tras la carga — se replica
-// aquí exactamente igual, en vez de asumir que una sola pasada basta.
+// Con #appMobile limitado a max-width:480px centrado, esos 480px eran
+// apenas la mitad de los 980px "falsos" del iframe — de ahí el
+// contenido chico y alejado, con aire a los lados, sin importar cuántas
+// veces se reintentara el ajuste del viewport.
+//
+// LA CORRECCIÓN REAL: en vez de pelear por controlar un ancho que
+// Google decide y nosotros no podemos cambiar desde adentro, se hace
+// que #appMobile (y el bottom nav / la hoja inferior) llenen el 100%
+// de lo que sea que el iframe reporte — exactamente como ya hace
+// index.html (Desktop), que por eso nunca tuvo este problema: su
+// layout es 100% fluido, sin una columna centrada de ancho fijo. El
+// navegador real del usuario escala el iframe completo (980px lógicos)
+// para que quepa en la pantalla física — si nuestro contenido ya llena
+// ese 100%, el resultado final también llena la pantalla física,
+// vengan los 980px de Google o cualquier otro valor.
+//
+// window.self !== window.top detecta el caso instalado como PWA
+// (Agregar a inicio), donde la página SÍ podría correr como documento
+// de nivel superior sin el iframe de Google — ahí el <meta viewport>
+// normal funciona como es debido, así que se conserva la columna
+// centrada de 480px solo para ese caso (y para pruebas de escritorio).
+(function(){
+  if(window.self !== window.top){
+    document.documentElement.classList.add('tgm-en-iframe-google');
+  }
+})();
+
 (function(){
   function ajustarViewportMovil(){
     var vp = document.getElementById('viewportMeta');
@@ -205,6 +231,20 @@ body{
   flex-direction:column;
   background:var(--bg);
   position:relative;
+}
+
+/* Dentro del iframe de script.google.com (ver el bloque de JS al inicio
+   del <head> que agrega esta clase, con la explicación completa del
+   hallazgo): llenar
+   el 100% del ancho que el iframe reporte, sea cual sea — nunca quedar
+   en una columna de 480px que resulta chica dentro de los ~980px
+   "falsos" que Google fuerza. Aplica a las 3 piezas que antes
+   compartían el mismo max-width:480px (columna principal, bottom nav,
+   hoja inferior) para que las 3 llenen la pantalla de forma consistente. */
+html.tgm-en-iframe-google #appMobile,
+html.tgm-en-iframe-google .tgmNavInferior,
+html.tgm-en-iframe-google .tgmHoja{
+  max-width:100%;
 }
 
 button{ font-family:inherit; }
