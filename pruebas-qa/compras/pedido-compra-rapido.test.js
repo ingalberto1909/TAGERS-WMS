@@ -19,6 +19,14 @@ function fechaISO(diasDesdeHoy){
   return d.toISOString().slice(0, 10);
 }
 
+// Marca la columna U de MATRIZ (índice 20, la que sigue a Presentación en
+// T=19) — filaProducto no la expone como parámetro, igual que nivel/
+// posición en mapa-almacen.test.js, así que se asigna directo sobre la fila.
+function marcarCompraSemanalMatriz(fila){
+  fila[20] = 'SI';
+  return fila;
+}
+
 function productoMatriz(codigo, proveedor, opts){
   opts = opts || {};
   return filaProducto({
@@ -28,6 +36,7 @@ function productoMatriz(codigo, proveedor, opts){
     existencia: opts.existencia !== undefined ? opts.existencia : 0,
     minimo: opts.minimo !== undefined ? opts.minimo : 5,
     maximo: opts.maximo !== undefined ? opts.maximo : 25,
+    ubicacion: opts.ubicacion,
   });
 }
 
@@ -112,7 +121,9 @@ prueba({
   metodo: 'EMPÍRICO',
   objetivo: 'Un producto SEMANAL/LUNES no debe cargarse un día distinto a lunes, y sí un lunes',
   ejecutar() {
-    const { entorno, token } = entornoConCatalogo([productoMatriz('COD-H01', 'PROVEEDOR A')]);
+    // existencia por encima del mínimo: así el único motivo por el que
+    // podría aparecer es la frecuencia/día (no se filtra por bajo mínimo).
+    const { entorno, token } = entornoConCatalogo([productoMatriz('COD-H01', 'PROVEEDOR A', { existencia: 20, minimo: 5, maximo: 25 })]);
     entorno.invocar('guardarProductoHabitualCompraApp', { codigo: 'COD-H01', frecuencia: 'SEMANAL', diaCompra: 'LUNES' }, token);
 
     // Se buscan el próximo lunes y el próximo martes reales, sin importar qué día se ejecute la prueba.
@@ -140,7 +151,9 @@ prueba({
   metodo: 'EMPÍRICO',
   objetivo: 'Sección 5: "no debe cargar productos inactivos" — desactivar debe sacarlo de la carga diaria pero conservar su fila de configuración',
   ejecutar() {
-    const { entorno, token } = entornoConCatalogo([productoMatriz('COD-H01', 'PROVEEDOR A')]);
+    // existencia por encima del mínimo: al desactivarlo como habitual no
+    // debe reaparecer "colado" por la mezcla de sugerencias bajo mínimo.
+    const { entorno, token } = entornoConCatalogo([productoMatriz('COD-H01', 'PROVEEDOR A', { existencia: 20, minimo: 5, maximo: 25 })]);
     registrarHabitual(entorno, token, 'COD-H01');
     const antes = entorno.invocar('obtenerProductosHabitualesCompraApp', fechaISO(0), token);
     entorno.invocar('establecerActivoProductoHabitualCompraApp', 'COD-H01', false, token);
@@ -191,6 +204,44 @@ prueba({
       esperado: `sin OC pendiente: sugerido=20 (25-5); con OC pendiente por 10: sugerido=10 (25-5-10)`,
       obtenido: `sinTransito=${sinTransito.productos[0].sugerido}, conTransito=${conTransito.productos[0].sugerido}, enTransito=${conTransito.productos[0].enTransito}`,
       pasa: sinTransito.productos[0].sugerido === 20 && conTransito.productos[0].sugerido === 10 && conTransito.productos[0].enTransito === 10,
+    };
+  },
+});
+
+prueba({
+  id: 'PCR-CFG-008', grupo: 'compras', nombre: 'Un producto bajo mínimo aparece como sugerencia aunque NO esté configurado como habitual',
+  metodo: 'EMPÍRICO',
+  objetivo: 'Igual que en Sugerencias de Requisición/Centro de Reabastecimiento: cualquier producto del catálogo con existencia <= mínimo debe sugerirse, sin necesidad de configurarlo en Productos Habituales',
+  ejecutar() {
+    const { entorno, token } = entornoConCatalogo([
+      productoMatriz('COD-01', 'PROVEEDOR A'), // NUNCA se configura como habitual
+      productoMatriz('COD-02', 'PROVEEDOR B', { existencia: 20, minimo: 5, maximo: 25 }), // por encima del mínimo — no debe aparecer
+    ]);
+    const r = entorno.invocar('obtenerProductosHabitualesCompraApp', fechaISO(0), token);
+    const bajoMinimo = r.productos.find(p => p.codigo === 'COD-01');
+    return {
+      datos: 'COD-01 bajo mínimo (existencia=0, mínimo=5) sin configurar como habitual; COD-02 por encima del mínimo',
+      esperado: 'aparece 1 producto (COD-01) con origen=BAJO_MINIMO; COD-02 no aparece',
+      obtenido: `productos=${r.productos.length}, origenCOD01=${bajoMinimo && bajoMinimo.origen}`,
+      pasa: r.productos.length === 1 && !!bajoMinimo && bajoMinimo.origen === 'BAJO_MINIMO',
+    };
+  },
+});
+
+prueba({
+  id: 'PCR-CFG-009', grupo: 'compras', nombre: 'Un producto habitual que también está bajo mínimo no se duplica',
+  metodo: 'EMPÍRICO',
+  objetivo: 'Si un producto ya entró a la lista por ser habitual del día, la mezcla de sugerencias bajo mínimo no debe agregarlo una segunda vez',
+  ejecutar() {
+    const { entorno, token } = entornoConCatalogo([productoMatriz('COD-01', 'PROVEEDOR A')]); // existencia=0, minimo=5 -> bajo mínimo
+    registrarHabitual(entorno, token, 'COD-01'); // DIARIA -> también habitual hoy
+    const r = entorno.invocar('obtenerProductosHabitualesCompraApp', fechaISO(0), token);
+    const filas = r.productos.filter(p => p.codigo === 'COD-01');
+    return {
+      datos: 'COD-01 es habitual (DIARIA) Y está bajo mínimo a la vez',
+      esperado: 'exactamente 1 fila, con origen=HABITUAL (no se duplica como BAJO_MINIMO)',
+      obtenido: JSON.stringify(filas.map(p => ({ codigo: p.codigo, origen: p.origen }))),
+      pasa: filas.length === 1 && filas[0].origen === 'HABITUAL',
     };
   },
 });
@@ -461,6 +512,31 @@ prueba({
       esperado: 'estado=CANCELADO, el detalle (1 línea) sigue existiendo, y ya no se puede generar',
       obtenido: `estado=${pedido.estado}, items=${pedido.items.length}, lanzoAlGenerarCancelado=${lanzoAlGenerarCancelado}`,
       pasa: pedido.estado === 'CANCELADO' && pedido.items.length === 1 && lanzoAlGenerarCancelado === true,
+    };
+  },
+});
+
+prueba({
+  id: 'PCR-CFG-010', grupo: 'compras', nombre: 'Columna U de MATRIZ ("SI") marca un producto como habitual sin configurarlo aparte',
+  metodo: 'EMPÍRICO',
+  objetivo: 'Alberto prefiere marcar en MATRIZ mismo (columna U) qué se compra seguido, en vez de registrar frecuencia/día en Productos Habituales — un insumo nuevo con columna U="SI" debe aparecer de inmediato, cualquier día, y un producto descontinuado marcado igual no debe ofrecerse',
+  ejecutar() {
+    const marcado = marcarCompraSemanalMatriz(productoMatriz('COD-01', 'PROVEEDOR A', { existencia: 20, minimo: 5, maximo: 25 }));
+    const noMarcado = productoMatriz('COD-02', 'PROVEEDOR B', { existencia: 20, minimo: 5, maximo: 25 });
+    const descontinuadoMarcado = marcarCompraSemanalMatriz(productoMatriz('COD-03', 'PROVEEDOR A', { existencia: 20, minimo: 5, maximo: 25, ubicacion: '---' }));
+
+    const { entorno, token } = entornoConCatalogo([marcado, noMarcado, descontinuadoMarcado]);
+
+    // Cualquier día: no depende de frecuencia/día como los habituales configurados.
+    const hoy = entorno.invocar('obtenerProductosHabitualesCompraApp', fechaISO(0), token);
+    const dentroDe10Dias = entorno.invocar('obtenerProductosHabitualesCompraApp', fechaISO(10), token);
+
+    return {
+      datos: 'COD-01 con columna U="SI"; COD-02 sin marcar; COD-03 marcado pero descontinuado (sin ubicación)',
+      esperado: 'aparece solo COD-01 (origen=HABITUAL), tanto hoy como en 10 días — sin restricción de día',
+      obtenido: `hoy=${JSON.stringify(hoy.productos.map(p => p.codigo))}, en10dias=${JSON.stringify(dentroDe10Dias.productos.map(p => p.codigo))}`,
+      pasa: hoy.productos.length === 1 && hoy.productos[0].codigo === 'COD-01' && hoy.productos[0].origen === 'HABITUAL'
+        && dentroDe10Dias.productos.length === 1 && dentroDe10Dias.productos[0].codigo === 'COD-01',
     };
   },
 });

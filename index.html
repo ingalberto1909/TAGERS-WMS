@@ -8864,8 +8864,9 @@ function iniciarPedidoDesdeHabituales(datos, fecha){
         codigo: p.codigo, producto: p.producto, proveedor: p.proveedor,
         existencia: p.existencia, minimo: p.minimo, maximo: p.maximo,
         enTransito: p.enTransito || 0, sugerido: p.sugerido,
-        cantidad: p.sugerido, udm: p.udm, precio: p.precio,
-        origen: "HABITUAL", incidencia: p.incidencia || "",
+        convertir: !!p.convertir, presentacion: p.presentacion || 0,
+        cantidad: p.convertir ? p.sugeridoPiezas : p.sugerido, udm: p.udm, precio: p.precio,
+        origen: p.origen || "HABITUAL", incidencia: p.incidencia || "",
         marcado: !p.incidencia
       };
     })
@@ -8951,29 +8952,46 @@ function normalizarProveedorJS(texto){
   return String(texto||"").trim().toUpperCase();
 }
 
+// Solo redibuja las 5 tarjetas de métricas — usado en cada tecleo/clic
+// dentro de la tabla para NO tener que reconstruir el <table> completo
+// (ver dibujarTablaPedidoRapido: reconstruir todo el HTML en cada tecla
+// destruye y recrea el <input>, y el navegador pierde el foco/cursor a
+// media escritura — el usuario no podía terminar de escribir "108").
+function actualizarMetricasPedidoRapido(){
+
+  const m = pedidoRapidoMetricasActuales();
+  const metricas = document.getElementById("pedidoRapidoMetricas");
+  if(!metricas) return;
+
+  metricas.innerHTML = [
+    ["Productos", m.productos], ["Proveedores", m.proveedores], ["Unidades a comprar", formatearCantidadJS(m.unidades)],
+    ["Con incidencias", m.incidencias], ["Órdenes a generar", m.ordenes]
+  ].map(function(par){
+    return `<div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${par[0]}</div>
+      <div style="font-size:20px;font-weight:800;color:${par[0]==="Con incidencias" && par[1]>0 ? "var(--color-danger)" : "var(--guinda)"}">${par[1]}</div>
+    </div>`;
+  }).join("");
+
+}
+
+function pedidoRapidoEtiquetaOrigen_(origen){
+  if(origen === "EXTRAORDINARIO") return ' · <span style="color:var(--terracota)">extraordinario</span>';
+  if(origen === "BAJO_MINIMO") return ' · <span style="color:var(--color-warning)">bajo mínimo</span>';
+  return '';
+}
+
 function dibujarTablaPedidoRapido(){
 
   const items = (window.pedidoRapidoActual && window.pedidoRapidoActual.items) || [];
-  const m = pedidoRapidoMetricasActuales();
 
-  const metricas = document.getElementById("pedidoRapidoMetricas");
-  if(metricas){
-    metricas.innerHTML = [
-      ["Productos", m.productos], ["Proveedores", m.proveedores], ["Unidades a comprar", formatearCantidadJS(m.unidades)],
-      ["Con incidencias", m.incidencias], ["Órdenes a generar", m.ordenes]
-    ].map(function(par){
-      return `<div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
-        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${par[0]}</div>
-        <div style="font-size:20px;font-weight:800;color:${par[0]==="Con incidencias" && par[1]>0 ? "var(--color-danger)" : "var(--guinda)"}">${par[1]}</div>
-      </div>`;
-    }).join("");
-  }
+  actualizarMetricasPedidoRapido();
 
   const cont = document.getElementById("pedidoRapidoTablaCont");
   if(!cont) return;
 
   if(!items.length){
-    cont.innerHTML = tgEmptyState("carrito", "No hay productos habituales configurados para hoy — agrega alguno con el buscador de arriba, o configúralos en \"Productos habituales\".");
+    cont.innerHTML = tgEmptyState("carrito", "No hay productos habituales ni productos bajo mínimo para hoy — agrega alguno con el buscador de arriba, o configura habituales en \"Productos habituales\".");
     return;
   }
 
@@ -8982,23 +9000,26 @@ function dibujarTablaPedidoRapido(){
       <thead>
         <tr>
           <th></th><th>Producto</th><th>Proveedor</th><th style="text-align:right">Existencia</th>
-          <th style="text-align:right">Sugerido</th><th style="text-align:right">Comprar</th><th></th>
+          <th style="text-align:right">Sugerido</th><th>Presentación</th><th style="text-align:right">Comprar</th><th></th>
         </tr>
       </thead>
       <tbody>
         ${items.map(function(it, i){
+          const sugeridoMostrar = it.convertir ? Math.ceil((it.sugerido||0) / it.presentacion) : it.sugerido;
           return `
           <tr style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
-            <td><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="dibujarTablaPedidoRapido()"></td>
-            <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${it.origen==="EXTRAORDINARIO" ? ' · <span style="color:var(--terracota)">extraordinario</span>' : ''}</span>
+            <td><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"></td>
+            <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${pedidoRapidoEtiquetaOrigen_(it.origen)}</span>
               ${it.incidencia ? `<br><span style="font-size:10.5px;color:var(--color-danger)">${tgIcon("alertaTriangulo",11)} ${it.incidencia}</span>` : ""}
             </td>
             <td>${it.proveedor || "—"}</td>
             <td style="text-align:right">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
-            <td style="text-align:right">${formatearCantidadJS(it.sugerido)}</td>
+            <td style="text-align:right">${formatearCantidadJS(sugeridoMostrar)}</td>
+            <td style="font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : "—"}</td>
             <td style="text-align:right">
-              <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" oninput="sincronizarPedidoRapidoDesdeInputs(); dibujarTablaPedidoRapido()"
+              <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" min="0" oninput="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"
                 style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+              ${it.convertir ? `<div style="font-size:10.5px;color:var(--text-muted)">pz</div>` : ""}
             </td>
             <td><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
           </tr>
@@ -9034,11 +9055,15 @@ function recalcularCantidadesPedidoRapido(){
       const porCodigo = {};
       (datos.productos || []).forEach(function(p){ porCodigo[p.codigo] = p; });
       window.pedidoRapidoActual.items.forEach(function(it){
-        if(it.origen !== "HABITUAL") return;
+        // Los productos agregados a mano (EXTRAORDINARIO) no vienen en esta
+        // lista — se conservan tal cual el usuario los dejó. HABITUAL y
+        // BAJO_MINIMO sí se refrescan con la existencia/sugerido más reciente.
+        if(it.origen === "EXTRAORDINARIO") return;
         const fresco = porCodigo[it.codigo];
         if(!fresco) return;
         it.existencia = fresco.existencia; it.enTransito = fresco.enTransito || 0;
-        it.sugerido = fresco.sugerido; it.cantidad = fresco.sugerido;
+        it.sugerido = fresco.sugerido; it.convertir = !!fresco.convertir; it.presentacion = fresco.presentacion || 0;
+        it.cantidad = fresco.convertir ? fresco.sugeridoPiezas : fresco.sugerido;
         it.incidencia = fresco.incidencia || ""; it.marcado = !fresco.incidencia;
       });
       dibujarTablaPedidoRapido();
@@ -9094,10 +9119,12 @@ function agregarProductoExtraordinarioPedidoRapido(producto){
   if(yaExiste){
     mostrarMensajeTemporal("mensajePedidoRapido", "Ese producto ya está en el pedido", "error");
   } else {
+    const convertirExtra = !!producto.convertir && Number(producto.presentacion) > 0;
     window.pedidoRapidoActual.items.push({
       codigo: producto.codigo, producto: producto.producto, proveedor: producto.proveedor || "",
       existencia: producto.existencia, minimo: producto.minimo, maximo: producto.maximo,
-      enTransito: 0, sugerido: 0, cantidad: 1, udm: producto.udm, precio: producto.precio,
+      enTransito: 0, sugerido: 0, convertir: convertirExtra, presentacion: Number(producto.presentacion) || 0,
+      cantidad: 1, udm: producto.udm, precio: producto.precio,
       origen: "EXTRAORDINARIO", incidencia: producto.proveedor ? "" : "Este producto no tiene proveedor configurado.",
       marcado: !!producto.proveedor
     });
@@ -9110,14 +9137,21 @@ function agregarProductoExtraordinarioPedidoRapido(producto){
 
 }
 
+// Cuando el producto se compra por presentación (convertir), it.cantidad
+// son PIEZAS de esa presentación (lo que el usuario capturó) — se convierte
+// a la cantidad REAL (kg/L/pza suelta) antes de mandarla al backend, mismo
+// criterio que ya usa generarOrdenDesdeReabasto() en Centro de
+// Reabastecimiento. El precio de MATRIZ ya es por unidad real, no hace
+// falta convertirlo (a diferencia de Reabasto, aquí no se recaptura precio).
 function pedidoRapidoItemsParaEnviar(){
   sincronizarPedidoRapidoDesdeInputs();
   return window.pedidoRapidoActual.items
     .filter(function(it){ return it.marcado && Number(it.cantidad) > 0; })
     .map(function(it){
+      const cantidadReal = it.convertir ? Math.round(it.cantidad * it.presentacion * 1000) / 1000 : it.cantidad;
       return {
         codigo: it.codigo, producto: it.producto, proveedor: it.proveedor,
-        existencia: it.existencia, sugerido: it.sugerido, cantidad: it.cantidad,
+        existencia: it.existencia, sugerido: it.sugerido, cantidad: cantidadReal,
         udm: it.udm, precio: it.precio, origen: it.origen
       };
     });

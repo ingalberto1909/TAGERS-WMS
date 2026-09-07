@@ -240,59 +240,175 @@ function obtenerProductosHabitualesCompraApp(fechaTexto, token){
   const diaTexto = obtenerDiaActual(fecha);
 
   const hoja = obtenerHojaProductosCompra_();
-  if(hoja.getLastRow() < 2){
-    return { dia: diaTexto, fecha: Utilities.formatDate(fecha, Session.getScriptTimeZone(), "dd/MM/yyyy"), productos: [] };
-  }
-
-  const config = hoja.getRange(2, 1, hoja.getLastRow() - 1, 10).getValues();
   const mapaMatriz = construirMapaMatrizPorCodigo_();
   const enTransito = calcularEnTransitoPorCodigo_();
 
   const productos = [];
+  const codigosIncluidos = {};
 
-  config.forEach(function(c){
+  if(hoja.getLastRow() >= 2){
 
-    const activo = String(c[5] || "").trim().toUpperCase();
-    if(activo !== "SI") return; // sección 5: nunca cargar productos inactivos
+    const config = hoja.getRange(2, 1, hoja.getLastRow() - 1, 10).getValues();
 
-    const codigo = String(c[0] || "").trim();
-    if(!codigo) return;
+    config.forEach(function(c){
 
-    if(!coincideFrecuenciaCompra_(c, fecha, diaTexto)) return;
+      const activo = String(c[5] || "").trim().toUpperCase();
+      if(activo !== "SI") return; // sección 5: nunca cargar productos inactivos
+
+      const codigo = String(c[0] || "").trim();
+      if(!codigo) return;
+
+      if(!coincideFrecuenciaCompra_(c, fecha, diaTexto)) return;
+
+      codigosIncluidos[codigo] = true;
+      const filaMatriz = mapaMatriz[codigo];
+
+      if(!filaMatriz){
+        productos.push({
+          codigo: codigo, producto: "(código no encontrado en MATRIZ)",
+          proveedor: "", existencia: 0, minimo: 0, maximo: 0, enTransito: 0, sugerido: 0,
+          convertir: false, presentacion: 0, sugeridoPiezas: 0,
+          udm: "", precio: 0, prioridad: Number(c[6]) || 0, observaciones: c[7] || "",
+          origen: "HABITUAL", incidencia: "Este código ya no existe en el catálogo."
+        });
+        return;
+      }
+
+      const ubicacion = String(filaMatriz[9] || "").trim();
+      const descontinuado = ubicacionVacia_(ubicacion);
+      const proveedor = obtenerProveedorProducto_(filaMatriz);
+      const sinProveedor = proveedor === SIN_PROVEEDOR_ETIQUETA_;
+
+      // Igual que obtenerProductosPorProveedorApp (Centro de Reabastecimiento):
+      // si el producto se compra por presentación (caja/paquete), "sugerido"
+      // sigue en unidades reales (kg/L/pza suelta) pero el usuario captura
+      // PIEZAS de la presentación — sugeridoPiezas redondea hacia arriba para
+      // no quedar cortos.
+      const sugerido = calcularCantidadSugeridaPedidoRapido_(c, filaMatriz, enTransito);
+      const convertir = String(filaMatriz[18] || "").trim().toUpperCase() === "SI";
+      const presentacion = Number(filaMatriz[19]) || 0;
+
+      productos.push({
+        codigo: codigo,
+        producto: filaMatriz[0],
+        udm: filaMatriz[1],
+        proveedor: proveedor,
+        existencia: Number(filaMatriz[10]) || 0,
+        minimo: Number(filaMatriz[11]) || 0,
+        maximo: Number(filaMatriz[12]) || 0,
+        precio: Number(filaMatriz[17]) || 0,
+        enTransito: Number(enTransito[codigo]) || 0,
+        sugerido: sugerido,
+        convertir: convertir && presentacion > 0,
+        presentacion: presentacion,
+        sugeridoPiezas: (convertir && presentacion > 0) ? Math.ceil(sugerido / presentacion) : 0,
+        prioridad: Number(c[6]) || 0,
+        observaciones: c[7] || "",
+        origen: "HABITUAL",
+        incidencia: descontinuado
+          ? "Producto descontinuado (sin ubicación en MATRIZ)."
+          : (sinProveedor ? "Este producto no tiene proveedor configurado." : "")
+      });
+
+    });
+
+  }
+
+  // Marca rápida directa en MATRIZ (columna U = "SI"): alternativa a
+  // configurar frecuencia/día en PRODUCTOS_COMPRA — Alberto prefiere
+  // marcar ahí mismo, en el catálogo que ya usa a diario, qué productos
+  // se piden seguido cada semana. Un producto marcado así aparece SIEMPRE
+  // que se abra el módulo (sin restricción de día) y, al ser un insumo
+  // nuevo, basta con darle "SI" en esa columna — no hace falta registrarlo
+  // aparte en Productos Habituales. No sustituye esa configuración más
+  // detallada (frecuencia quincenal/mensual, cantidad fija, prioridad) —
+  // ambas fuentes conviven, sin duplicar un producto que ya entró por la otra.
+  Object.keys(mapaMatriz).forEach(function(codigo){
+
+    if(codigosIncluidos[codigo]) return;
 
     const filaMatriz = mapaMatriz[codigo];
-
-    if(!filaMatriz){
-      productos.push({
-        codigo: codigo, producto: "(código no encontrado en MATRIZ)",
-        proveedor: "", existencia: 0, minimo: 0, maximo: 0, enTransito: 0, sugerido: 0,
-        udm: "", precio: 0, prioridad: Number(c[6]) || 0, observaciones: c[7] || "",
-        incidencia: "Este código ya no existe en el catálogo."
-      });
-      return;
-    }
+    const marcadoSemanal = String(filaMatriz[20] || "").trim().toUpperCase() === "SI"; // columna U
+    if(!marcadoSemanal) return;
 
     const ubicacion = String(filaMatriz[9] || "").trim();
-    const descontinuado = ubicacionVacia_(ubicacion);
+    if(ubicacionVacia_(ubicacion)) return; // producto descontinuado, no ofrecer
+
+    codigosIncluidos[codigo] = true;
+
     const proveedor = obtenerProveedorProducto_(filaMatriz);
     const sinProveedor = proveedor === SIN_PROVEEDOR_ETIQUETA_;
+    const existencia = Number(filaMatriz[10]) || 0;
+    const minimo = Number(filaMatriz[11]) || 0;
+    const maximo = Number(filaMatriz[12]) || 0;
+    const enTr = Number(enTransito[codigo]) || 0;
+    const sugerido = Math.max(Math.round(maximo - existencia - enTr), 0);
+    const convertir = String(filaMatriz[18] || "").trim().toUpperCase() === "SI";
+    const presentacion = Number(filaMatriz[19]) || 0;
+    const convertirFinal = convertir && presentacion > 0;
 
     productos.push({
       codigo: codigo,
       producto: filaMatriz[0],
       udm: filaMatriz[1],
       proveedor: proveedor,
-      existencia: Number(filaMatriz[10]) || 0,
-      minimo: Number(filaMatriz[11]) || 0,
-      maximo: Number(filaMatriz[12]) || 0,
+      existencia: existencia,
+      minimo: minimo,
+      maximo: maximo,
       precio: Number(filaMatriz[17]) || 0,
-      enTransito: Number(enTransito[codigo]) || 0,
-      sugerido: calcularCantidadSugeridaPedidoRapido_(c, filaMatriz, enTransito),
-      prioridad: Number(c[6]) || 0,
-      observaciones: c[7] || "",
-      incidencia: descontinuado
-        ? "Producto descontinuado (sin ubicación en MATRIZ)."
-        : (sinProveedor ? "Este producto no tiene proveedor configurado." : "")
+      enTransito: enTr,
+      sugerido: sugerido,
+      convertir: convertirFinal,
+      presentacion: presentacion,
+      sugeridoPiezas: convertirFinal ? Math.ceil(sugerido / presentacion) : 0,
+      prioridad: 0,
+      observaciones: "",
+      origen: "HABITUAL",
+      incidencia: sinProveedor ? "Este producto no tiene proveedor configurado." : ""
+    });
+
+  });
+
+  // Además de los habituales (configurados o marcados en MATRIZ), se
+  // agregan como sugerencia los productos bajo mínimo de TODO el
+  // catálogo — misma fuente y mismo cálculo que ya usa Sugerencias de
+  // Requisición / Centro de Reabastecimiento
+  // (obtenerSugerenciasRequisicionAutomaticaApp, AnalisisCompras.gs), para
+  // no reimplementar el criterio de "bajo mínimo" ni su sugerido por
+  // fórmula+histórico. Un producto que ya entró como HABITUAL no se
+  // duplica aquí.
+  const bajoMinimo = obtenerSugerenciasRequisicionAutomaticaApp(token);
+
+  bajoMinimo.forEach(function(p){
+
+    if(codigosIncluidos[p.codigo]) return;
+    codigosIncluidos[p.codigo] = true;
+
+    const filaMatriz = mapaMatriz[p.codigo];
+    const precio = filaMatriz ? Number(filaMatriz[17]) || 0 : 0;
+    const convertir = filaMatriz ? String(filaMatriz[18] || "").trim().toUpperCase() === "SI" : false;
+    const presentacion = filaMatriz ? Number(filaMatriz[19]) || 0 : 0;
+    const convertirFinal = convertir && presentacion > 0;
+    const sinProveedor = p.proveedor === SIN_PROVEEDOR_ETIQUETA_;
+
+    productos.push({
+      codigo: p.codigo,
+      producto: p.producto,
+      udm: p.udm,
+      proveedor: p.proveedor,
+      existencia: p.existencia,
+      minimo: p.minimo,
+      maximo: p.maximo,
+      precio: precio,
+      enTransito: Number(enTransito[p.codigo]) || 0,
+      sugerido: p.cantidadSugerida,
+      convertir: convertirFinal,
+      presentacion: presentacion,
+      sugeridoPiezas: convertirFinal ? Math.ceil(p.cantidadSugerida / presentacion) : 0,
+      prioridad: 0,
+      observaciones: "",
+      origen: "BAJO_MINIMO",
+      incidencia: sinProveedor ? "Este producto no tiene proveedor configurado." : ""
     });
 
   });
