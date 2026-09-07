@@ -905,7 +905,23 @@ function tgDeterminarDestinoLogin_(){
   return urlBase + "?page=" + (esMovil ? "mobile" : "index");
 }
 
+// Candado de re-entrada: entrar() se puede disparar dos veces por el mismo
+// intento del usuario (botón deshabilitado con disabled=true SOLO bloquea
+// el clic en ESE elemento — el listener de Enter en el campo de contraseña,
+// más abajo, llama a entrar() directo sin revisar ese estado). Dos
+// validarUsuario() casi simultáneos para el mismo correo crean dos sesiones
+// seguidas — y como TAGERS WMS permite solo una sesión activa por usuario
+// (ver crearSesion_, Sesiones.gs), la segunda invalida a la primera de
+// inmediato. Si la respuesta que el navegador termina procesando es la del
+// login ya invalidado, todo lo que se intente después falla con "sesión
+// expirada" aunque el login se haya visto exitoso. Esta bandera hace que un
+// segundo Enter/clic mientras la primera petición sigue en vuelo no haga
+// absolutamente nada, en vez de mandar una segunda petición por encima.
+let tgLoginEnProgreso_ = false;
+
 function entrar(){
+
+  if(tgLoginEnProgreso_) return;
 
   const correo = document.getElementById("correo").value.trim();
   const password = document.getElementById("password").value;
@@ -922,6 +938,7 @@ function entrar(){
     else{ localStorage.removeItem("tagers_correo_recordado"); }
   }
 
+  tgLoginEnProgreso_ = true;
   mensaje.innerText = "";
   document.getElementById("btnEntrar").disabled = true;
   document.getElementById("txtBtn").style.display = "none";
@@ -941,14 +958,18 @@ function entrar(){
         reproducirTransicionEntrada(res.nombre, tgDeterminarDestinoLogin_());
 
       } else {
+        tgLoginEnProgreso_ = false;
         restaurarBoton();
         mensaje.innerText = res.mensaje || "Correo o contraseña incorrectos";
       }
 
     })
     .withFailureHandler(function(error){
+      tgLoginEnProgreso_ = false;
       restaurarBoton();
-      mensaje.innerText = "Error: " + error.message;
+      // error.message puede venir vacío cuando la falla es de transporte
+      // (no un throw real del servidor) — nunca mostrar "Error: undefined".
+      mensaje.innerText = "Error: " + ((error && error.message) || "no se pudo conectar con el servidor. Intenta de nuevo.");
     })
     .validarUsuario(correo, password);
 
