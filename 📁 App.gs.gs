@@ -2975,19 +2975,6 @@ function asegurarEncabezadosImpuestosOrdenesCompra_(ordenes){
   }
 }
 
-/**
- * Pedido de Compra Rápido: columna L, lazy-header igual que las de COM-02
- * — una OC generada manualmente (fuera de un pedido) simplemente la deja
- * en blanco. Relaciona cada OC con el "documento padre" (PEDIDOS_COMPRA)
- * que la generó, sin tocar en nada el flujo de creación manual existente.
- */
-function asegurarEncabezadoPedidoOrdenesCompra_(ordenes){
-  if(ordenes.getRange(1, 12).getValue() === ""){
-    ordenes.getRange(1, 12).setValue("Folio Pedido");
-    ordenes.getRange(1, 12).setFontWeight("bold");
-  }
-}
-
 function calcularDesgloseOrdenCompra_(subtotal, extras){
   const descuento = Math.max(0, Number(extras && extras.descuento) || 0);
   const ivaPorcentaje = Math.max(0, Number(extras && extras.ivaPorcentaje) || 0);
@@ -3033,7 +3020,7 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token, extras){
   // generadas al mismo tiempo no pueden terminar con el mismo folio. El
   // resto (detalle, auditoría, PDF) no depende de esa sección compartida
   // y queda igual que antes, fuera del lock.
-  let folioOC, total, filasDetalle, desglose, filaOrdenNueva;
+  let folioOC, total, filasDetalle, desglose;
 
   conBloqueoApp_(function(){
 
@@ -3107,19 +3094,9 @@ function generarOrdenCompraApp(proveedor, observaciones, items, token, extras){
       desglose.totalConImpuestos
     ]);
 
-    filaOrdenNueva = ordenes.getLastRow();
-
   });
 
   asegurarEncabezadosImpuestosOrdenesCompra_(ordenes);
-
-  // Pedido de Compra Rápido: si esta OC nace agrupada dentro de un pedido
-  // semanal, queda relacionada aquí — extras.folioPedido es opcional, así
-  // que una OC manual (sin pedido) no se ve afectada en nada.
-  if(extras && extras.folioPedido){
-    asegurarEncabezadoPedidoOrdenesCompra_(ordenes);
-    ordenes.getRange(filaOrdenNueva, 12).setValue(extras.folioPedido);
-  }
 
   // Si DETALLE_OC todavía no tiene las columnas de presentación (de una
   // versión anterior), les ponemos encabezado la primera vez que se usan.
@@ -3285,7 +3262,7 @@ function obtenerOrdenesCompraApp(token){
 
   if(!hoja || hoja.getLastRow() < 2) return [];
 
-  const anchoHoja = Math.min(Math.max(hoja.getLastColumn(), 7), 12);
+  const anchoHoja = Math.min(Math.max(hoja.getLastColumn(), 7), 11);
   const datos = hoja.getRange(2, 1, hoja.getLastRow()-1, anchoHoja).getValues();
 
   // COM-201: un solo pase por PAGOS_OC para las N órdenes, en vez de
@@ -3330,11 +3307,7 @@ function obtenerOrdenesCompraApp(token){
       // subtotal, siempre contra el total real de la orden.
       montoPagado: montoPagado,
       saldoPendiente: saldoPendiente,
-      estadoPago: estadoPago,
-      // Pedido de Compra Rápido: en blanco para cualquier OC generada
-      // manualmente o antes de esta corrección (mismo criterio lazy-header
-      // que descuento/IVA/flete).
-      folioPedido: String(f[11] || "")
+      estadoPago: estadoPago
     };
 
   }).reverse(); // más recientes primero
@@ -3362,7 +3335,7 @@ function obtenerDetalleOCApp_(oc){
   let encabezado = null;
 
   if(ordenes.getLastRow() > 1){
-    const anchoOrdenes = Math.min(Math.max(ordenes.getLastColumn(), 7), 12);
+    const anchoOrdenes = Math.min(Math.max(ordenes.getLastColumn(), 7), 11);
     const datosOrdenes = ordenes.getRange(2, 1, ordenes.getLastRow()-1, anchoOrdenes).getValues();
     for(let i=0;i<datosOrdenes.length;i++){
       if(String(datosOrdenes[i][0]||"").trim().toUpperCase() === oc){
@@ -3379,8 +3352,7 @@ function obtenerDetalleOCApp_(oc){
           ivaPorcentaje: Number(datosOrdenes[i][8]) || 0,
           ivaMonto: Math.round(Math.max(0, total - (Number(datosOrdenes[i][7])||0)) * ((Number(datosOrdenes[i][8])||0) / 100) * 100) / 100,
           flete: Number(datosOrdenes[i][9]) || 0,
-          totalConImpuestos: Number(datosOrdenes[i][10]) || total,
-          folioPedido: String(datosOrdenes[i][11] || "")
+          totalConImpuestos: Number(datosOrdenes[i][10]) || total
         };
         break;
       }
