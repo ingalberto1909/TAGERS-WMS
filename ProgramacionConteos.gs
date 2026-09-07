@@ -36,7 +36,11 @@ function guardarProgramacion(datos) {
   return id;
 }
 
-function obtenerDiaActual() {
+// El parámetro fecha es opcional (Pedido de Compra Rápido lo usa para
+// calcular el día de una fecha específica, ej. al reabrir un borrador
+// guardado un día distinto a hoy) — omitirlo conserva el comportamiento
+// original exacto (día de hoy).
+function obtenerDiaActual(fecha) {
   const dias = [
     "DOMINGO",
     "LUNES",
@@ -47,7 +51,7 @@ function obtenerDiaActual() {
     "SABADO"
   ];
 
-  return dias[new Date().getDay()];
+  return dias[(fecha || new Date()).getDay()];
 }
 
 function generarConteosDelDia() {
