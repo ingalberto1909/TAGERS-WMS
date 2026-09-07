@@ -3087,7 +3087,8 @@ const ICONOS_MENU = {
   // resto del sidebar (emoji a color mezclado con iconos de línea).
   btnClasificacionABC:"etiqueta", btnEtiquetas:"etiqueta", btnProgramacionConteos:"calendario",
   btnSucursales:"ubicacion", btnAuditoria:"candado",
-  btnConfigCongelarExistencia:"guardar", btnConfigMigrarCosto:"dinero"
+  btnConfigCongelarExistencia:"guardar", btnConfigMigrarCosto:"dinero",
+  btnPedidoCompraRapido:"carrito", btnHistorialPedidosCompra:"reloj", btnProductosHabitualesCompra:"configuracion"
 };
 
 function aplicarIconosSidebar(){
@@ -3463,6 +3464,7 @@ const PERMISOS_ROL = {
     "btnDevoluciones",
     "btnCentroReabastecimiento","btnSugerenciasRequisicion","btnOrdenesCompra","btnRecepcionMercancia","btnHistorialCompras",
     "btnAnalisisCostos","btnAnalisisCompras","btnProveedores",
+    "btnPedidoCompraRapido","btnProductosHabitualesCompra","btnHistorialPedidosCompra",
     "btnGenerarInventarioMensual","btnCapturarInventarioMensual","btnRevisarDiferenciasMensual",
     "btnCerrarInventarioMensual","btnHistorialInventarioMensual","btnDashboardInventarioMensual",
     // Ya se veían para este rol antes de que estos 3 botones tuvieran id
@@ -8747,6 +8749,844 @@ async function generarOrdenDesdeReabasto(){
   })
 
   .generarOrdenCompraApp(proveedor, observaciones, items, obtenerTokenSesion(), extras);
+
+}
+
+// ============================================
+// PEDIDO DE COMPRA RÁPIDO
+// ============================================
+// Centraliza el pedido semanal de productos recurrentes: carga
+// automáticamente los "productos habituales" del día (PedidoCompraRapido.gs),
+// el usuario revisa/ajusta cantidades, y "Generar Órdenes de Compra"
+// agrupa por proveedor y llama a generarOrdenCompraApp — la MISMA función
+// que ya usa Centro de Reabastecimiento — una vez por proveedor. Nada de
+// folio/impuestos/auditoría/PDF se reimplementa aquí.
+
+function pedidoRapidoFechaHoyISO(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+
+function abrirPedidoCompraRapido(){
+
+  marcarActivo("btnPedidoCompraRapido");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("carrito",20)} Pedido de Compra Rápido</h2>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;color:var(--text-soft);margin:0">Fecha</label>
+        <input type="date" id="pedidoRapidoFecha" value="${pedidoRapidoFechaHoyISO()}" onchange="cargarPedidoCompraRapido()" style="margin:0;padding:7px 10px;width:auto">
+      </div>
+    </div>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-4px">Revisa lo que ya se carga solo, ajusta cantidades y genera todas las órdenes de compra de un solo golpe.</p>
+
+    <div id="pedidoRapidoContenido">
+      <div class="cardProducto">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+        <div class="skeleton skeletonLinea" style="width:65%"></div>
+      </div>
+    </div>
+
+    </div>
+  `;
+
+  cargarPedidoCompraRapido();
+
+}
+
+function cargarPedidoCompraRapido(){
+
+  const fecha = document.getElementById("pedidoRapidoFecha").value || pedidoRapidoFechaHoyISO();
+  const cont = document.getElementById("pedidoRapidoContenido");
+  cont.innerHTML = `<div class="cardProducto"><div class="skeleton skeletonLinea" style="width:60%"></div></div>`;
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      if(resultado.existente){
+        mostrarPedidoYaGenerado(resultado.pedido, fecha);
+      } else if(resultado.borrador){
+        cargarPedidoDesdeBorrador(resultado.borrador);
+      } else {
+        iniciarPedidoDesdeHabituales(resultado, fecha);
+      }
+    })
+    .withFailureHandler(function(e){
+      cont.innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .iniciarPedidoCompraRapidoApp(fecha, obtenerTokenSesion());
+
+}
+
+function mostrarPedidoYaGenerado(pedido, fecha){
+
+  document.getElementById("pedidoRapidoContenido").innerHTML = `
+    <div class="cardProducto" style="max-width:640px">
+      ${tgIcon("alertaTriangulo",26)}
+      <h3 style="margin:10px 0 4px">Ya existe un pedido de compra para este día</h3>
+      <p style="color:var(--text-soft);font-size:13.5px">
+        <b>${pedido.folio}</b> — ${pedido.totalProductos} producto(s), ${pedido.totalProveedores} proveedor(es), generado por ${pedido.usuario}.
+        Generó ${pedido.ocsGeneradas.length} orden(es) de compra: ${pedido.ocsGeneradas.join(", ")}.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+        <div class="boton" style="width:auto;padding:10px 16px;margin:0" onclick="verPedidoCompraDetalle('${pedido.folio}')">${tgIcon("documento",16)} Abrir pedido existente</div>
+        <div class="boton secundario" style="width:auto;padding:10px 16px;margin:0" onclick="iniciarPedidoExtraordinario('${fecha}')">${tgIcon("mas",16)} Crear pedido extraordinario</div>
+        <div class="boton" style="width:auto;padding:10px 16px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="volverInicio()">Cancelar</div>
+      </div>
+    </div>
+  `;
+
+}
+
+function iniciarPedidoExtraordinario(fecha){
+  google.script.run
+    .withSuccessHandler(function(resultado){ iniciarPedidoDesdeHabituales(resultado, fecha); })
+    .withFailureHandler(function(e){
+      document.getElementById("pedidoRapidoContenido").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerProductosHabitualesCompraApp(fecha, obtenerTokenSesion());
+}
+
+function iniciarPedidoDesdeHabituales(datos, fecha){
+
+  window.pedidoRapidoActual = {
+    folio: null,
+    fecha: fecha,
+    dia: datos.dia,
+    fechaDisplay: datos.fecha,
+    items: (datos.productos || []).map(function(p){
+      return {
+        codigo: p.codigo, producto: p.producto, proveedor: p.proveedor,
+        existencia: p.existencia, minimo: p.minimo, maximo: p.maximo,
+        enTransito: p.enTransito || 0, sugerido: p.sugerido,
+        cantidad: p.sugerido, udm: p.udm, precio: p.precio,
+        origen: "HABITUAL", incidencia: p.incidencia || "",
+        marcado: !p.incidencia
+      };
+    })
+  };
+
+  dibujarPantallaPedidoRapido();
+
+}
+
+function cargarPedidoDesdeBorrador(pedido){
+
+  window.pedidoRapidoActual = {
+    folio: pedido.folio,
+    fecha: document.getElementById("pedidoRapidoFecha").value,
+    dia: "", fechaDisplay: pedido.fecha,
+    items: (pedido.items || []).map(function(it){
+      return {
+        codigo: it.codigo, producto: it.producto, proveedor: it.proveedor,
+        existencia: it.existencia, minimo: 0, maximo: 0, enTransito: 0,
+        sugerido: it.sugerido, cantidad: it.cantidad, udm: it.udm, precio: it.precio,
+        origen: it.origen || "HABITUAL", incidencia: it.incidencia || "",
+        marcado: it.cantidad > 0
+      };
+    })
+  };
+
+  dibujarPantallaPedidoRapido();
+
+}
+
+function dibujarPantallaPedidoRapido(){
+
+  document.getElementById("pedidoRapidoContenido").innerHTML = `
+
+    <div id="pedidoRapidoMetricas" class="gridFormulario" style="grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:6px"></div>
+
+    <div class="cardProducto">
+
+      <div style="position:relative;max-width:500px;margin-bottom:14px">
+        <label>${tgIcon("mas",14)} Agregar producto extraordinario</label>
+        <input id="buscarProductoPedidoRapido" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaPedidoRapido()" autocomplete="off">
+        <div id="resultadosBuscarProductoPedidoRapido" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+      </div>
+
+      <div id="pedidoRapidoTablaCont" style="overflow:auto;max-height:52vh"></div>
+
+      <div id="mensajePedidoRapido" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <div class="boton secundario" style="width:auto;padding:10px 16px;margin:0" onclick="recalcularCantidadesPedidoRapido()">${tgIcon("refrescar",16)} Recalcular cantidades</div>
+        <div class="boton secundario" id="btnGuardarBorradorPedidoRapido" style="width:auto;padding:10px 16px;margin:0" onclick="guardarBorradorPedidoRapidoAccion()">${tgIcon("guardar",16)} Guardar borrador</div>
+        <div class="boton" id="btnGenerarPedidoRapido" style="width:auto;padding:10px 16px;margin:0" onclick="generarOrdenesPedidoRapidoAccion()">${tgIcon("recibo",16)} Generar Órdenes de Compra</div>
+        <div class="boton" style="width:auto;padding:10px 16px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="volverInicio()">Cancelar</div>
+      </div>
+
+    </div>
+  `;
+
+  dibujarTablaPedidoRapido();
+
+}
+
+function pedidoRapidoMetricasActuales(){
+
+  const items = (window.pedidoRapidoActual && window.pedidoRapidoActual.items) || [];
+  const incluidos = items.filter(function(it){ return it.marcado && Number(it.cantidad) > 0; });
+  const proveedores = {};
+  let unidades = 0;
+  incluidos.forEach(function(it){ proveedores[normalizarProveedorJS(it.proveedor)] = true; unidades += Number(it.cantidad) || 0; });
+  const incidencias = items.filter(function(it){ return it.incidencia; }).length;
+
+  return {
+    productos: incluidos.length,
+    proveedores: Object.keys(proveedores).length,
+    unidades: unidades,
+    incidencias: incidencias,
+    ordenes: Object.keys(proveedores).length
+  };
+
+}
+
+function normalizarProveedorJS(texto){
+  return String(texto||"").trim().toUpperCase();
+}
+
+function dibujarTablaPedidoRapido(){
+
+  const items = (window.pedidoRapidoActual && window.pedidoRapidoActual.items) || [];
+  const m = pedidoRapidoMetricasActuales();
+
+  const metricas = document.getElementById("pedidoRapidoMetricas");
+  if(metricas){
+    metricas.innerHTML = [
+      ["Productos", m.productos], ["Proveedores", m.proveedores], ["Unidades a comprar", formatearCantidadJS(m.unidades)],
+      ["Con incidencias", m.incidencias], ["Órdenes a generar", m.ordenes]
+    ].map(function(par){
+      return `<div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${par[0]}</div>
+        <div style="font-size:20px;font-weight:800;color:${par[0]==="Con incidencias" && par[1]>0 ? "var(--color-danger)" : "var(--guinda)"}">${par[1]}</div>
+      </div>`;
+    }).join("");
+  }
+
+  const cont = document.getElementById("pedidoRapidoTablaCont");
+  if(!cont) return;
+
+  if(!items.length){
+    cont.innerHTML = tgEmptyState("carrito", "No hay productos habituales configurados para hoy — agrega alguno con el buscador de arriba, o configúralos en \"Productos habituales\".");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13px">
+      <thead>
+        <tr>
+          <th></th><th>Producto</th><th>Proveedor</th><th style="text-align:right">Existencia</th>
+          <th style="text-align:right">Sugerido</th><th style="text-align:right">Comprar</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(function(it, i){
+          return `
+          <tr style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
+            <td><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="dibujarTablaPedidoRapido()"></td>
+            <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${it.origen==="EXTRAORDINARIO" ? ' · <span style="color:var(--terracota)">extraordinario</span>' : ''}</span>
+              ${it.incidencia ? `<br><span style="font-size:10.5px;color:var(--color-danger)">${tgIcon("alertaTriangulo",11)} ${it.incidencia}</span>` : ""}
+            </td>
+            <td>${it.proveedor || "—"}</td>
+            <td style="text-align:right">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
+            <td style="text-align:right">${formatearCantidadJS(it.sugerido)}</td>
+            <td style="text-align:right">
+              <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" oninput="sincronizarPedidoRapidoDesdeInputs(); dibujarTablaPedidoRapido()"
+                style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+            </td>
+            <td><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
+          </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+// Lee del DOM lo que el usuario ya marcó/escribió, sin perder la captura
+// al re-dibujar la tabla (mismo patrón que sincronizarReabastoDesdeInputs).
+function sincronizarPedidoRapidoDesdeInputs(){
+  ((window.pedidoRapidoActual && window.pedidoRapidoActual.items) || []).forEach(function(it, i){
+    const chk = document.getElementById("chkPedidoRapido"+i);
+    const cant = document.getElementById("cantPedidoRapido"+i);
+    if(chk) it.marcado = chk.checked;
+    if(cant) it.cantidad = Number(cant.value) || 0;
+  });
+}
+
+function quitarProductoPedidoRapido(indice){
+  sincronizarPedidoRapidoDesdeInputs();
+  window.pedidoRapidoActual.items.splice(indice, 1);
+  dibujarTablaPedidoRapido();
+}
+
+function recalcularCantidadesPedidoRapido(){
+  sincronizarPedidoRapidoDesdeInputs();
+  google.script.run
+    .withSuccessHandler(function(datos){
+      const porCodigo = {};
+      (datos.productos || []).forEach(function(p){ porCodigo[p.codigo] = p; });
+      window.pedidoRapidoActual.items.forEach(function(it){
+        if(it.origen !== "HABITUAL") return;
+        const fresco = porCodigo[it.codigo];
+        if(!fresco) return;
+        it.existencia = fresco.existencia; it.enTransito = fresco.enTransito || 0;
+        it.sugerido = fresco.sugerido; it.cantidad = fresco.sugerido;
+        it.incidencia = fresco.incidencia || ""; it.marcado = !fresco.incidencia;
+      });
+      dibujarTablaPedidoRapido();
+      mostrarMensajeTemporal("mensajePedidoRapido", "Cantidades recalculadas con la existencia más reciente", "ok");
+    })
+    .withFailureHandler(function(e){ mostrarMensajeTemporal("mensajePedidoRapido", "⚠️ " + e.message, "error"); })
+    .obtenerProductosHabitualesCompraApp(window.pedidoRapidoActual.fecha, obtenerTokenSesion());
+}
+
+let temporizadorBuscarProductoPedidoRapido = null;
+
+function buscarProductoParaPedidoRapido(){
+
+  clearTimeout(temporizadorBuscarProductoPedidoRapido);
+
+  const texto = document.getElementById("buscarProductoPedidoRapido").value.trim();
+  const resultados = document.getElementById("resultadosBuscarProductoPedidoRapido");
+
+  if(texto.length < 2){
+    resultados.innerHTML = ""; resultados.style.display = "none";
+    return;
+  }
+
+  temporizadorBuscarProductoPedidoRapido = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        if(!lista || !lista.length){
+          resultados.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          resultados.style.display = "block";
+          return;
+        }
+        resultados.innerHTML = lista.map(function(p){
+          return `<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='agregarProductoExtraordinarioPedidoRapido(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo} — ${p.proveedor||"sin proveedor"})</span>
+          </div>`;
+        }).join("");
+        resultados.style.display = "block";
+      })
+      .withFailureHandler(function(e){
+        resultados.innerHTML = "⚠️ " + e.message; resultados.style.display = "block";
+      })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+  }, 300);
+
+}
+
+function agregarProductoExtraordinarioPedidoRapido(producto){
+
+  sincronizarPedidoRapidoDesdeInputs();
+
+  const yaExiste = window.pedidoRapidoActual.items.some(function(it){ return it.codigo === producto.codigo; });
+  if(yaExiste){
+    mostrarMensajeTemporal("mensajePedidoRapido", "Ese producto ya está en el pedido", "error");
+  } else {
+    window.pedidoRapidoActual.items.push({
+      codigo: producto.codigo, producto: producto.producto, proveedor: producto.proveedor || "",
+      existencia: producto.existencia, minimo: producto.minimo, maximo: producto.maximo,
+      enTransito: 0, sugerido: 0, cantidad: 1, udm: producto.udm, precio: producto.precio,
+      origen: "EXTRAORDINARIO", incidencia: producto.proveedor ? "" : "Este producto no tiene proveedor configurado.",
+      marcado: !!producto.proveedor
+    });
+    dibujarTablaPedidoRapido();
+  }
+
+  document.getElementById("buscarProductoPedidoRapido").value = "";
+  document.getElementById("resultadosBuscarProductoPedidoRapido").innerHTML = "";
+  document.getElementById("resultadosBuscarProductoPedidoRapido").style.display = "none";
+
+}
+
+function pedidoRapidoItemsParaEnviar(){
+  sincronizarPedidoRapidoDesdeInputs();
+  return window.pedidoRapidoActual.items
+    .filter(function(it){ return it.marcado && Number(it.cantidad) > 0; })
+    .map(function(it){
+      return {
+        codigo: it.codigo, producto: it.producto, proveedor: it.proveedor,
+        existencia: it.existencia, sugerido: it.sugerido, cantidad: it.cantidad,
+        udm: it.udm, precio: it.precio, origen: it.origen
+      };
+    });
+}
+
+function guardarBorradorPedidoRapidoAccion(){
+
+  const items = pedidoRapidoItemsParaEnviar();
+  if(!items.length){
+    mostrarMensajeTemporal("mensajePedidoRapido", "Marca al menos un producto con cantidad mayor a cero", "error");
+    return;
+  }
+
+  activarCargaBoton("btnGuardarBorradorPedidoRapido", true);
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnGuardarBorradorPedidoRapido", false);
+      window.pedidoRapidoActual.folio = resultado.folio;
+      mostrarMensajeTemporal("mensajePedidoRapido", "✅ Borrador " + resultado.folio + " guardado", "ok");
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnGuardarBorradorPedidoRapido", false);
+      mostrarMensajeTemporal("mensajePedidoRapido", "⚠️ " + e.message, "error");
+    })
+    .guardarBorradorPedidoCompraApp(window.pedidoRapidoActual.folio, window.pedidoRapidoActual.fecha, items, "", obtenerTokenSesion());
+
+}
+
+async function generarOrdenesPedidoRapidoAccion(){
+
+  const items = pedidoRapidoItemsParaEnviar();
+  if(!items.length){
+    mostrarMensajeTemporal("mensajePedidoRapido", "Marca al menos un producto con cantidad mayor a cero", "error");
+    return;
+  }
+
+  const proveedores = {};
+  items.forEach(function(it){ proveedores[normalizarProveedorJS(it.proveedor)] = true; });
+
+  if(!(await tgConfirmar("¿Generar " + Object.keys(proveedores).length + " orden(es) de compra con " + items.length + " producto(s) en total?"))){
+    return;
+  }
+
+  activarCargaBoton("btnGenerarPedidoRapido", true);
+
+  const continuarConFolio = function(folio){
+    window.pedidoRapidoActual.folio = folio;
+    google.script.run
+      .withSuccessHandler(function(resultado){
+        activarCargaBoton("btnGenerarPedidoRapido", false);
+        mostrarResumenPedidoGenerado(resultado, folio);
+      })
+      .withFailureHandler(function(e){
+        activarCargaBoton("btnGenerarPedidoRapido", false);
+        mostrarMensajeTemporal("mensajePedidoRapido", "⚠️ " + e.message, "error");
+      })
+      .generarOrdenesDesdePedidoApp(folio, obtenerTokenSesion());
+  };
+
+  if(window.pedidoRapidoActual.folio){
+    continuarConFolio(window.pedidoRapidoActual.folio);
+  } else {
+    google.script.run
+      .withSuccessHandler(function(resultado){ continuarConFolio(resultado.folio); })
+      .withFailureHandler(function(e){
+        activarCargaBoton("btnGenerarPedidoRapido", false);
+        mostrarMensajeTemporal("mensajePedidoRapido", "⚠️ " + e.message, "error");
+      })
+      .guardarBorradorPedidoCompraApp(null, window.pedidoRapidoActual.fecha, items, "", obtenerTokenSesion());
+  }
+
+}
+
+function mostrarResumenPedidoGenerado(resultado, folioPedido){
+
+  const contenedor = document.querySelector(".contenedor");
+  const folios = resultado.ordenes.map(function(o){ return o.folio; });
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("checkCirculo",20)} Pedido generado correctamente</h2>
+
+    <div class="cardProducto" style="max-width:760px">
+
+      <div class="gridFormulario" style="grid-template-columns:repeat(3,1fr)">
+        <div class="campo" style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">PEDIDO</div><div style="font-weight:800">${folioPedido}</div></div>
+        <div class="campo" style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">ÓRDENES GENERADAS</div><div style="font-weight:800">${resultado.ordenes.length}</div></div>
+        <div class="campo" style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">PRODUCTOS</div><div style="font-weight:800">${resultado.ordenes.reduce(function(s,o){return s+o.productos;},0)}</div></div>
+      </div>
+
+      <table class="tablaTop" style="font-size:13px;margin-top:12px">
+        <thead><tr><th>Proveedor</th><th>OC</th><th style="text-align:right">Productos</th><th style="text-align:right">Total</th><th></th></tr></thead>
+        <tbody>
+          ${resultado.ordenes.map(function(o){
+            return `<tr>
+              <td>${o.proveedor}</td><td>${o.folio}</td>
+              <td style="text-align:right">${o.productos}</td>
+              <td style="text-align:right">$${o.total.toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+              <td style="text-align:right;white-space:nowrap">
+                <span class="boton secundario" style="display:inline-flex;width:auto;padding:5px 9px;margin:0 4px 0 0;font-size:11.5px" onclick="verPDFOrdenCompra('${o.folio}')">Ver</span>
+                <span class="boton secundario" style="display:inline-flex;width:auto;padding:5px 9px;margin:0;font-size:11.5px" onclick="imprimirOC('${o.folio}')">Imprimir</span>
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+
+      ${resultado.incidencias && resultado.incidencias.length ? `
+        <div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:var(--color-warning-bg)">
+          <b style="color:var(--color-warning)">${tgIcon("alertaTriangulo",14)} ${resultado.incidencias.length} producto(s) quedaron fuera del pedido:</b>
+          <ul style="margin:6px 0 0 18px;font-size:12.5px">
+            ${resultado.incidencias.map(function(i){ return `<li>${i.producto} (${i.codigo}): ${i.motivo}</li>`; }).join("")}
+          </ul>
+        </div>
+      ` : ""}
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <div class="boton secundario" style="width:auto;padding:10px 16px;margin:0" onclick="abrirOrdenesCompra()">${tgIcon("recibo",16)} Ver OCs</div>
+        <div class="boton" style="width:auto;padding:10px 16px;margin:0" onclick='imprimirTodasOCsPedido(${JSON.stringify(folios)})'>${tgIcon("imprimir",16)} Imprimir todas</div>
+        <div class="boton secundario" style="width:auto;padding:10px 16px;margin:0" onclick='(function(){ ${JSON.stringify(folios)}.forEach(function(f){ descargarPDFOrdenCompra(f); }); })()'>${tgIcon("descargar",16)} Descargar todas</div>
+        <div class="boton" style="width:auto;padding:10px 16px;margin:0;background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirHistorialPedidosCompra()">Finalizar pedido</div>
+      </div>
+
+    </div>
+    </div>
+  `;
+
+}
+
+function imprimirTodasOCsPedido(folios){
+  (folios || []).forEach(function(folio, i){
+    setTimeout(function(){ imprimirOC(folio); }, i * 400);
+  });
+}
+
+// --- Historial de pedidos ---
+
+function abrirHistorialPedidosCompra(){
+
+  marcarActivo("btnHistorialPedidosCompra");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("reloj",20)} Historial de Pedidos de Compra</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Cada pedido semanal, con las órdenes de compra que generó.</p>
+    <div class="cardProducto">
+      <div id="listaHistorialPedidosCompra">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+      </div>
+    </div>
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarHistorialPedidosCompra)
+    .withFailureHandler(function(e){
+      document.getElementById("listaHistorialPedidosCompra").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerHistorialPedidosCompraApp(obtenerTokenSesion());
+
+}
+
+function dibujarHistorialPedidosCompra(lista){
+
+  const cont = document.getElementById("listaHistorialPedidosCompra");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("carrito", "Todavía no se ha generado ningún pedido de compra rápido");
+    return;
+  }
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Fecha</th><th>Folio</th><th style="text-align:right">Productos</th><th style="text-align:right">Proveedores</th><th>Estado</th><th>Usuario</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(function(p){
+          return `<tr style="cursor:pointer" onclick="verPedidoCompraDetalle('${p.folio}')">
+            <td>${p.fecha}</td><td>${p.folio}</td>
+            <td style="text-align:right">${p.totalProductos}</td>
+            <td style="text-align:right">${p.totalProveedores}</td>
+            <td><span class="badgeEstado ${p.estado}">${p.estado}</span></td>
+            <td>${p.usuario}</td>
+            <td style="text-align:right;color:var(--guinda)">Ver ${tgIcon("chevronDerecha",13)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function verPedidoCompraDetalle(folio){
+
+  google.script.run
+    .withSuccessHandler(function(pedido){
+      if(!pedido) return;
+      if(pedido.estado === "BORRADOR" || pedido.estado === "EN_REVISION"){
+        abrirPedidoCompraRapido();
+        setTimeout(function(){
+          document.getElementById("pedidoRapidoFecha").value = window.pedidoRapidoActual && window.pedidoRapidoActual.fecha || pedidoRapidoFechaHoyISO();
+          cargarPedidoDesdeBorrador(pedido);
+        }, 50);
+        return;
+      }
+      mostrarResumenPedidoGenerado({ ordenes: pedido.ordenes.map(function(o){
+        return { proveedor: o.proveedor, folio: o.oc, productos: o.items.length, total: o.total };
+      }), incidencias: [] }, pedido.folio);
+    })
+    .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+    .obtenerPedidoCompraApp(folio, obtenerTokenSesion());
+
+}
+
+// --- Configuración de productos habituales ---
+
+function abrirProductosHabitualesCompra(){
+
+  marcarActivo("btnProductosHabitualesCompra");
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${tgIcon("configuracion",20)} Productos Habituales de Compra</h2>
+      <div class="boton" style="width:auto;padding:10px 16px;margin:0" onclick="abrirFormularioProductoHabitualCompra()">${tgIcon("mas",16)} Agregar producto</div>
+    </div>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-4px">Configura qué productos se compran seguido y con qué frecuencia — Pedido de Compra Rápido los carga solo el día que toque.</p>
+    <div class="cardProducto">
+      <div id="listaProductosHabitualesCompra">
+        <div class="skeleton skeletonLinea" style="width:70%"></div>
+        <div class="skeleton skeletonLinea" style="width:55%"></div>
+      </div>
+    </div>
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarListaProductosHabitualesCompra)
+    .withFailureHandler(function(e){
+      document.getElementById("listaProductosHabitualesCompra").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .listarProductosHabitualesCompraApp(obtenerTokenSesion());
+
+}
+
+function dibujarListaProductosHabitualesCompra(lista){
+
+  const cont = document.getElementById("listaProductosHabitualesCompra");
+  if(!cont) return;
+
+  if(!lista || !lista.length){
+    cont.innerHTML = tgEmptyState("configuracion", "No hay productos habituales configurados todavía");
+    return;
+  }
+
+  window.productosHabitualesListaCache = lista;
+
+  cont.innerHTML = `
+    <table class="tablaTop" style="font-size:13.5px">
+      <thead><tr><th>Producto</th><th>Proveedor</th><th>Frecuencia</th><th>Día</th><th>Cantidad</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map(function(p){
+          const activo = !!p.activo;
+          return `<tr>
+            <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}</span></td>
+            <td>${p.proveedor || "—"}</td>
+            <td>${p.frecuencia}</td>
+            <td>${p.diaCompra || "—"}</td>
+            <td>${p.modoCantidad === "FIJA" ? formatearCantidadJS(p.cantidadHabitual) : "Mín/Máx"}</td>
+            <td><span class="badgeEstado ${activo?'ACTIVO':'INACTIVO'}">${activo?'ACTIVO':'INACTIVO'}</span></td>
+            <td style="text-align:right;white-space:nowrap">
+              <span class="boton secundario" style="display:inline-flex;width:auto;padding:6px 10px;margin:0 4px 0 0;font-size:12px" onclick='abrirFormularioProductoHabitualCompra(${JSON.stringify(p.codigo)})'>Editar</span>
+              <span class="boton ${activo ? "danger" : "success"}" style="display:inline-flex;width:auto;padding:6px 10px;margin:0;font-size:12px" onclick='cambiarActivoProductoHabitualAccion(${JSON.stringify(p.codigo)}, ${activo})'>${activo ? "Desactivar" : "Reactivar"}</span>
+            </td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+
+}
+
+function cambiarActivoProductoHabitualAccion(codigo, activoActual){
+  tgConfirmar(
+    activoActual ? "¿Desactivar " + codigo + "? Dejará de cargarse en Pedido de Compra Rápido hasta reactivarlo." : "¿Reactivar " + codigo + "?",
+    { titulo: activoActual ? "Desactivar producto habitual" : "Reactivar producto habitual", peligroso: activoActual }
+  ).then(function(confirmado){
+    if(!confirmado) return;
+    google.script.run
+      .withSuccessHandler(function(){ abrirProductosHabitualesCompra(); })
+      .withFailureHandler(function(e){ alert("⚠️ " + e.message); })
+      .establecerActivoProductoHabitualCompraApp(codigo, !activoActual, obtenerTokenSesion());
+  });
+}
+
+function abrirFormularioProductoHabitualCompra(codigoExistente){
+
+  window.productoHabitualFormEsEdicion = !!codigoExistente;
+  const existente = codigoExistente ? (window.productosHabitualesListaCache || []).find(function(p){ return p.codigo === codigoExistente; }) : null;
+
+  const contenedor = document.querySelector(".contenedor");
+
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="boton secundario" style="width:auto;padding:8px 14px;margin:0" onclick="abrirProductosHabitualesCompra()">${tgIcon("chevronIzquierda",15)} Productos Habituales</button>
+      <h2 style="margin:0;display:flex;align-items:center;gap:8px">${codigoExistente ? tgIcon("editar",18) + " Editar Producto Habitual" : tgIcon("mas",18) + " Nuevo Producto Habitual"}</h2>
+    </div>
+
+    <div class="cardProducto" style="max-width:560px">
+
+      ${codigoExistente ? `
+        <label>Producto</label>
+        <input value="${existente ? existente.producto + ' (' + existente.codigo + ')' : codigoExistente}" readonly>
+        <input type="hidden" id="productoHabitualFormCodigo" value="${codigoExistente}">
+      ` : `
+        <label>Producto</label>
+        <div style="position:relative">
+          <input id="productoHabitualFormBuscar" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaHabitualForm()" autocomplete="off">
+          <div id="resultadosProductoHabitualForm" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+        </div>
+        <input type="hidden" id="productoHabitualFormCodigo" value="">
+      `}
+
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Frecuencia</label>
+          <select id="productoHabitualFormFrecuencia" onchange="ajustarCamposFormHabitual()">
+            <option value="DIARIA">Diaria</option>
+            <option value="SEMANAL" selected>Semanal</option>
+            <option value="QUINCENAL">Quincenal</option>
+            <option value="MENSUAL">Mensual</option>
+            <option value="PERSONALIZADA">Personalizada</option>
+          </select>
+        </div>
+        <div class="campo" id="campoDiaHabitual">
+          <label>Día de compra</label>
+          <select id="productoHabitualFormDia">
+            <option value="LUNES">Lunes</option><option value="MARTES">Martes</option><option value="MIERCOLES">Miércoles</option>
+            <option value="JUEVES">Jueves</option><option value="VIERNES">Viernes</option><option value="SABADO">Sábado</option><option value="DOMINGO">Domingo</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="gridFormulario">
+        <div class="campo">
+          <label>Modo de cantidad</label>
+          <select id="productoHabitualFormModo" onchange="ajustarCamposFormHabitual()">
+            <option value="MIN_MAX" selected>Máximo - Existencia</option>
+            <option value="FIJA">Cantidad fija</option>
+          </select>
+        </div>
+        <div class="campo" id="campoCantidadHabitual" style="display:none">
+          <label>Cantidad habitual</label>
+          <input id="productoHabitualFormCantidad" type="number" min="0" step="0.01" placeholder="0">
+        </div>
+      </div>
+
+      <label>Prioridad (opcional, mayor = aparece primero)</label>
+      <input id="productoHabitualFormPrioridad" type="number" value="${existente ? existente.prioridad : 0}">
+
+      <label>Observaciones (opcional)</label>
+      <input id="productoHabitualFormObservaciones" value="${existente ? (existente.observaciones||'') : ''}">
+
+      <div id="mensajeFormProductoHabitual" style="display:none;margin-top:12px;font-size:13.5px;font-weight:600"></div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <div class="boton" style="background:var(--bg-panel);color:var(--text);border:1px solid var(--border)" onclick="abrirProductosHabitualesCompra()">Cancelar</div>
+        <div class="boton" id="btnGuardarProductoHabitual" onclick="guardarProductoHabitualCompraAccion()">${tgIcon("guardar",16)} Guardar</div>
+      </div>
+
+    </div>
+    </div>
+  `;
+
+  if(existente){
+    document.getElementById("productoHabitualFormFrecuencia").value = existente.frecuencia;
+    document.getElementById("productoHabitualFormModo").value = existente.modoCantidad;
+    ajustarCamposFormHabitual();
+    if(document.getElementById("productoHabitualFormDia")) document.getElementById("productoHabitualFormDia").value = existente.diaCompra;
+    if(document.getElementById("productoHabitualFormCantidad")) document.getElementById("productoHabitualFormCantidad").value = existente.cantidadHabitual;
+  } else {
+    ajustarCamposFormHabitual();
+  }
+
+}
+
+function ajustarCamposFormHabitual(){
+  const frecuencia = document.getElementById("productoHabitualFormFrecuencia").value;
+  const modo = document.getElementById("productoHabitualFormModo").value;
+  const campoDia = document.getElementById("campoDiaHabitual");
+  const campoCantidad = document.getElementById("campoCantidadHabitual");
+  if(campoDia) campoDia.style.display = (frecuencia === "DIARIA") ? "none" : "";
+  if(campoCantidad) campoCantidad.style.display = (modo === "FIJA") ? "" : "none";
+}
+
+let temporizadorBuscarProductoHabitualForm = null;
+
+function buscarProductoParaHabitualForm(){
+  clearTimeout(temporizadorBuscarProductoHabitualForm);
+  const texto = document.getElementById("productoHabitualFormBuscar").value.trim();
+  const resultados = document.getElementById("resultadosProductoHabitualForm");
+  if(texto.length < 2){ resultados.innerHTML = ""; resultados.style.display = "none"; return; }
+  temporizadorBuscarProductoHabitualForm = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(lista){
+        if(!lista || !lista.length){
+          resultados.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          resultados.style.display = "block";
+          return;
+        }
+        resultados.innerHTML = lista.map(function(p){
+          return `<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick='seleccionarProductoHabitualForm(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo})</span>
+          </div>`;
+        }).join("");
+        resultados.style.display = "block";
+      })
+      .withFailureHandler(function(e){ resultados.innerHTML = "⚠️ " + e.message; resultados.style.display = "block"; })
+      .buscarProductoCatalogoApp(texto, obtenerTokenSesion());
+  }, 300);
+}
+
+function seleccionarProductoHabitualForm(producto){
+  document.getElementById("productoHabitualFormCodigo").value = producto.codigo;
+  document.getElementById("productoHabitualFormBuscar").value = producto.producto + " (" + producto.codigo + ")";
+  document.getElementById("resultadosProductoHabitualForm").innerHTML = "";
+  document.getElementById("resultadosProductoHabitualForm").style.display = "none";
+}
+
+function guardarProductoHabitualCompraAccion(){
+
+  const codigo = document.getElementById("productoHabitualFormCodigo").value.trim();
+  if(!codigo){
+    mostrarMensajeTemporal("mensajeFormProductoHabitual", "Busca y selecciona un producto del catálogo", "error");
+    return;
+  }
+
+  const frecuencia = document.getElementById("productoHabitualFormFrecuencia").value;
+  const datos = {
+    codigo: codigo,
+    frecuencia: frecuencia,
+    diaCompra: frecuencia === "DIARIA" ? "" : document.getElementById("productoHabitualFormDia").value,
+    modoCantidad: document.getElementById("productoHabitualFormModo").value,
+    cantidadHabitual: Number(document.getElementById("productoHabitualFormCantidad").value) || 0,
+    activo: true,
+    prioridad: Number(document.getElementById("productoHabitualFormPrioridad").value) || 0,
+    observaciones: document.getElementById("productoHabitualFormObservaciones").value.trim()
+  };
+
+  activarCargaBoton("btnGuardarProductoHabitual", true);
+
+  google.script.run
+    .withSuccessHandler(function(){
+      activarCargaBoton("btnGuardarProductoHabitual", false);
+      abrirProductosHabitualesCompra();
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnGuardarProductoHabitual", false);
+      mostrarMensajeTemporal("mensajeFormProductoHabitual", "⚠️ " + e.message, "error");
+    })
+    .guardarProductoHabitualCompraApp(datos, obtenerTokenSesion());
 
 }
 
@@ -16219,6 +17059,9 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnAnalisisCostos" onclick="abrirAnalisisCostos()" title="Análisis de costos"><span class="icono">📊</span><span class="textoMenu">Análisis de costos</span></button>
     <button class="menuLateralBtn sub" id="btnAnalisisCompras" onclick="abrirAnalisisCompras()" title="Análisis de compras"><span class="icono">🔎</span><span class="textoMenu">Análisis de compras</span></button>
     <button class="menuLateralBtn sub" id="btnProveedores" onclick="abrirProveedores()" title="Proveedores"><span class="icono">🏭</span><span class="textoMenu">Proveedores</span></button>
+    <button class="menuLateralBtn sub" id="btnPedidoCompraRapido" onclick="abrirPedidoCompraRapido()" title="Pedido de compra rápido"><span class="icono">🛒</span><span class="textoMenu">Pedido de compra rápido</span></button>
+    <button class="menuLateralBtn sub" id="btnHistorialPedidosCompra" onclick="abrirHistorialPedidosCompra()" title="Historial de pedidos"><span class="icono">📜</span><span class="textoMenu">Historial de pedidos</span></button>
+    <button class="menuLateralBtn sub" id="btnProductosHabitualesCompra" onclick="abrirProductosHabitualesCompra()" title="Productos habituales de compra"><span class="icono">⚙️</span><span class="textoMenu">Productos habituales</span></button>
   </div>
 </div>
 

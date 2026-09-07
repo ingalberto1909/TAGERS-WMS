@@ -42,6 +42,7 @@ const ARCHIVOS_BACKEND = [
   'Mermas.gs',
   'Devoluciones.gs',
   'Sucursales.gs',
+  'PedidoCompraRapido.gs',
 ];
 
 /**
