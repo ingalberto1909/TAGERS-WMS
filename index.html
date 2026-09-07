@@ -8989,6 +8989,15 @@ function dibujarTablaPedidoRapido(){
 
   const items = (window.pedidoRapidoActual && window.pedidoRapidoActual.items) || [];
 
+  // Orden alfabético por nombre de producto — se ordena el arreglo real
+  // (no una copia) porque los id de fila/inputs y las funciones que
+  // operan por índice (quitarProductoPedidoRapido, resaltarFilaPedidoRapido,
+  // sincronizarPedidoRapidoDesdeInputs) dependen de que el orden mostrado
+  // coincida exactamente con el orden del arreglo.
+  items.sort(function(a, b){
+    return String(a.producto || "").localeCompare(String(b.producto || ""), "es", { sensitivity: "base" });
+  });
+
   actualizarMetricasPedidoRapido();
 
   const cont = document.getElementById("pedidoRapidoTablaCont");
