@@ -8867,7 +8867,11 @@ function iniciarPedidoDesdeHabituales(datos, fecha){
         convertir: !!p.convertir, presentacion: p.presentacion || 0,
         cantidad: p.convertir ? p.sugeridoPiezas : p.sugerido, udm: p.udm, precio: p.precio,
         origen: p.origen || "HABITUAL", incidencia: p.incidencia || "",
-        marcado: !p.incidencia
+        // Nada llega premarcado: aunque se cargue solo, Alberto quiere
+        // revisar y confirmar producto por producto antes de que cuente
+        // para el pedido — así no se le va un insumo que no necesita esta
+        // semana solo por haber aparecido en la lista automática.
+        marcado: false
       };
     })
   };
@@ -9064,7 +9068,10 @@ function recalcularCantidadesPedidoRapido(){
         it.existencia = fresco.existencia; it.enTransito = fresco.enTransito || 0;
         it.sugerido = fresco.sugerido; it.convertir = !!fresco.convertir; it.presentacion = fresco.presentacion || 0;
         it.cantidad = fresco.convertir ? fresco.sugeridoPiezas : fresco.sugerido;
-        it.incidencia = fresco.incidencia || ""; it.marcado = !fresco.incidencia;
+        it.incidencia = fresco.incidencia || "";
+        // El check (marcado) NO se toca aquí — es la decisión del usuario de
+        // revisar producto por producto; recalcular solo refresca números,
+        // nunca vuelve a seleccionar ni desmarca nada por su cuenta.
       });
       dibujarTablaPedidoRapido();
       mostrarMensajeTemporal("mensajePedidoRapido", "Cantidades recalculadas con la existencia más reciente", "ok");
