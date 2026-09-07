@@ -9007,7 +9007,7 @@ function dibujarTablaPedidoRapido(){
         ${items.map(function(it, i){
           const sugeridoMostrar = it.convertir ? Math.ceil((it.sugerido||0) / it.presentacion) : it.sugerido;
           return `
-          <tr style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
+          <tr id="filaPedidoRapido${i}" style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
             <td><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"></td>
             <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${pedidoRapidoEtiquetaOrigen_(it.origen)}</span>
               ${it.incidencia ? `<br><span style="font-size:10.5px;color:var(--color-danger)">${tgIcon("alertaTriangulo",11)} ${it.incidencia}</span>` : ""}
@@ -9095,10 +9095,15 @@ function buscarProductoParaPedidoRapido(){
           resultados.style.display = "block";
           return;
         }
+        const codigosEnLista = {};
+        (window.pedidoRapidoActual.items || []).forEach(function(it){ codigosEnLista[it.codigo] = true; });
+
         resultados.innerHTML = lista.map(function(p){
-          return `<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+          const yaEnLista = !!codigosEnLista[p.codigo];
+          return `<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px"
             onclick='agregarProductoExtraordinarioPedidoRapido(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
-            ${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo} — ${p.proveedor||"sin proveedor"})</span>
+            <span>${p.producto} <span style="color:var(--text-muted);font-size:11px">(${p.codigo} — ${p.proveedor||"sin proveedor"})</span></span>
+            ${yaEnLista ? `<span style="flex-shrink:0;font-size:10.5px;font-weight:700;color:var(--guinda);white-space:nowrap">${tgIcon("buscar",11)} ya en la lista — ver</span>` : ""}
           </div>`;
         }).join("");
         resultados.style.display = "block";
@@ -9111,13 +9116,33 @@ function buscarProductoParaPedidoRapido(){
 
 }
 
+// Con 30+ productos en la lista, "ya está en el pedido" no ayuda si el
+// usuario tiene que revisar renglón por renglón para encontrarlo — esto
+// desplaza la tabla hasta esa fila, la resalta un momento y deja el cursor
+// listo en su campo "Comprar" para ajustar la cantidad ahí mismo.
+function resaltarFilaPedidoRapido(indice){
+
+  const fila = document.getElementById("filaPedidoRapido" + indice);
+  if(!fila) return;
+
+  fila.scrollIntoView({ behavior: "smooth", block: "center" });
+  fila.style.transition = "background-color .3s";
+  fila.style.backgroundColor = "rgba(196,82,42,.28)";
+  setTimeout(function(){ fila.style.backgroundColor = ""; }, 1800);
+
+  const cantInput = document.getElementById("cantPedidoRapido" + indice);
+  if(cantInput){ cantInput.focus(); cantInput.select(); }
+
+}
+
 function agregarProductoExtraordinarioPedidoRapido(producto){
 
   sincronizarPedidoRapidoDesdeInputs();
 
-  const yaExiste = window.pedidoRapidoActual.items.some(function(it){ return it.codigo === producto.codigo; });
-  if(yaExiste){
-    mostrarMensajeTemporal("mensajePedidoRapido", "Ese producto ya está en el pedido", "error");
+  const indiceExistente = window.pedidoRapidoActual.items.findIndex(function(it){ return it.codigo === producto.codigo; });
+  if(indiceExistente !== -1){
+    mostrarMensajeTemporal("mensajePedidoRapido", "Ese producto ya está en el pedido — te lo señalé abajo, ajusta la cantidad ahí", "error");
+    resaltarFilaPedidoRapido(indiceExistente);
   } else {
     const convertirExtra = !!producto.convertir && Number(producto.presentacion) > 0;
     window.pedidoRapidoActual.items.push({
