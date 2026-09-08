@@ -74,9 +74,10 @@ function obtenerHojaDetallePedidoCompra_(){
     hoja = ss.insertSheet("DETALLE_PEDIDO_COMPRA");
     hoja.appendRow([
       "Folio Pedido", "Código", "Producto", "Proveedor", "Existencia",
-      "Sugerido", "Cantidad", "UDM", "Precio", "Origen", "Incidencia", "Folio OC"
+      "Sugerido", "Cantidad", "UDM", "Precio", "Origen", "Incidencia", "Folio OC",
+      "Presentación"
     ]);
-    hoja.getRange(1, 1, 1, 12).setFontWeight("bold");
+    hoja.getRange(1, 1, 1, 13).setFontWeight("bold");
   }
   return hoja;
 }
@@ -662,14 +663,15 @@ function obtenerPedidoCompraApp(folioPedido, token){
   const hojaDetalle = obtenerHojaDetallePedidoCompra_();
   const items = [];
   if(hojaDetalle.getLastRow() > 1){
-    const datosDetalle = hojaDetalle.getRange(2, 1, hojaDetalle.getLastRow() - 1, 12).getValues();
+    const datosDetalle = hojaDetalle.getRange(2, 1, hojaDetalle.getLastRow() - 1, 13).getValues();
     datosDetalle.forEach(function(f){
       if(String(f[0] || "").trim().toUpperCase() === folioPedido){
         items.push({
           codigo: f[1], producto: f[2], proveedor: f[3],
           existencia: Number(f[4]) || 0, sugerido: Number(f[5]) || 0,
           cantidad: Number(f[6]) || 0, udm: f[7], precio: Number(f[8]) || 0,
-          origen: f[9], incidencia: f[10] || "", folioOC: f[11] || ""
+          origen: f[9], incidencia: f[10] || "", folioOC: f[11] || "",
+          presentacion: Number(f[12]) || 0
         });
       }
     });
@@ -698,17 +700,25 @@ function reemplazarDetallePedidoCompra_(folioPedido, items){
     }
   }
 
+  // Lazy-header: un pedido guardado antes de agregar esta columna
+  // simplemente la deja en blanco (mismo patrón que "Presentación"/
+  // "Piezas" en DETALLE_OC, ver generarOrdenCompraApp).
+  if(hoja.getRange(1, 13).getValue() === ""){
+    hoja.getRange(1, 13).setValue("Presentación");
+    hoja.getRange(1, 13).setFontWeight("bold");
+  }
+
   const filas = items.map(function(item){
     return [
       folioPedido, item.codigo, item.producto, item.proveedor,
       Number(item.existencia) || 0, Number(item.sugerido) || 0, Number(item.cantidad) || 0,
       item.udm || "", Number(item.precio) || 0, item.origen || "HABITUAL",
-      item.incidencia || "", ""
+      item.incidencia || "", "", Number(item.presentacion) || 0
     ];
   });
 
   if(filas.length){
-    hoja.getRange(hoja.getLastRow() + 1, 1, filas.length, 12).setValues(filas);
+    hoja.getRange(hoja.getLastRow() + 1, 1, filas.length, 13).setValues(filas);
   }
 
 }
@@ -853,9 +863,14 @@ function generarOrdenesDesdePedidoApp(folioPedido, token){
   validos.forEach(function(item){
     const clave = normalizarProveedor_(item.proveedor);
     if(!grupos[clave]) grupos[clave] = { proveedor: item.proveedor, items: [] };
+    const presentacion = Number(item.presentacion) || 0;
     grupos[clave].items.push({
       codigo: item.codigo, producto: item.producto, udm: item.udm,
-      cantidad: item.cantidad, precio: item.precio
+      cantidad: item.cantidad, precio: item.precio,
+      // Sin esto, Recepción de Mercancía no sabe que el producto se
+      // compra por caja/presentación y muestra todo en unidad base.
+      presentacion: presentacion,
+      piezasOrdenadas: presentacion > 0 ? Math.round((Number(item.cantidad) || 0) / presentacion) : 0
     });
   });
 

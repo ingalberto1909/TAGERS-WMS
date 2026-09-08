@@ -8887,12 +8887,21 @@ function cargarPedidoDesdeBorrador(pedido){
     fecha: document.getElementById("pedidoRapidoFecha").value,
     dia: "", fechaDisplay: pedido.fecha,
     items: (pedido.items || []).map(function(it){
+      const presentacion = Number(it.presentacion) || 0;
+      const convertir = presentacion > 0;
       return {
         codigo: it.codigo, producto: it.producto, proveedor: it.proveedor,
         existencia: it.existencia, minimo: 0, maximo: 0, enTransito: 0,
-        sugerido: it.sugerido, cantidad: it.cantidad, udm: it.udm, precio: it.precio,
+        sugerido: it.sugerido,
+        // El borrador guarda la cantidad ya en unidad real (así se manda a
+        // generar la OC) — si se compra por presentación, se vuelve a
+        // piezas para mostrarla igual que al cargar por primera vez
+        // (ver iniciarPedidoDesdeHabituales), si no se pierde el "pz".
+        cantidad: convertir ? Math.ceil(it.cantidad / presentacion) : it.cantidad,
+        udm: it.udm, precio: it.precio,
         origen: it.origen || "HABITUAL", incidencia: it.incidencia || "",
-        marcado: it.cantidad > 0
+        marcado: it.cantidad > 0,
+        convertir: convertir, presentacion: presentacion
       };
     })
   };
@@ -9193,7 +9202,12 @@ function pedidoRapidoItemsParaEnviar(){
       return {
         codigo: it.codigo, producto: it.producto, proveedor: it.proveedor,
         existencia: it.existencia, sugerido: it.sugerido, cantidad: cantidadReal,
-        udm: it.udm, precio: it.precio, origen: it.origen
+        udm: it.udm, precio: it.precio, origen: it.origen,
+        // Se guarda para que la OC generada desde este pedido y la
+        // Recepción de Mercancía sepan que el producto se compra por
+        // caja/presentación — si se pierde aquí, Recepción termina
+        // mostrando cantidades y precio en unidad base en vez de "pz".
+        presentacion: it.convertir ? (Number(it.presentacion) || 0) : 0
       };
     });
 }

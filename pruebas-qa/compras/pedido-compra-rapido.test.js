@@ -540,3 +540,46 @@ prueba({
     };
   },
 });
+
+prueba({
+  id: 'PCR-CASO-11', grupo: 'compras', nombre: 'La Presentación (compra por caja) sobrevive de habituales -> borrador -> OC generada',
+  metodo: 'EMPÍRICO',
+  objetivo: 'Un producto que se compra por presentación (Convertir=SI en MATRIZ, ej. caja de 12L) debe llegar a DETALLE_OC con su columna Presentación poblada — si se pierde en el camino, Recepción de Mercancía termina mostrando la línea en unidad base en vez de piezas/caja, que fue justo lo que reportó Alberto',
+  ejecutar() {
+    const leche = productoMatriz('COD-LECHE', 'PROVEEDOR A', {
+      producto: 'LECHE ENTERA', existencia: 12, minimo: 5, maximo: 120,
+    });
+    leche[18] = 'SI'; // Convertir
+    leche[19] = 12;   // Presentación: caja de 12 L
+
+    const { entorno, token } = entornoConCatalogo([leche]);
+    registrarHabitual(entorno, token, 'COD-LECHE');
+
+    const hoy = fechaISO(0);
+    const habituales = entorno.invocar('obtenerProductosHabitualesCompraApp', hoy, token);
+    const p = habituales.productos[0];
+
+    // Igual que pedidoRapidoItemsParaEnviar en index.html: la cantidad
+    // capturada en pantalla son PIEZAS (p.sugeridoPiezas), se convierten a
+    // unidad real antes de mandarlas, y se manda también "presentacion".
+    const items = [{
+      codigo: p.codigo, producto: p.producto, proveedor: p.proveedor,
+      existencia: p.existencia, sugerido: p.sugerido,
+      cantidad: p.sugeridoPiezas * p.presentacion,
+      udm: p.udm, precio: p.precio, origen: p.origen,
+      presentacion: p.presentacion,
+    }];
+
+    const borrador = entorno.invocar('guardarBorradorPedidoCompraApp', null, hoy, items, '', token);
+    const resultado = entorno.invocar('generarOrdenesDesdePedidoApp', borrador.folio, token);
+    const oc = entorno.invocar('obtenerDetalleOCApp', resultado.ordenes[0].folio, token);
+    const linea = oc.items[0];
+
+    return {
+      datos: `LECHE ENTERA: convertir=SI, presentación=12L/caja, sugeridoPiezas=${p.sugeridoPiezas}, cantidad real enviada=${items[0].cantidad}`,
+      esperado: 'la línea en DETALLE_OC conserva presentacion=12 y piezasOrdenadas=9 (no 0), con cantidad real=108',
+      obtenido: `presentacion=${linea.presentacion}, piezasOrdenadas=${linea.piezasOrdenadas}, cantidad=${linea.cantidad}`,
+      pasa: linea.presentacion === 12 && linea.piezasOrdenadas === 9 && linea.cantidad === 108,
+    };
+  },
+});
