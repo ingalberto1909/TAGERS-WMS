@@ -8525,12 +8525,12 @@ function dibujarTablaReabasto(){
             <td style="text-align:right">${p.existencia}</td>
             <td style="text-align:right">${p.minimo}</td>
             <td style="text-align:right">${p.maximo}</td>
-            <td style="text-align:right">${p.sugerido}</td>
-            <td style="font-size:12px;color:var(--text-soft)">${p.convertir ? (p.presentacion + " " + p.udm + "/pz") : "—"}</td>
+            <td style="text-align:right">${p.sugerido} ${p.convertir ? "" : (p.udm||"")}</td>
+            <td style="font-size:12px;color:var(--text-soft)">${p.convertir ? (p.presentacion + " " + p.udm + "/pz") : ("por " + (p.udm || "unidad"))}</td>
             <td style="text-align:right">
               <input type="number" id="cantReabasto${i}" value="${valorInicial}" min="0" oninput="actualizarPreviewPrecioReabasto(${i})"
                 style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
-              ${p.convertir ? `<div style="font-size:10.5px;color:var(--text-muted)">pz</div>` : ""}
+              <div style="font-size:10.5px;color:var(--text-muted)">${p.convertir ? "pz" : (p.udm||"unidad")}</div>
             </td>
             <td style="text-align:right">
               <input type="number" id="precioReabasto${i}" value="${precioPresentacionInicial}" min="0" step="0.01" oninput="actualizarPreviewPrecioReabasto(${i})"
@@ -9036,12 +9036,12 @@ function dibujarTablaPedidoRapido(){
             </td>
             <td>${it.proveedor || "—"}</td>
             <td style="text-align:right">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
-            <td style="text-align:right">${formatearCantidadJS(sugeridoMostrar)}</td>
-            <td style="font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : "—"}</td>
+            <td style="text-align:right">${formatearCantidadJS(sugeridoMostrar)} ${it.convertir ? "pz" : (it.udm||"")}</td>
+            <td style="font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : ("por " + (it.udm || "unidad"))}</td>
             <td style="text-align:right">
               <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" min="0" oninput="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"
                 style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
-              ${it.convertir ? `<div style="font-size:10.5px;color:var(--text-muted)">pz</div>` : ""}
+              <div style="font-size:10.5px;color:var(--text-muted)">${it.convertir ? "pz" : (it.udm||"unidad")}</div>
             </td>
             <td><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
           </tr>
@@ -10916,17 +10916,19 @@ function buscarOCParaRecepcion(){
 
             return `
               <tr>
-                <td>${it.producto}</td>
-                <td style="text-align:right">${it.cantidad}</td>
-                <td style="text-align:right">${it.recibido}</td>
+                <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">Sin presentación — se compra por ${it.udm||"unidad"}</span></td>
+                <td style="text-align:right">${it.cantidad} ${it.udm||""}</td>
+                <td style="text-align:right">${it.recibido} ${it.udm||""}</td>
                 <td style="text-align:right">
                   <input type="number" id="recibir${i}" value="${pendiente > 0 ? pendiente : 0}" min="0"
                     style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px" ${pendiente<=0?"disabled":""}>
+                  <div style="font-size:10.5px;color:var(--text-muted)">${it.udm||"unidad"}</div>
                 </td>
-                <td style="text-align:right">$${Number(it.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+                <td style="text-align:right">$${Number(it.precio).toLocaleString("es-MX",{minimumFractionDigits:2})}<div style="font-size:9.5px;color:var(--text-muted)">por ${it.udm||"unidad"}</div></td>
                 <td style="text-align:right">
                   <input type="number" id="precioFactura${i}" value="${it.precio}" min="0" step="0.01"
                     style="width:100px;max-width:100px;text-align:right;margin:0;padding:6px" ${pendiente<=0?"disabled":""}>
+                  <div style="font-size:9.5px;color:var(--text-muted)">por ${it.udm||"unidad"}</div>
                 </td>
                 <td>
                   <input id="lote${i}" placeholder="Opcional"
