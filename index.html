@@ -9050,6 +9050,56 @@ function dibujarTablaPedidoRapido(){
     return;
   }
 
+  // Ordenando por proveedor, se agrega un renglón separador por cada
+  // grupo con "X de Y marcados" — así Alberto puede ver de un vistazo si
+  // le falta revisar algún producto de ese proveedor sin tener que
+  // contar checkbox por checkbox. Es puramente visual: no altera items
+  // ni sus índices (los <tr> de encabezado no cuentan como fila de datos).
+  let filasHtml = "";
+  let proveedorAnterior = null;
+
+  items.forEach(function(it, i){
+
+    if(ordenPor === "proveedor"){
+      const proveedorActual = String(it.proveedor || "—");
+      if(proveedorActual !== proveedorAnterior){
+        const delGrupo = items.filter(function(x){ return String(x.proveedor || "—") === proveedorActual; });
+        const marcados = delGrupo.filter(function(x){ return x.marcado; }).length;
+        const completo = marcados === delGrupo.length;
+        filasHtml += `
+          <tr>
+            <td colspan="8" style="padding:${proveedorAnterior===null?'6px':'16px'} 10px 6px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--guinda);border-bottom:2px solid var(--border)">
+              ${proveedorActual}
+              <span style="font-weight:600;text-transform:none;letter-spacing:0;color:${completo?"var(--color-success)":"var(--text-muted)"}">— ${marcados} de ${delGrupo.length} marcado${delGrupo.length===1?"":"s"}${completo?" ✓":""}</span>
+            </td>
+          </tr>
+        `;
+        proveedorAnterior = proveedorActual;
+      }
+    }
+
+    const sugeridoMostrar = it.convertir ? Math.ceil((it.sugerido||0) / it.presentacion) : it.sugerido;
+    filasHtml += `
+      <tr id="filaPedidoRapido${i}" style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
+        <td style="padding:8px 6px;vertical-align:middle"><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido(); if(window.pedidoRapidoOrdenPor==='proveedor') dibujarTablaPedidoRapido();"></td>
+        <td style="padding:8px 10px;vertical-align:middle">${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${pedidoRapidoEtiquetaOrigen_(it.origen)}</span>
+          ${it.incidencia ? `<br><span style="font-size:10.5px;color:var(--color-danger)">${tgIcon("alertaTriangulo",11)} ${it.incidencia}</span>` : ""}
+        </td>
+        <td style="padding:8px 10px;vertical-align:middle">${it.proveedor || "—"}</td>
+        <td style="padding:8px 10px;text-align:right;vertical-align:middle">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
+        <td style="padding:8px 10px;text-align:right;vertical-align:middle">${formatearCantidadJS(sugeridoMostrar)} ${it.convertir ? "pz" : (it.udm||"")}</td>
+        <td style="padding:8px 10px;text-align:center;vertical-align:middle;font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : ("por " + (it.udm || "unidad"))}</td>
+        <td style="padding:8px 10px;text-align:center;vertical-align:middle">
+          <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" min="0" oninput="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"
+            style="width:90px;max-width:90px;text-align:right;margin:0 auto;padding:6px;display:block">
+          <div style="font-size:10.5px;color:var(--text-muted)">${it.convertir ? "pz" : (it.udm||"unidad")}</div>
+        </td>
+        <td style="padding:8px 6px;text-align:center;vertical-align:middle"><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
+      </tr>
+    `;
+
+  });
+
   cont.innerHTML = `
     <table class="tablaTop" style="font-size:13px">
       <thead>
@@ -9065,27 +9115,7 @@ function dibujarTablaPedidoRapido(){
         </tr>
       </thead>
       <tbody>
-        ${items.map(function(it, i){
-          const sugeridoMostrar = it.convertir ? Math.ceil((it.sugerido||0) / it.presentacion) : it.sugerido;
-          return `
-          <tr id="filaPedidoRapido${i}" style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
-            <td style="padding:8px 6px;vertical-align:middle"><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"></td>
-            <td style="padding:8px 10px;vertical-align:middle">${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${pedidoRapidoEtiquetaOrigen_(it.origen)}</span>
-              ${it.incidencia ? `<br><span style="font-size:10.5px;color:var(--color-danger)">${tgIcon("alertaTriangulo",11)} ${it.incidencia}</span>` : ""}
-            </td>
-            <td style="padding:8px 10px;vertical-align:middle">${it.proveedor || "—"}</td>
-            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
-            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${formatearCantidadJS(sugeridoMostrar)} ${it.convertir ? "pz" : (it.udm||"")}</td>
-            <td style="padding:8px 10px;text-align:center;vertical-align:middle;font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : ("por " + (it.udm || "unidad"))}</td>
-            <td style="padding:8px 10px;text-align:center;vertical-align:middle">
-              <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" min="0" oninput="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"
-                style="width:90px;max-width:90px;text-align:right;margin:0 auto;padding:6px;display:block">
-              <div style="font-size:10.5px;color:var(--text-muted)">${it.convertir ? "pz" : (it.udm||"unidad")}</div>
-            </td>
-            <td style="padding:8px 6px;text-align:center;vertical-align:middle"><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
-          </tr>
-          `;
-        }).join("")}
+        ${filasHtml}
       </tbody>
     </table>
   `;
