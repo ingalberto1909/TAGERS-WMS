@@ -8502,10 +8502,16 @@ function dibujarTablaReabasto(){
     <table class="tablaTop" style="font-size:13px">
       <thead>
         <tr>
-          <th></th><th>Producto</th><th style="text-align:right">Existencia</th>
-          <th style="text-align:right">Mínimo</th><th style="text-align:right">Máximo</th>
-          <th style="text-align:right">Sugerido</th><th>Presentación</th><th style="text-align:right">Comprar</th>
-          <th style="text-align:right">Precio</th><th></th>
+          <th style="padding:8px 6px"></th>
+          <th style="padding:8px 10px">Producto</th>
+          <th style="padding:8px 10px;text-align:right">Existencia</th>
+          <th style="padding:8px 10px;text-align:right">Mínimo</th>
+          <th style="padding:8px 10px;text-align:right">Máximo</th>
+          <th style="padding:8px 10px;text-align:right">Sugerido</th>
+          <th style="padding:8px 10px;text-align:center">Presentación</th>
+          <th style="padding:8px 10px;text-align:center">Comprar</th>
+          <th style="padding:8px 10px;text-align:center">Precio</th>
+          <th style="padding:8px 6px"></th>
         </tr>
       </thead>
       <tbody>
@@ -8520,25 +8526,25 @@ function dibujarTablaReabasto(){
           const marcado = p.marcado !== undefined ? p.marcado : (p.bajoMinimo || p.agregadoManual);
           return `
           <tr style="${p.bajoMinimo?'background:rgba(196,82,42,.06)':''}">
-            <td><input type="checkbox" id="chkReabasto${i}" ${marcado?"checked":""}></td>
-            <td>${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}${p.agregadoManual?' · <span style="color:var(--terracota)">agregado</span>':''}</span></td>
-            <td style="text-align:right">${p.existencia}</td>
-            <td style="text-align:right">${p.minimo}</td>
-            <td style="text-align:right">${p.maximo}</td>
-            <td style="text-align:right">${p.sugerido} ${p.convertir ? "" : (p.udm||"")}</td>
-            <td style="font-size:12px;color:var(--text-soft)">${p.convertir ? (p.presentacion + " " + p.udm + "/pz") : ("por " + (p.udm || "unidad"))}</td>
-            <td style="text-align:right">
+            <td style="padding:8px 6px;vertical-align:middle"><input type="checkbox" id="chkReabasto${i}" ${marcado?"checked":""}></td>
+            <td style="padding:8px 10px;vertical-align:middle">${p.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${p.codigo}${p.agregadoManual?' · <span style="color:var(--terracota)">agregado</span>':''}</span></td>
+            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${p.existencia}</td>
+            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${p.minimo}</td>
+            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${p.maximo}</td>
+            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${p.sugerido} ${p.convertir ? "" : (p.udm||"")}</td>
+            <td style="padding:8px 10px;text-align:center;vertical-align:middle;font-size:12px;color:var(--text-soft)">${p.convertir ? (p.presentacion + " " + p.udm + "/pz") : ("por " + (p.udm || "unidad"))}</td>
+            <td style="padding:8px 10px;text-align:center;vertical-align:middle">
               <input type="number" id="cantReabasto${i}" value="${valorInicial}" min="0" oninput="actualizarPreviewPrecioReabasto(${i})"
-                style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+                style="width:90px;max-width:90px;text-align:right;margin:0 auto;padding:6px;display:block">
               <div style="font-size:10.5px;color:var(--text-muted)">${p.convertir ? "pz" : (p.udm||"unidad")}</div>
             </td>
-            <td style="text-align:right">
+            <td style="padding:8px 10px;text-align:center;vertical-align:middle">
               <input type="number" id="precioReabasto${i}" value="${precioPresentacionInicial}" min="0" step="0.01" oninput="actualizarPreviewPrecioReabasto(${i})"
-                style="width:100px;max-width:100px;text-align:right;margin:0;padding:6px">
+                style="width:100px;max-width:100px;text-align:right;margin:0 auto;padding:6px;display:block">
               <div style="font-size:10px;color:var(--text-muted)">${p.convertir ? "por presentación" : "por " + (p.udm||"unidad")}</div>
               ${p.convertir ? `<div id="previewPrecioReabasto${i}" style="font-size:10.5px;color:var(--guinda);font-weight:600"></div>` : ""}
             </td>
-            <td><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la orden" onclick="quitarProductoReabasto(${i})">${tgIcon("x",15)}</span></td>
+            <td style="padding:8px 6px;text-align:center;vertical-align:middle"><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la orden" onclick="quitarProductoReabasto(${i})">${tgIcon("x",15)}</span></td>
           </tr>
         `;
         }).join("")}
@@ -8918,10 +8924,19 @@ function dibujarPantallaPedidoRapido(){
 
     <div class="cardProducto">
 
-      <div style="position:relative;max-width:500px;margin-bottom:14px">
-        <label>${tgIcon("mas",14)} Agregar producto extraordinario</label>
-        <input id="buscarProductoPedidoRapido" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaPedidoRapido()" autocomplete="off">
-        <div id="resultadosBuscarProductoPedidoRapido" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="position:relative;max-width:500px;flex:1;min-width:240px">
+          <label>${tgIcon("mas",14)} Agregar producto extraordinario</label>
+          <input id="buscarProductoPedidoRapido" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaPedidoRapido()" autocomplete="off">
+          <div id="resultadosBuscarProductoPedidoRapido" style="display:none;position:absolute;z-index:20;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;width:100%;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.15)"></div>
+        </div>
+        <div style="min-width:200px">
+          <label>${tgIcon("filtro",14)} Ordenar por</label>
+          <select id="pedidoRapidoOrdenPor" onchange="cambiarOrdenPedidoRapido()" style="margin:0">
+            <option value="producto">Producto (A-Z)</option>
+            <option value="proveedor">Proveedor (A-Z)</option>
+          </select>
+        </div>
       </div>
 
       <div id="pedidoRapidoTablaCont" style="overflow:auto;max-height:52vh"></div>
@@ -8994,16 +9009,34 @@ function pedidoRapidoEtiquetaOrigen_(origen){
   return '';
 }
 
+// Alberto quiere poder revisar la lista de dos formas: alfabética por
+// producto (para localizar un insumo rápido) o agrupada por proveedor
+// (para ir surtiendo/revisando proveedor por proveedor) — el selector
+// vive en el shell (dibujarPantallaPedidoRapido) y no se vuelve a
+// dibujar en cada tecleo, así que su valor persiste solo.
+function cambiarOrdenPedidoRapido(){
+  const select = document.getElementById("pedidoRapidoOrdenPor");
+  window.pedidoRapidoOrdenPor = (select && select.value) || "producto";
+  sincronizarPedidoRapidoDesdeInputs();
+  dibujarTablaPedidoRapido();
+}
+
 function dibujarTablaPedidoRapido(){
 
   const items = (window.pedidoRapidoActual && window.pedidoRapidoActual.items) || [];
+  const ordenPor = window.pedidoRapidoOrdenPor || "producto";
 
-  // Orden alfabético por nombre de producto — se ordena el arreglo real
-  // (no una copia) porque los id de fila/inputs y las funciones que
-  // operan por índice (quitarProductoPedidoRapido, resaltarFilaPedidoRapido,
-  // sincronizarPedidoRapidoDesdeInputs) dependen de que el orden mostrado
-  // coincida exactamente con el orden del arreglo.
+  // Se ordena el arreglo real (no una copia) porque los id de fila/inputs
+  // y las funciones que operan por índice (quitarProductoPedidoRapido,
+  // resaltarFilaPedidoRapido, sincronizarPedidoRapidoDesdeInputs) dependen
+  // de que el orden mostrado coincida exactamente con el orden del
+  // arreglo. Ordenando por proveedor, el producto sigue siendo el
+  // desempate para que cada grupo de proveedor también quede alfabético.
   items.sort(function(a, b){
+    if(ordenPor === "proveedor"){
+      const cmpProveedor = String(a.proveedor || "").localeCompare(String(b.proveedor || ""), "es", { sensitivity: "base" });
+      if(cmpProveedor !== 0) return cmpProveedor;
+    }
     return String(a.producto || "").localeCompare(String(b.producto || ""), "es", { sensitivity: "base" });
   });
 
@@ -9021,8 +9054,14 @@ function dibujarTablaPedidoRapido(){
     <table class="tablaTop" style="font-size:13px">
       <thead>
         <tr>
-          <th></th><th>Producto</th><th>Proveedor</th><th style="text-align:right">Existencia</th>
-          <th style="text-align:right">Sugerido</th><th>Presentación</th><th style="text-align:right">Comprar</th><th></th>
+          <th style="padding:8px 6px"></th>
+          <th style="padding:8px 10px">Producto</th>
+          <th style="padding:8px 10px">Proveedor</th>
+          <th style="padding:8px 10px;text-align:right">Existencia</th>
+          <th style="padding:8px 10px;text-align:right">Sugerido</th>
+          <th style="padding:8px 10px;text-align:center">Presentación</th>
+          <th style="padding:8px 10px;text-align:center">Comprar</th>
+          <th style="padding:8px 6px"></th>
         </tr>
       </thead>
       <tbody>
@@ -9030,20 +9069,20 @@ function dibujarTablaPedidoRapido(){
           const sugeridoMostrar = it.convertir ? Math.ceil((it.sugerido||0) / it.presentacion) : it.sugerido;
           return `
           <tr id="filaPedidoRapido${i}" style="${it.incidencia?'background:rgba(196,82,42,.06)':''}">
-            <td><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"></td>
-            <td>${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${pedidoRapidoEtiquetaOrigen_(it.origen)}</span>
+            <td style="padding:8px 6px;vertical-align:middle"><input type="checkbox" id="chkPedidoRapido${i}" ${it.marcado?"checked":""} onchange="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"></td>
+            <td style="padding:8px 10px;vertical-align:middle">${it.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${it.codigo}${pedidoRapidoEtiquetaOrigen_(it.origen)}</span>
               ${it.incidencia ? `<br><span style="font-size:10.5px;color:var(--color-danger)">${tgIcon("alertaTriangulo",11)} ${it.incidencia}</span>` : ""}
             </td>
-            <td>${it.proveedor || "—"}</td>
-            <td style="text-align:right">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
-            <td style="text-align:right">${formatearCantidadJS(sugeridoMostrar)} ${it.convertir ? "pz" : (it.udm||"")}</td>
-            <td style="font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : ("por " + (it.udm || "unidad"))}</td>
-            <td style="text-align:right">
+            <td style="padding:8px 10px;vertical-align:middle">${it.proveedor || "—"}</td>
+            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${formatearCantidadJS(it.existencia)} ${it.udm||""}</td>
+            <td style="padding:8px 10px;text-align:right;vertical-align:middle">${formatearCantidadJS(sugeridoMostrar)} ${it.convertir ? "pz" : (it.udm||"")}</td>
+            <td style="padding:8px 10px;text-align:center;vertical-align:middle;font-size:12px;color:var(--text-soft)">${it.convertir ? (formatearCantidadJS(it.presentacion) + " " + it.udm + "/pz") : ("por " + (it.udm || "unidad"))}</td>
+            <td style="padding:8px 10px;text-align:center;vertical-align:middle">
               <input type="number" id="cantPedidoRapido${i}" value="${it.cantidad}" min="0" oninput="sincronizarPedidoRapidoDesdeInputs(); actualizarMetricasPedidoRapido()"
-                style="width:90px;max-width:90px;text-align:right;margin:0;padding:6px">
+                style="width:90px;max-width:90px;text-align:right;margin:0 auto;padding:6px;display:block">
               <div style="font-size:10.5px;color:var(--text-muted)">${it.convertir ? "pz" : (it.udm||"unidad")}</div>
             </td>
-            <td><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
+            <td style="padding:8px 6px;text-align:center;vertical-align:middle"><span style="cursor:pointer;color:var(--color-danger)" title="Quitar de la lista" onclick="quitarProductoPedidoRapido(${i})">${tgIcon("x",15)}</span></td>
           </tr>
           `;
         }).join("")}
