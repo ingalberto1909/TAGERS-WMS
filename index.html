@@ -3087,7 +3087,7 @@ const ICONOS_MENU = {
   // resto del sidebar (emoji a color mezclado con iconos de línea).
   btnClasificacionABC:"etiqueta", btnEtiquetas:"etiqueta", btnProgramacionConteos:"calendario",
   btnSucursales:"ubicacion", btnAuditoria:"candado",
-  btnConfigCongelarExistencia:"guardar", btnConfigMigrarCosto:"dinero",
+  btnConfigCongelarExistencia:"guardar", btnConfigMigrarCosto:"dinero", btnConfigAuditoriaCosteo:"buscar",
   btnPedidoCompraRapido:"carrito", btnHistorialPedidosCompra:"reloj", btnProductosHabitualesCompra:"configuracion"
 };
 
@@ -3470,7 +3470,7 @@ const PERMISOS_ROL = {
     // Ya se veían para este rol antes de que estos 3 botones tuvieran id
     // (aplicarPermisosPorRol no podía ocultarlos) — se agregan aquí para
     // que sigan viéndose exactamente igual que hoy, sin ganar ni perder nada.
-    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
+    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto","btnConfigAuditoriaCosteo"
   ],
   "OPERADOR": [
     "btnInicio","btnEntradas","btnSalidas","btnImportarSalidas",
@@ -3479,7 +3479,7 @@ const PERMISOS_ROL = {
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
     "btnPreparacionRequisicion","btnEntregasRequisicion","btnHistorialRequisicion","btnRequisicionesSucursal",
     // Mismo motivo que en SUPERVISOR: ya se veían, se preservan tal cual.
-    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto"
+    "btnConfigModoOscuro","btnConfigCongelarExistencia","btnConfigMigrarCosto","btnConfigAuditoriaCosteo"
   ],
   "CONSULTA": [
     // Solo lectura: ve inicio, inventario, kardex, mapa y ubicaciones.
@@ -3573,6 +3573,115 @@ async function ejecutarMigracionCostoUnitario(){
       alert("⚠️ " + e.message);
     })
     .migrarCostoUnitarioAPorUnidadApp(obtenerTokenSesion());
+
+}
+
+// Auditoría de solo lectura (Fase 1, costeo real de almacén) — nunca
+// escribe nada. Compara, para cada producto con Convertir="SI", el
+// Costo Unitario tal cual está hoy (R) contra lo que valdría si R
+// todavía fuera el precio de la presentación completa (R/T), para que
+// se decida caso por caso cuál de los dos es el precio real por unidad
+// — la corrección (si aplica) se hace en Proveedores > Ajustar producto.
+function abrirAuditoriaCosteoPresentacion(){
+
+  marcarActivo("btnConfigAuditoriaCosteo");
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("buscar",20)} Auditoría de costeo por presentación</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-6px;max-width:820px">
+      Solo lectura — no cambia nada en MATRIZ. Para cada producto que se compra por presentación (caja/saco/paquete),
+      compara el Costo Unitario que tiene guardado ahora contra lo que valdría si ese número todavía fuera el precio
+      de la presentación completa sin dividir entre las unidades que trae. Tú decides, producto por producto, cuál de
+      los dos es el precio real — para corregirlo ve a Proveedores → Ajustar producto.
+    </p>
+
+    <div id="resumenAuditoriaCosteo" class="gridFormulario" style="grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0;max-width:640px"></div>
+
+    <div id="tablaAuditoriaCosteo"><div class="spinnerCentro"><div class="spinner"></div></div></div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(dibujarAuditoriaCosteoPresentacion)
+    .withFailureHandler(function(e){
+      document.getElementById("tablaAuditoriaCosteo").innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .auditarCosteoPresentacionApp(obtenerTokenSesion());
+
+}
+
+function dibujarAuditoriaCosteoPresentacion(datos){
+
+  const resumen = document.getElementById("resumenAuditoriaCosteo");
+  const cont = document.getElementById("tablaAuditoriaCosteo");
+  if(!resumen || !cont) return;
+
+  resumen.innerHTML = [
+    ["Productos con presentación (Convertir=SI)", datos.totalConvertirSi],
+    ["Con configuración incompleta (sin Presentación)", datos.totalConfiguracionIncompleta]
+  ].map(function(par){
+    return `<div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${par[0]}</div>
+      <div style="font-size:20px;font-weight:800;color:${par[1]>0 && par[0].indexOf("incompleta")!==-1 ? "var(--color-danger)" : "var(--guinda)"}">${par[1]}</div>
+    </div>`;
+  }).join("");
+
+  if(!datos.filas.length){
+    cont.innerHTML = tgEmptyState("carrito", "No hay productos configurados con Convertir=\"SI\" en MATRIZ");
+    return;
+  }
+
+  cont.innerHTML = `
+    <p style="font-size:11.5px;color:var(--text-muted)">Ordenado de mayor a menor diferencia económica — revisa primero los de arriba.</p>
+    <div style="overflow-x:auto">
+    <table class="tablaTop" style="font-size:13px">
+      <thead>
+        <tr>
+          <th style="padding:8px 10px">Producto</th>
+          <th style="padding:8px 10px;text-align:right">Existencia</th>
+          <th style="padding:8px 10px;text-align:right">Presentación</th>
+          <th style="padding:8px 10px;text-align:right">Costo actual (R)</th>
+          <th style="padding:8px 10px;text-align:right">Si fuera precio de presentación (R÷T)</th>
+          <th style="padding:8px 10px;text-align:right">Valor actual</th>
+          <th style="padding:8px 10px;text-align:right">Valor si fuera R÷T</th>
+          <th style="padding:8px 10px;text-align:right">Diferencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${datos.filas.map(function(f){
+          if(f.configuracionIncompleta){
+            return `
+              <tr style="background:rgba(196,82,42,.06)">
+                <td style="padding:8px 10px">${f.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${f.codigo}</span></td>
+                <td style="padding:8px 10px;text-align:right">${formatearCantidadJS(f.existencia)} ${f.udm||""}</td>
+                <td colspan="6" style="padding:8px 10px;color:var(--color-danger);font-size:12.5px">
+                  ${tgIcon("alertaTriangulo",13)} Convertir="SI" pero sin Presentación capturada — no se puede calcular R÷T. Complétalo en Proveedores → Ajustar producto.
+                </td>
+              </tr>
+            `;
+          }
+          const impacto = Math.abs(f.diferencia||0) > 1;
+          return `
+            <tr style="${impacto?'background:rgba(196,82,42,.06)':''}">
+              <td style="padding:8px 10px">${f.producto}<br><span style="font-size:10.5px;color:var(--text-muted)">${f.codigo}</span></td>
+              <td style="padding:8px 10px;text-align:right">${formatearCantidadJS(f.existencia)} ${f.udm||""}</td>
+              <td style="padding:8px 10px;text-align:right">${formatearCantidadJS(f.presentacion)} ${f.udm||""}/pz</td>
+              <td style="padding:8px 10px;text-align:right;font-weight:700">$${Number(f.costoUnitarioActual).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+              <td style="padding:8px 10px;text-align:right">$${Number(f.costoSiFueraPorPresentacion).toLocaleString("es-MX",{minimumFractionDigits:4})}</td>
+              <td style="padding:8px 10px;text-align:right">$${Number(f.valorActual).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+              <td style="padding:8px 10px;text-align:right">$${Number(f.valorSiFueraPorPresentacion).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+              <td style="padding:8px 10px;text-align:right;font-weight:800;color:${impacto?"var(--color-danger)":"var(--text-soft)"}">$${Number(f.diferencia).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+    </div>
+  `;
 
 }
 
@@ -17268,6 +17377,7 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnConfigModoOscuro" onclick="alternarModoOscuro()" title="Modo oscuro"><span class="icono" id="iconoTema">🌙</span><span class="textoMenu">Modo oscuro</span></button>
     <button class="menuLateralBtn sub" id="btnConfigCongelarExistencia" data-icono="configuracion" onclick="ejecutarMigracionExistencia()" title="Congelar fórmula de Existencia"><span class="icono">🧊</span><span class="textoMenu">Congelar fórmula de Existencia</span></button>
     <button class="menuLateralBtn sub" id="btnConfigMigrarCosto" data-icono="dinero" onclick="ejecutarMigracionCostoUnitario()" title="Migrar Costo Unitario a precio por unidad"><span class="icono">💲</span><span class="textoMenu">Migrar Costo a precio/unidad</span></button>
+    <button class="menuLateralBtn sub" id="btnConfigAuditoriaCosteo" data-icono="dinero" onclick="abrirAuditoriaCosteoPresentacion()" title="Auditoría de costeo por presentación"><span class="icono">🔍</span><span class="textoMenu">Auditoría de costeo</span></button>
   </div>
 </div>
 

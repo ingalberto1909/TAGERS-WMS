@@ -4753,6 +4753,89 @@ function migrarCostoUnitarioAPorUnidadApp(token){
 }
 
 /**
+ * AUDITORÍA DE SOLO LECTURA (Fase 1 — costeo real de almacén) — NO
+ * escribe absolutamente nada, ni en MATRIZ ni en ninguna otra hoja. Para
+ * cada producto con Convertir="SI" muestra, lado a lado, el Costo
+ * Unitario tal cual está guardado hoy en R y lo que valdría si R
+ * todavía fuera el precio de la presentación completa (R/T) — el humano
+ * (quien conoce los precios reales de sus productos) decide caso por
+ * caso cuál de los dos números es el correcto. Nunca se aplica ninguna
+ * corrección sola; para eso ya existe el ajuste manual de
+ * Proveedores.gs (ajustarProductoProveedorApp).
+ *
+ * Se marca "configuracionIncompleta" cuando Convertir="SI" pero la
+ * Presentación está vacía, en 0 o es negativa — ahí ni siquiera se
+ * puede calcular R/T.
+ *
+ * Se ordena por el valor absoluto de la diferencia económica (de mayor
+ * a menor impacto) para que se revisen primero los productos donde
+ * equivocarse de interpretación cuesta más caro.
+ */
+function auditarCosteoPresentacionApp(token){
+
+  requerirSesionActivaApp_(token);
+
+  const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
+  const filas = [];
+
+  let totalConvertirSi = 0;
+  let totalConfiguracionIncompleta = 0;
+
+  datos.forEach(function(f){
+
+    const codigo = String(f[4] || "").trim();
+    if(!codigo) return;
+
+    const convertir = String(f[18] || "").trim().toUpperCase() === "SI";
+    if(!convertir) return; // solo interesa a lo que se compra por presentación
+
+    totalConvertirSi++;
+
+    const producto = f[0];
+    const udm = f[1];
+    const existencia = Number(f[10]) || 0;
+    const costoUnitarioActual = Number(f[17]) || 0;
+    const presentacion = Number(f[19]) || 0;
+
+    const configuracionIncompleta = presentacion <= 0;
+    if(configuracionIncompleta) totalConfiguracionIncompleta++;
+
+    const costoSiFueraPorPresentacion = (!configuracionIncompleta && costoUnitarioActual > 0)
+      ? Math.round((costoUnitarioActual / presentacion) * 10000) / 10000
+      : null;
+
+    const valorActual = Math.round(existencia * costoUnitarioActual * 100) / 100;
+    const valorSiFueraPorPresentacion = costoSiFueraPorPresentacion !== null
+      ? Math.round(existencia * costoSiFueraPorPresentacion * 100) / 100
+      : null;
+
+    filas.push({
+      codigo: codigo,
+      producto: producto,
+      udm: udm,
+      existencia: existencia,
+      presentacion: presentacion,
+      costoUnitarioActual: costoUnitarioActual,
+      configuracionIncompleta: configuracionIncompleta,
+      costoSiFueraPorPresentacion: costoSiFueraPorPresentacion,
+      valorActual: valorActual,
+      valorSiFueraPorPresentacion: valorSiFueraPorPresentacion,
+      diferencia: (valorSiFueraPorPresentacion !== null) ? Math.round((valorActual - valorSiFueraPorPresentacion) * 100) / 100 : null
+    });
+
+  });
+
+  filas.sort(function(a, b){ return Math.abs(b.diferencia || 0) - Math.abs(a.diferencia || 0); });
+
+  return {
+    filas: filas,
+    totalConvertirSi: totalConvertirSi,
+    totalConfiguracionIncompleta: totalConfiguracionIncompleta
+  };
+
+}
+
+/**
  * EXCEPCIÓN DOCUMENTADA a la capa central de existencia (auditoría de
  * arquitectura multi-sucursal): esta es una herramienta de migración de
  * un solo uso (congela la fórmula de la columna K a valor fijo), no un

@@ -894,3 +894,76 @@ prueba({
     };
   },
 });
+
+// ============================================
+// Auditoría de costeo por presentación (Fase 1, solo lectura) —
+// auditarCosteoPresentacionApp NUNCA escribe en MATRIZ, solo compara R
+// (Costo Unitario actual) contra R÷T (lo que valdría si R todavía fuera
+// el precio de la presentación completa) para que un humano decida.
+// ============================================
+
+const { filaProducto, encabezadoMatriz } = require('../lib/datos-prueba');
+
+prueba({
+  id: 'COM-208', grupo: 'compras', nombre: 'auditarCosteoPresentacionApp calcula R÷T y la diferencia económica, ordenado por mayor impacto', metodo: 'EMPÍRICO',
+  objetivo: 'Para cada producto con Convertir="SI" debe reportar costo actual, costo si R todavía fuera precio de presentación completa (R÷T), y ambos valores de inventario — sin tocar MATRIZ ni decidir cuál es el correcto',
+  ejecutar() {
+    const matriz = [
+      encabezadoMatriz(),
+      // Harina bizcocho: R ya migrado (por unidad) — 160×21.5=3440, R÷T=1.075 (diferencia grande, pero NO es el sospechoso).
+      filaProducto({ producto: 'HARINA BIZCOCHO', codigo: 'COD-HAR', udm: 'KG', existencia: 160, costo: 21.5, convertir: 'SI', presentacion: 20 }),
+      // Manga de cartón: presentación de 1700 pz, costo ya por pieza — diferencia mínima esperada.
+      filaProducto({ producto: 'MANGA DE CARTON', codigo: 'COD-MAN', udm: 'PZA', existencia: 1700, costo: 0.77, convertir: 'SI', presentacion: 1700 }),
+      // Producto sin conversión: no debe aparecer en el reporte (Convertir=NO).
+      filaProducto({ producto: 'SAL DE MESA', codigo: 'COD-SAL', udm: 'KG', existencia: 50, costo: 8, convertir: 'NO' }),
+    ];
+    const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: matriz }) });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'A', 'ADMIN');
+
+    const reporte = entorno.invocar('auditarCosteoPresentacionApp', token);
+    const harina = reporte.filas.find(f => f.codigo === 'COD-HAR');
+    const manga = reporte.filas.find(f => f.codigo === 'COD-MAN');
+    const sal = reporte.filas.find(f => f.codigo === 'COD-SAL');
+
+    return {
+      datos: 'Harina 160Kg/R=21.5/T=20; Manga 1700pz/R=0.77/T=1700; Sal sin Convertir',
+      esperado: 'Reporte trae solo 2 filas (Harina y Manga, no Sal). Harina: costoSiFueraPorPresentacion=1.075, valorActual=3440, valorSiFuera=172, diferencia=3268. Manga: R÷T≈0.000453, valorSiFuera≈0.77, diferencia≈1308.23 (menor que el de Harina). Ordenado por diferencia descendente: Harina primero, Manga después.',
+      obtenido: `total=${reporte.filas.length}, sal=${sal ? 'presente (MAL)' : 'ausente (bien)'}, ` +
+        `harina: costoSiFuera=${harina.costoSiFueraPorPresentacion}, valorActual=${harina.valorActual}, valorSiFuera=${harina.valorSiFueraPorPresentacion}, diff=${harina.diferencia} | ` +
+        `manga: costoSiFuera=${manga.costoSiFueraPorPresentacion}, diff=${manga.diferencia} | ` +
+        `orden=${reporte.filas.map(f => f.codigo).join(',')}`,
+      pasa: reporte.filas.length === 2 && !sal &&
+        harina.costoSiFueraPorPresentacion === 1.075 && harina.valorActual === 3440 &&
+        harina.valorSiFueraPorPresentacion === 172 && harina.diferencia === 3268 &&
+        harina.diferencia > manga.diferencia && // 3268 vs ≈1308.23
+        reporte.filas[0].codigo === 'COD-HAR' && reporte.filas[1].codigo === 'COD-MAN',
+    };
+  },
+});
+
+prueba({
+  id: 'COM-209', grupo: 'compras', nombre: 'auditarCosteoPresentacionApp marca "configuración incompleta" cuando Convertir="SI" sin Presentación, sin dividir entre cero', metodo: 'EMPÍRICO',
+  objetivo: 'Un producto con Convertir="SI" pero Presentación vacía/0 no debe intentar calcular R÷T (división entre cero) — debe marcarse como configuración incompleta para que se complete manualmente',
+  ejecutar() {
+    const matriz = [
+      encabezadoMatriz(),
+      filaProducto({ producto: 'PRODUCTO MAL CONFIGURADO', codigo: 'COD-INC', udm: 'KG', existencia: 30, costo: 50, convertir: 'SI', presentacion: 0 }),
+      filaProducto({ producto: 'OTRO MAL CONFIGURADO', codigo: 'COD-INC2', udm: 'KG', existencia: 10, costo: 20, convertir: 'SI', presentacion: '' }),
+    ];
+    const entorno = crearEntorno({ hojas: hojasBase({ MATRIZ: matriz }) });
+    const token = entorno.invocar('crearSesion_', 'admin@tagers.com', 'A', 'ADMIN');
+
+    const reporte = entorno.invocar('auditarCosteoPresentacionApp', token);
+    const inc = reporte.filas.find(f => f.codigo === 'COD-INC');
+    const inc2 = reporte.filas.find(f => f.codigo === 'COD-INC2');
+
+    return {
+      datos: 'Dos productos con Convertir="SI" y Presentación 0 / vacía',
+      esperado: 'Ambos marcados configuracionIncompleta=true, costoSiFueraPorPresentacion=null (nunca NaN/Infinity), totalConfiguracionIncompleta=2',
+      obtenido: `inc: incompleta=${inc.configuracionIncompleta}, costoSiFuera=${inc.costoSiFueraPorPresentacion} | inc2: incompleta=${inc2.configuracionIncompleta}, costoSiFuera=${inc2.costoSiFueraPorPresentacion} | totalIncompleta=${reporte.totalConfiguracionIncompleta}`,
+      pasa: inc.configuracionIncompleta === true && inc.costoSiFueraPorPresentacion === null &&
+        inc2.configuracionIncompleta === true && inc2.costoSiFueraPorPresentacion === null &&
+        reporte.totalConfiguracionIncompleta === 2 && reporte.totalConvertirSi === 2,
+    };
+  },
+});
