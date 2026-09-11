@@ -43,6 +43,7 @@ const ARCHIVOS_BACKEND = [
   'Devoluciones.gs',
   'Sucursales.gs',
   'PedidoCompraRapido.gs',
+  'HistoricoConsumo.gs',
 ];
 
 /**

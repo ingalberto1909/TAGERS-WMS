@@ -3455,7 +3455,7 @@ const PERMISOS_ROL = {
     // btnAjustes) — a partir de ahora exclusivo de ADMIN/OPERADOR. Se agregó
     // acceso completo a Compras e Inventario mensual.
     "btnInicio",
-    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas","btnClasificacionABC","btnEtiquetas",
+    "btnKardex","btnMapa","btnInventarioLista","btnUbicaciones","btnMermas","btnClasificacionABC","btnEtiquetas","btnHistoricoConsumo",
     "btnGenerarConteo","btnCapturarConteo","btnRevisarDiscrepancias",
     "btnAprobarDiscrepancias","btnCerrarConteo","btnProgramacionConteos","btnDashboard","btnRecetas",
     "btnNuevaRequisicion","btnNuevaRequisicionReceta","btnMisRequisiciones","btnRequisicionesPendientes",
@@ -7839,6 +7839,249 @@ function toggleGrupo(id){
   if(!submenu){ return; }
   submenu.classList.toggle("abierto");
   if(flecha){ flecha.classList.toggle("rotada"); }
+}
+
+// ===============================
+// HISTÓRICO DE CONSUMO (solo lectura — ver HistoricoConsumo.gs)
+// No crea ni modifica ningún movimiento; solo consulta SALIDA/MATRIZ ya
+// existentes a través de obtenerHistoricoConsumoApp/obtenerAreasSalidaApp/
+// buscarProductoHistoricoConsumoApp.
+// ===============================
+
+const HISTORICO_CONSUMO_PERIODOS_ = [
+  { valor: "ULTIMOS_30", etiqueta: "Últimos 30 días" },
+  { valor: "ULTIMOS_3M", etiqueta: "Últimos 3 meses" },
+  { valor: "ULTIMOS_6M", etiqueta: "Últimos 6 meses" },
+  { valor: "ULTIMOS_12M", etiqueta: "Últimos 12 meses" },
+  { valor: "ANIO_ACTUAL", etiqueta: "Año actual" },
+  { valor: "ANIO_ANTERIOR", etiqueta: "Año anterior" },
+  { valor: "PERSONALIZADO", etiqueta: "Periodo personalizado" }
+];
+
+let temporizadorBuscarHistoricoConsumo;
+
+function abrirHistoricoConsumo(){
+
+  marcarActivo("btnHistoricoConsumo");
+  window.historicoConsumoCodigoSeleccionado = null;
+
+  const contenedor = document.querySelector(".contenedor");
+  contenedor.innerHTML = `
+    <div class="vista-animada">
+
+    <h2 style="display:flex;align-items:center;gap:9px">${tgIcon("grafica",20)} Histórico de Consumo</h2>
+    <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Solo lectura — consulta cuánto se ha consumido realmente de un producto, con base en los movimientos de Salida ya registrados. No crea ni modifica ningún movimiento.</p>
+
+    <div class="cardProducto">
+
+      <label>Producto</label>
+      <div style="position:relative;max-width:420px">
+        <input id="buscarProductoHistoricoConsumo" placeholder="Buscar por nombre o código..." oninput="buscarProductoParaHistoricoConsumo()" autocomplete="off">
+        <div id="resultadosProductoHistoricoConsumo" style="display:none;position:absolute;z-index:10;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;width:100%;max-height:260px;overflow:auto;box-shadow:var(--sombra)"></div>
+      </div>
+      <div id="productoSeleccionadoHistoricoConsumo" style="margin-top:6px;font-size:12.5px;color:var(--text-muted)"></div>
+
+      <div class="gridFormulario" style="margin-top:14px">
+        <div class="campo">
+          <label>Periodo</label>
+          <select id="periodoHistoricoConsumo" onchange="cambiarPeriodoHistoricoConsumo()">
+            ${HISTORICO_CONSUMO_PERIODOS_.map(function(p){ return `<option value="${p.valor}">${p.etiqueta}</option>`; }).join("")}
+          </select>
+        </div>
+        <div class="campo" id="campoFechaDesdeHistoricoConsumo" style="display:none">
+          <label>Desde</label>
+          <input id="fechaDesdeHistoricoConsumo" type="date">
+        </div>
+        <div class="campo" id="campoFechaHastaHistoricoConsumo" style="display:none">
+          <label>Hasta</label>
+          <input id="fechaHastaHistoricoConsumo" type="date">
+        </div>
+        <div class="campo">
+          <label>Área</label>
+          <select id="areaHistoricoConsumo"><option value="">Todas</option></select>
+        </div>
+      </div>
+
+      <div class="boton" id="btnConsultarHistoricoConsumo" style="margin-top:14px;max-width:260px" onclick="consultarHistoricoConsumo()">${tgIcon("buscar",17)} Consultar</div>
+
+    </div>
+
+    <div id="resultadoHistoricoConsumo" style="margin-top:16px"></div>
+
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(function(areas){
+      const select = document.getElementById("areaHistoricoConsumo");
+      if(!select) return;
+      areas.forEach(function(a){ select.innerHTML += `<option value="${a}">${a}</option>`; });
+    })
+    .withFailureHandler(function(){ /* si falla, el selector se queda solo con "Todas" — no bloquea el resto de la pantalla */ })
+    .obtenerAreasSalidaApp(obtenerTokenSesion());
+
+}
+
+function cambiarPeriodoHistoricoConsumo(){
+  const personalizado = document.getElementById("periodoHistoricoConsumo").value === "PERSONALIZADO";
+  document.getElementById("campoFechaDesdeHistoricoConsumo").style.display = personalizado ? "block" : "none";
+  document.getElementById("campoFechaHastaHistoricoConsumo").style.display = personalizado ? "block" : "none";
+}
+
+function buscarProductoParaHistoricoConsumo(){
+
+  clearTimeout(temporizadorBuscarHistoricoConsumo);
+
+  const texto = document.getElementById("buscarProductoHistoricoConsumo").value.trim();
+  const cont = document.getElementById("resultadosProductoHistoricoConsumo");
+
+  if(texto.length < 2){ cont.innerHTML = ""; cont.style.display = "none"; return; }
+
+  temporizadorBuscarHistoricoConsumo = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(resultados){
+        if(!resultados || !resultados.length){
+          cont.innerHTML = "<div style='padding:10px;font-size:12.5px;color:var(--text-muted)'>Sin resultados</div>";
+          cont.style.display = "block";
+          return;
+        }
+        cont.innerHTML = resultados.map(function(p){
+          return `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+            onclick='seleccionarProductoHistoricoConsumo(${JSON.stringify(p).replace(/'/g,"&apos;")})'>
+            <b>${p.producto}</b><br><span style="font-size:11px;color:var(--text-muted)">${p.codigo}${p.descontinuado ? " · descontinuado" : ""}</span>
+          </div>`;
+        }).join("");
+        cont.style.display = "block";
+      })
+      .withFailureHandler(function(e){ cont.innerHTML = "⚠️ " + e.message; cont.style.display = "block"; })
+      .buscarProductoHistoricoConsumoApp(texto, obtenerTokenSesion());
+  }, 300);
+
+}
+
+function seleccionarProductoHistoricoConsumo(p){
+  window.historicoConsumoCodigoSeleccionado = p.codigo;
+  document.getElementById("buscarProductoHistoricoConsumo").value = p.producto + " (" + p.codigo + ")";
+  document.getElementById("resultadosProductoHistoricoConsumo").style.display = "none";
+  document.getElementById("productoSeleccionadoHistoricoConsumo").innerHTML =
+    "Consultando: <b>" + p.producto + "</b> (" + p.codigo + ", UDM " + p.udm + ")" +
+    (p.descontinuado ? " — <span style='color:var(--color-danger)'>descontinuado</span>" : "");
+}
+
+function consultarHistoricoConsumo(){
+
+  const codigo = window.historicoConsumoCodigoSeleccionado;
+  const cont = document.getElementById("resultadoHistoricoConsumo");
+
+  if(!codigo){
+    cont.innerHTML = tgEmptyState("alertaTriangulo", "Busca y selecciona un producto de la lista primero.");
+    return;
+  }
+
+  const filtros = {
+    codigo: codigo,
+    periodoPreset: document.getElementById("periodoHistoricoConsumo").value,
+    fechaDesde: document.getElementById("fechaDesdeHistoricoConsumo").value,
+    fechaHasta: document.getElementById("fechaHastaHistoricoConsumo").value,
+    area: document.getElementById("areaHistoricoConsumo").value
+  };
+
+  activarCargaBoton("btnConsultarHistoricoConsumo", true);
+  cont.innerHTML = `<div class="spinnerCentro"><div class="spinner"></div></div>`;
+
+  google.script.run
+    .withSuccessHandler(function(resultado){
+      activarCargaBoton("btnConsultarHistoricoConsumo", false);
+      dibujarResultadoHistoricoConsumo(resultado);
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnConsultarHistoricoConsumo", false);
+      cont.innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerHistoricoConsumoApp(filtros, obtenerTokenSesion());
+
+}
+
+function dibujarResultadoHistoricoConsumo(datos){
+
+  const cont = document.getElementById("resultadoHistoricoConsumo");
+  if(!cont) return;
+
+  const r = datos.resumen;
+  const udm = datos.producto.udm || "";
+  const tendenciaTexto = r.tendenciaPct === null
+    ? "Sin periodo anterior comparable"
+    : ((r.tendenciaPct > 0 ? "↑ " : (r.tendenciaPct < 0 ? "↓ " : "→ ")) + Math.abs(r.tendenciaPct) + "% vs. periodo anterior");
+  const tendenciaColor = r.tendenciaPct === null ? "var(--text-muted)" : (r.tendenciaPct > 0 ? "var(--color-danger)" : (r.tendenciaPct < 0 ? "var(--color-success)" : "var(--text-muted)"));
+
+  cont.innerHTML = `
+
+    ${(datos.advertencias||[]).map(function(a){
+      return `<p style="font-size:12.5px;color:var(--color-danger);background:rgba(196,82,42,.08);border-radius:8px;padding:8px 12px;margin-bottom:8px">${tgIcon("alertaTriangulo",13)} ${a}</p>`;
+    }).join("")}
+
+    <div class="gridFormulario" style="grid-template-columns:repeat(4,1fr);gap:10px">
+      ${[
+        ["Consumo total", formatearCantidadJS(r.consumoTotal) + " " + udm],
+        ["Promedio mensual", formatearCantidadJS(r.promedioMensual) + " " + udm],
+        ["Promedio diario", formatearCantidadJS(r.promedioDiario) + " " + udm],
+        ["Movimientos", r.numeroMovimientos]
+      ].map(function(par){
+        return `<div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">${par[0]}</div>
+          <div style="font-size:18px;font-weight:800;color:var(--guinda)">${par[1]}</div>
+        </div>`;
+      }).join("")}
+    </div>
+
+    <div class="gridFormulario" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Mes de mayor consumo</div>
+        <div style="font-size:15px;font-weight:700">${r.mesMayorConsumo ? (r.mesMayorConsumo.etiqueta + " — " + formatearCantidadJS(r.mesMayorConsumo.consumo) + " " + udm) : "—"}</div>
+      </div>
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Mes de menor consumo</div>
+        <div style="font-size:15px;font-weight:700">${r.mesMenorConsumo ? (r.mesMenorConsumo.etiqueta + " — " + formatearCantidadJS(r.mesMenorConsumo.consumo) + " " + udm) : "—"}</div>
+      </div>
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Tendencia</div>
+        <div style="font-size:15px;font-weight:700;color:${tendenciaColor}">${tendenciaTexto}</div>
+      </div>
+    </div>
+
+    ${datos.costo.disponible ? `
+      <p style="font-size:12.5px;color:var(--text-soft);margin-top:10px">
+        ${tgIcon("dinero",13)} Costo estimado del consumo: <b>$${Number(datos.costo.costoConsumoTotal).toLocaleString("es-MX",{minimumFractionDigits:2})}</b>
+        (a $${Number(datos.costo.costoUnitarioReal).toLocaleString("es-MX",{minimumFractionDigits:2})}/${udm})
+      </p>
+    ` : `<p style="font-size:12px;color:var(--text-muted);margin-top:10px">Este producto no tiene costo capturado en MATRIZ — no se puede estimar el costo del consumo.</p>`}
+
+    <h3 style="margin-top:20px">Consumo mensual</h3>
+    ${!r.consumoMensual.length ? tgEmptyState("carrito", "Sin movimientos en el periodo seleccionado") : `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Mes</th><th style="text-align:right">Consumo</th><th style="text-align:right">Movimientos</th></tr></thead>
+      <tbody>
+        ${r.consumoMensual.map(function(m){
+          return `<tr><td>${m.etiqueta}</td><td style="text-align:right">${formatearCantidadJS(m.consumo)} ${udm}</td><td style="text-align:right">${m.movimientos}</td></tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    `}
+
+    <h3 style="margin-top:20px">Consumo por área</h3>
+    ${!datos.consumoPorArea.length ? tgEmptyState("carrito", "Sin movimientos en el periodo seleccionado") : `
+    <table class="tablaTop" style="font-size:13px">
+      <thead><tr><th>Área</th><th style="text-align:right">Consumo</th><th style="text-align:right">%</th></tr></thead>
+      <tbody>
+        ${datos.consumoPorArea.map(function(a){
+          return `<tr><td>${a.area}</td><td style="text-align:right">${formatearCantidadJS(a.consumo)} ${udm}</td><td style="text-align:right">${a.porcentaje}%</td></tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    `}
+
+  `;
+
 }
 
 // ===============================
@@ -17301,6 +17544,7 @@ function aplicarFiltros(){
     <button class="menuLateralBtn sub" id="btnMermas" onclick="abrirMermas()" title="Mermas"><span class="icono">🗑️</span><span class="textoMenu">Mermas</span></button>
     <button class="menuLateralBtn sub" id="btnClasificacionABC" onclick="abrirClasificacionABC()" title="Clasificación ABC"><span class="icono">🏷️</span><span class="textoMenu">Clasificación ABC</span></button>
     <button class="menuLateralBtn sub" id="btnEtiquetas" onclick="abrirEtiquetas()" title="Etiquetas"><span class="icono">🏷️</span><span class="textoMenu">Etiquetas</span></button>
+    <button class="menuLateralBtn sub" id="btnHistoricoConsumo" onclick="abrirHistoricoConsumo()" title="Histórico de consumo"><span class="icono">📊</span><span class="textoMenu">Histórico de consumo</span></button>
   </div>
 </div>
 
