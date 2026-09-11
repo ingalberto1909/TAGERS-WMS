@@ -4767,19 +4767,33 @@ function migrarCostoUnitarioAPorUnidadApp(token){
  * Presentación está vacía, en 0 o es negativa — ahí ni siquiera se
  * puede calcular R/T.
  *
- * Se ordena por el valor absoluto de la diferencia económica (de mayor
- * a menor impacto) para que se revisen primero los productos donde
- * equivocarse de interpretación cuesta más caro.
+ * IMPORTANTE (aprendido con datos reales): ordenar solo por diferencia
+ * absoluta no es suficiente — un producto con Presentación muy grande
+ * (ej. una caja de 1000 pz) siempre va a mostrar una diferencia enorme
+ * entre R y R/T aunque R ya esté perfectamente bien, simplemente porque
+ * dividir entre 1000 da un número minúsculo. Eso saturaba el reporte de
+ * falsos positivos (el "sospechoso" real quedaba enterrado).
+ *
+ * Por eso cada fila lleva "sospechoso": true solo cuando R/T SIGUE
+ * pareciendo un precio real de una sola unidad (>= 5 centavos) — si R/T
+ * cae por debajo de eso, casi seguro nadie vende una unidad a esa
+ * fracción de centavo, así que R (el actual) ya es el correcto y esa
+ * fila es ruido, no una alerta real. El reporte ordena primero los
+ * "sospechoso":true (los que de verdad hay que revisar con la factura
+ * en mano), y entre esos, de mayor a menor impacto económico.
  */
 function auditarCosteoPresentacionApp(token){
 
   requerirSesionActivaApp_(token);
+
+  const UMBRAL_PRECIO_PLAUSIBLE_ = 0.05; // nada se vende, por unidad, por menos de 5 centavos
 
   const datos = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
   const filas = [];
 
   let totalConvertirSi = 0;
   let totalConfiguracionIncompleta = 0;
+  let totalSospechosos = 0;
 
   datos.forEach(function(f){
 
@@ -4809,6 +4823,9 @@ function auditarCosteoPresentacionApp(token){
       ? Math.round(existencia * costoSiFueraPorPresentacion * 100) / 100
       : null;
 
+    const sospechoso = costoSiFueraPorPresentacion !== null && costoSiFueraPorPresentacion >= UMBRAL_PRECIO_PLAUSIBLE_;
+    if(sospechoso) totalSospechosos++;
+
     filas.push({
       codigo: codigo,
       producto: producto,
@@ -4820,17 +4837,22 @@ function auditarCosteoPresentacionApp(token){
       costoSiFueraPorPresentacion: costoSiFueraPorPresentacion,
       valorActual: valorActual,
       valorSiFueraPorPresentacion: valorSiFueraPorPresentacion,
-      diferencia: (valorSiFueraPorPresentacion !== null) ? Math.round((valorActual - valorSiFueraPorPresentacion) * 100) / 100 : null
+      diferencia: (valorSiFueraPorPresentacion !== null) ? Math.round((valorActual - valorSiFueraPorPresentacion) * 100) / 100 : null,
+      sospechoso: sospechoso
     });
 
   });
 
-  filas.sort(function(a, b){ return Math.abs(b.diferencia || 0) - Math.abs(a.diferencia || 0); });
+  filas.sort(function(a, b){
+    if(a.sospechoso !== b.sospechoso) return a.sospechoso ? -1 : 1; // sospechosos reales primero
+    return Math.abs(b.diferencia || 0) - Math.abs(a.diferencia || 0);
+  });
 
   return {
     filas: filas,
     totalConvertirSi: totalConvertirSi,
-    totalConfiguracionIncompleta: totalConfiguracionIncompleta
+    totalConfiguracionIncompleta: totalConfiguracionIncompleta,
+    totalSospechosos: totalSospechosos
   };
 
 }

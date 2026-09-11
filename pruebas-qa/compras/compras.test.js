@@ -905,14 +905,14 @@ prueba({
 const { filaProducto, encabezadoMatriz } = require('../lib/datos-prueba');
 
 prueba({
-  id: 'COM-208', grupo: 'compras', nombre: 'auditarCosteoPresentacionApp calcula R÷T y la diferencia económica, ordenado por mayor impacto', metodo: 'EMPÍRICO',
-  objetivo: 'Para cada producto con Convertir="SI" debe reportar costo actual, costo si R todavía fuera precio de presentación completa (R÷T), y ambos valores de inventario — sin tocar MATRIZ ni decidir cuál es el correcto',
+  id: 'COM-208', grupo: 'compras', nombre: 'auditarCosteoPresentacionApp calcula R÷T, marca "sospechoso" solo cuando R÷T sigue pareciendo un precio real, y ordena sospechosos primero', metodo: 'EMPÍRICO',
+  objetivo: 'Para cada producto con Convertir="SI" debe reportar costo actual, costo si R todavía fuera precio de presentación completa (R÷T), y ambos valores de inventario. Con datos reales de Alberto se vio que una Presentación grande (ej. 1700 pz) siempre produce una diferencia enorme aunque R ya esté bien — por eso "sospechoso" solo debe ser true cuando R÷T sigue viéndose como precio de una sola unidad (>= 5 centavos), y esos van primero sin importar que su diferencia absoluta sea menor',
   ejecutar() {
     const matriz = [
       encabezadoMatriz(),
-      // Harina bizcocho: R ya migrado (por unidad) — 160×21.5=3440, R÷T=1.075 (diferencia grande, pero NO es el sospechoso).
+      // Harina bizcocho: R÷T=1.075 (>= 0.05) → SÍ es candidato real a revisar.
       filaProducto({ producto: 'HARINA BIZCOCHO', codigo: 'COD-HAR', udm: 'KG', existencia: 160, costo: 21.5, convertir: 'SI', presentacion: 20 }),
-      // Manga de cartón: presentación de 1700 pz, costo ya por pieza — diferencia mínima esperada.
+      // Manga de cartón: presentación de 1700 pz → R÷T≈0.0005 (< 0.05), nadie vende una pieza a esa fracción de centavo — NO es sospechoso, aunque su diferencia absoluta (≈1308) sea grande.
       filaProducto({ producto: 'MANGA DE CARTON', codigo: 'COD-MAN', udm: 'PZA', existencia: 1700, costo: 0.77, convertir: 'SI', presentacion: 1700 }),
       // Producto sin conversión: no debe aparecer en el reporte (Convertir=NO).
       filaProducto({ producto: 'SAL DE MESA', codigo: 'COD-SAL', udm: 'KG', existencia: 50, costo: 8, convertir: 'NO' }),
@@ -926,16 +926,16 @@ prueba({
     const sal = reporte.filas.find(f => f.codigo === 'COD-SAL');
 
     return {
-      datos: 'Harina 160Kg/R=21.5/T=20; Manga 1700pz/R=0.77/T=1700; Sal sin Convertir',
-      esperado: 'Reporte trae solo 2 filas (Harina y Manga, no Sal). Harina: costoSiFueraPorPresentacion=1.075, valorActual=3440, valorSiFuera=172, diferencia=3268. Manga: R÷T≈0.000453, valorSiFuera≈0.77, diferencia≈1308.23 (menor que el de Harina). Ordenado por diferencia descendente: Harina primero, Manga después.',
-      obtenido: `total=${reporte.filas.length}, sal=${sal ? 'presente (MAL)' : 'ausente (bien)'}, ` +
-        `harina: costoSiFuera=${harina.costoSiFueraPorPresentacion}, valorActual=${harina.valorActual}, valorSiFuera=${harina.valorSiFueraPorPresentacion}, diff=${harina.diferencia} | ` +
-        `manga: costoSiFuera=${manga.costoSiFueraPorPresentacion}, diff=${manga.diferencia} | ` +
+      datos: 'Harina 160Kg/R=21.5/T=20 (diff=3268); Manga 1700pz/R=0.77/T=1700 (diff≈1308, pero R÷T≈0.0005); Sal sin Convertir',
+      esperado: 'Reporte trae solo 2 filas (Harina y Manga, no Sal). Harina: sospechoso=true, costoSiFueraPorPresentacion=1.075, diferencia=3268. Manga: sospechoso=false a pesar de tener diferencia grande (R÷T es una fracción de centavo, imposible de vender así). totalSospechosos=1. Orden: Harina primero (sospechoso), Manga después (aunque su diferencia sea menor a la de Harina, igual va después de cualquier no-sospechoso... en este caso es el único no-sospechoso).',
+      obtenido: `total=${reporte.filas.length}, sal=${sal ? 'presente (MAL)' : 'ausente (bien)'}, totalSospechosos=${reporte.totalSospechosos}, ` +
+        `harina: sospechoso=${harina.sospechoso}, costoSiFuera=${harina.costoSiFueraPorPresentacion}, valorActual=${harina.valorActual}, valorSiFuera=${harina.valorSiFueraPorPresentacion}, diff=${harina.diferencia} | ` +
+        `manga: sospechoso=${manga.sospechoso}, costoSiFuera=${manga.costoSiFueraPorPresentacion}, diff=${manga.diferencia} | ` +
         `orden=${reporte.filas.map(f => f.codigo).join(',')}`,
-      pasa: reporte.filas.length === 2 && !sal &&
-        harina.costoSiFueraPorPresentacion === 1.075 && harina.valorActual === 3440 &&
+      pasa: reporte.filas.length === 2 && !sal && reporte.totalSospechosos === 1 &&
+        harina.sospechoso === true && harina.costoSiFueraPorPresentacion === 1.075 && harina.valorActual === 3440 &&
         harina.valorSiFueraPorPresentacion === 172 && harina.diferencia === 3268 &&
-        harina.diferencia > manga.diferencia && // 3268 vs ≈1308.23
+        manga.sospechoso === false &&
         reporte.filas[0].codigo === 'COD-HAR' && reporte.filas[1].codigo === 'COD-MAN',
     };
   },
@@ -959,10 +959,11 @@ prueba({
 
     return {
       datos: 'Dos productos con Convertir="SI" y Presentación 0 / vacía',
-      esperado: 'Ambos marcados configuracionIncompleta=true, costoSiFueraPorPresentacion=null (nunca NaN/Infinity), totalConfiguracionIncompleta=2',
-      obtenido: `inc: incompleta=${inc.configuracionIncompleta}, costoSiFuera=${inc.costoSiFueraPorPresentacion} | inc2: incompleta=${inc2.configuracionIncompleta}, costoSiFuera=${inc2.costoSiFueraPorPresentacion} | totalIncompleta=${reporte.totalConfiguracionIncompleta}`,
-      pasa: inc.configuracionIncompleta === true && inc.costoSiFueraPorPresentacion === null &&
-        inc2.configuracionIncompleta === true && inc2.costoSiFueraPorPresentacion === null &&
+      esperado: 'Ambos marcados configuracionIncompleta=true, costoSiFueraPorPresentacion=null (nunca NaN/Infinity), sospechoso=false (no se puede evaluar), totalConfiguracionIncompleta=2, totalSospechosos=0',
+      obtenido: `inc: incompleta=${inc.configuracionIncompleta}, sospechoso=${inc.sospechoso}, costoSiFuera=${inc.costoSiFueraPorPresentacion} | inc2: incompleta=${inc2.configuracionIncompleta}, sospechoso=${inc2.sospechoso}, costoSiFuera=${inc2.costoSiFueraPorPresentacion} | totalIncompleta=${reporte.totalConfiguracionIncompleta}, totalSospechosos=${reporte.totalSospechosos}`,
+      pasa: inc.configuracionIncompleta === true && inc.costoSiFueraPorPresentacion === null && inc.sospechoso === false &&
+        inc2.configuracionIncompleta === true && inc2.costoSiFueraPorPresentacion === null && inc2.sospechoso === false &&
+        reporte.totalSospechosos === 0 &&
         reporte.totalConfiguracionIncompleta === 2 && reporte.totalConvertirSi === 2,
     };
   },
