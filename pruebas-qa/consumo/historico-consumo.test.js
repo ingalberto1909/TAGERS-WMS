@@ -362,3 +362,147 @@ prueba({
     };
   },
 });
+
+// ============================================
+// Dashboard de consumo — "AUTORIZO IMPLEMENTAR" (mejora futura del pedido original)
+// ============================================
+
+prueba({
+  id: 'HCO-012', grupo: 'consumo', nombre: 'obtenerDashboardConsumoApp agrega el consumo de TODO el almacén en $ (mes y área) y arma el top de productos en su propia UDM', metodo: 'EMPÍRICO',
+  objetivo: 'El dashboard debe sumar en $ (cantidad × costoUnitarioReal de cada producto) el gasto mensual y por área, porque no se pueden sumar kg+L+pz de productos distintos en una sola cifra, mientras que el top de productos se muestra en cantidad (UDM propia de cada uno, nunca mezclada)',
+  ejecutar() {
+    const matriz = [
+      filaProducto({ producto: 'HARINA', codigo: 'COD-D1', udm: 'KG', existencia: 100, costo: 10 }),
+      filaProducto({ producto: 'ACEITE', codigo: 'COD-D2', udm: 'L', existencia: 100, costo: 30 }),
+    ];
+    const salida = [
+      filaSalida(d(2026, 3, 5), 'COD-D1', 'HARINA', 20, 'KG', 'Cocina'),   // $200
+      filaSalida(d(2026, 3, 10), 'COD-D2', 'ACEITE', 5, 'L', 'Panaderia'), // $150
+      filaSalida(d(2026, 4, 1), 'COD-D1', 'HARINA', 10, 'KG', 'Cocina'),   // $100
+    ];
+    const { entorno, token } = entornoConSalida(matriz, salida);
+
+    const resultado = entorno.invocar('obtenerDashboardConsumoApp', {
+      periodoPreset: 'PERSONALIZADO', fechaDesde: '2026-03-01', fechaHasta: '2026-04-30'
+    }, token);
+
+    const marzo = resultado.consumoMensualValor.find(m => m.mes === 3);
+    const abril = resultado.consumoMensualValor.find(m => m.mes === 4);
+    const cocina = resultado.consumoPorArea.find(a => a.area === 'Cocina');
+    const panaderia = resultado.consumoPorArea.find(a => a.area === 'Panaderia');
+    const topD1 = resultado.topProductos.find(p => p.codigo === 'COD-D1');
+
+    return {
+      datos: 'HARINA ($10/kg): 20kg en marzo + 10kg en abril; ACEITE ($30/L): 5L en marzo',
+      esperado: 'valorConsumoTotal=450, marzo=$350, abril=$100, Cocina=$300 (200+100), Panaderia=$150, top: COD-D1 con 30kg (20+10, en su propia UDM, nunca sumado con litros)',
+      obtenido: `total=${resultado.resumen.valorConsumoTotal}, marzo=${marzo ? marzo.valor : 'ausente'}, abril=${abril ? abril.valor : 'ausente'}, cocina=${cocina ? cocina.valor : 'ausente'}, panaderia=${panaderia ? panaderia.valor : 'ausente'}, topD1=${topD1 ? topD1.consumoTotal + topD1.udm : 'ausente'}`,
+      pasa: resultado.resumen.valorConsumoTotal === 450 &&
+        !!marzo && marzo.valor === 350 && !!abril && abril.valor === 100 &&
+        !!cocina && cocina.valor === 300 && !!panaderia && panaderia.valor === 150 &&
+        !!topD1 && topD1.consumoTotal === 30 && topD1.udm === 'KG',
+    };
+  },
+});
+
+prueba({
+  id: 'HCO-013', grupo: 'consumo', nombre: 'Un producto con Convertir=SI/Presentación no duplica su aporte en $ al dashboard (misma regla que el costeo real)', metodo: 'EMPÍRICO',
+  objetivo: 'obtenerDashboardConsumoApp reutiliza obtenerCostoUnitarioReal_ tal cual — el valor en $ debe ser cantidad × costo unitario ya normalizado, sin volver a multiplicar por Presentación',
+  ejecutar() {
+    const matriz = [filaProducto({
+      producto: 'SALSA MORITA', codigo: 'COD-D3', udm: 'KG', existencia: 100, costo: 90,
+      convertir: 'SI', presentacion: 2, // caja de 2kg — no debe afectar el $ del consumo
+    })];
+    const salida = [filaSalida(d(2026, 5, 1), 'COD-D3', 'SALSA MORITA', 4, 'KG', 'Cocina')]; // 4kg reales
+    const { entorno, token } = entornoConSalida(matriz, salida);
+
+    const resultado = entorno.invocar('obtenerDashboardConsumoApp', {
+      periodoPreset: 'PERSONALIZADO', fechaDesde: '2026-05-01', fechaHasta: '2026-05-31'
+    }, token);
+
+    return {
+      datos: 'SALSA MORITA: costo=$90/kg, Convertir=SI, Presentación=2kg, 1 salida de 4kg',
+      esperado: 'valorConsumoTotal=360 (4×90 — NUNCA 4×90×2=720)',
+      obtenido: `valorConsumoTotal=${resultado.resumen.valorConsumoTotal}`,
+      pasa: resultado.resumen.valorConsumoTotal === 360,
+    };
+  },
+});
+
+prueba({
+  id: 'HCO-014', grupo: 'consumo', nombre: 'Productos sin costo capturado no aportan $ a los totales del dashboard, pero sí cuentan en su propio ranking de cantidad', metodo: 'EMPÍRICO',
+  objetivo: 'No se debe inventar un valor monetario para un producto sin costo en MATRIZ (costo=0) — se excluye de mes/área/total en $ y se informa cuántos productos/movimientos quedaron así, sin bloquear el resto del dashboard',
+  ejecutar() {
+    const matriz = [
+      filaProducto({ producto: 'HARINA', codigo: 'COD-D4', udm: 'KG', existencia: 100, costo: 10 }),
+      filaProducto({ producto: 'SERVILLETAS', codigo: 'COD-D5', udm: 'PZ', existencia: 500, costo: 0 }), // sin costo capturado
+    ];
+    const salida = [
+      filaSalida(d(2026, 6, 1), 'COD-D4', 'HARINA', 5, 'KG', 'Cocina'),       // $50
+      filaSalida(d(2026, 6, 2), 'COD-D5', 'SERVILLETAS', 40, 'PZ', 'Cocina'), // sin costo
+    ];
+    const { entorno, token } = entornoConSalida(matriz, salida);
+
+    const resultado = entorno.invocar('obtenerDashboardConsumoApp', {
+      periodoPreset: 'PERSONALIZADO', fechaDesde: '2026-06-01', fechaHasta: '2026-06-30'
+    }, token);
+
+    const topD5 = resultado.topProductos.find(p => p.codigo === 'COD-D5');
+
+    return {
+      datos: 'HARINA con costo (5kg×$10=$50) + SERVILLETAS sin costo capturado (40pz)',
+      esperado: 'valorConsumoTotal=50 (solo HARINA), resumen.productosSinCosto=1, resumen.movimientosSinCosto=1, pero SERVILLETAS sigue apareciendo en topProductos con 40pz',
+      obtenido: `total=${resultado.resumen.valorConsumoTotal}, productosSinCosto=${resultado.resumen.productosSinCosto}, movimientosSinCosto=${resultado.resumen.movimientosSinCosto}, topD5=${topD5 ? topD5.consumoTotal : 'ausente'}`,
+      pasa: resultado.resumen.valorConsumoTotal === 50 && resultado.resumen.productosSinCosto === 1 &&
+        resultado.resumen.movimientosSinCosto === 1 && !!topD5 && topD5.consumoTotal === 40,
+    };
+  },
+});
+
+prueba({
+  id: 'HCO-015', grupo: 'consumo', nombre: 'El filtro de área del dashboard limita mes/área/top a esa área exacta (normalizada)', metodo: 'EMPÍRICO',
+  objetivo: 'Igual que en obtenerHistoricoConsumoApp, el filtro de área del dashboard debe normalizar mayúsculas/minúsculas y excluir del todo los movimientos de otras áreas de cualquier sección del dashboard',
+  ejecutar() {
+    const matriz = [filaProducto({ producto: 'AZUCAR', codigo: 'COD-D6', udm: 'KG', existencia: 200, costo: 5 })];
+    const salida = [
+      filaSalida(d(2026, 7, 1), 'COD-D6', 'AZUCAR', 20, 'KG', 'Cocina'),
+      filaSalida(d(2026, 7, 2), 'COD-D6', 'AZUCAR', 30, 'KG', 'Panaderia'),
+    ];
+    const { entorno, token } = entornoConSalida(matriz, salida);
+
+    const soloCocina = entorno.invocar('obtenerDashboardConsumoApp', {
+      periodoPreset: 'PERSONALIZADO', fechaDesde: '2026-07-01', fechaHasta: '2026-07-31', area: 'cocina'
+    }, token);
+
+    return {
+      datos: 'AZUCAR ($5/kg): 20kg en Cocina + 30kg en Panaderia, filtrando por area="cocina" (minúsculas)',
+      esperado: 'valorConsumoTotal=100 (solo Cocina: 20×5), consumoPorArea con una sola fila (Cocina), top con 20kg',
+      obtenido: `total=${soloCocina.resumen.valorConsumoTotal}, areas=${soloCocina.consumoPorArea.length}, topCantidad=${soloCocina.topProductos[0] ? soloCocina.topProductos[0].consumoTotal : 'ausente'}`,
+      pasa: soloCocina.resumen.valorConsumoTotal === 100 && soloCocina.consumoPorArea.length === 1 &&
+        soloCocina.topProductos.length === 1 && soloCocina.topProductos[0].consumoTotal === 20,
+    };
+  },
+});
+
+prueba({
+  id: 'HCO-016', grupo: 'consumo', nombre: 'La tendencia del dashboard compara el $ del periodo actual contra el mismo número de días inmediatamente anterior', metodo: 'EMPÍRICO',
+  objetivo: 'tendenciaPct debe calcularse en $ contra un periodo previo de la misma duración, igual criterio que ya usa obtenerHistoricoConsumoApp por producto — aquí agregado a nivel de todo el almacén',
+  ejecutar() {
+    const matriz = [filaProducto({ producto: 'HARINA', codigo: 'COD-D7', udm: 'KG', existencia: 100, costo: 10 })];
+    const salida = [
+      filaSalida(d(2026, 7, 25), 'COD-D7', 'HARINA', 10, 'KG', 'Cocina'), // periodo anterior (16-31 jul): $100
+      filaSalida(d(2026, 8, 10), 'COD-D7', 'HARINA', 20, 'KG', 'Cocina'), // periodo actual (1-16 ago): $200
+    ];
+    const { entorno, token } = entornoConSalida(matriz, salida);
+
+    const resultado = entorno.invocar('obtenerDashboardConsumoApp', {
+      periodoPreset: 'PERSONALIZADO', fechaDesde: '2026-08-01', fechaHasta: '2026-08-16'
+    }, token);
+
+    return {
+      datos: 'Periodo actual (1-16 ago, 16 días): $200. Periodo anterior de igual duración (16-31 jul): $100',
+      esperado: 'valorPeriodoAnterior=100, tendenciaPct=100 (subió 100%)',
+      obtenido: `valorConsumoTotal=${resultado.resumen.valorConsumoTotal}, valorPeriodoAnterior=${resultado.resumen.valorPeriodoAnterior}, tendenciaPct=${resultado.resumen.tendenciaPct}`,
+      pasa: resultado.resumen.valorConsumoTotal === 200 && resultado.resumen.valorPeriodoAnterior === 100 && resultado.resumen.tendenciaPct === 100,
+    };
+  },
+});

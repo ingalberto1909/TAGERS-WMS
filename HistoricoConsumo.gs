@@ -422,3 +422,171 @@ function obtenerTopProductosConsumidosApp(filtros, token){
   return lista.slice(0, limite);
 
 }
+
+/**
+ * Dashboard agregado de consumo (mejora futura del pedido original, ya
+ * autorizada explícitamente por el usuario): Top de productos, tendencia
+ * mensual y consumo por área, en una sola pantalla. UNA sola pasada de
+ * SALIDA (más una segunda pasada ligera solo para el total del periodo
+ * anterior) — a propósito NO llama a obtenerTopProductosConsumidosApp
+ * para no releer la hoja dos veces.
+ *
+ * Por qué en $ y no en cantidad: no se puede sumar "5 kg de harina + 3 L
+ * de aceite + 40 pz de servilletas" en un solo número con unidad — son
+ * magnitudes físicamente incompatibles. El valor monetario (cantidad ×
+ * obtenerCostoUnitarioReal_, motor de costeo reutilizado sin modificar)
+ * sí es una unidad común entre productos, así que la tendencia mensual y
+ * el desglose por área se agregan en $. El ranking de "Top Productos" no
+ * tiene ese problema (es un solo producto a la vez) y se muestra en la
+ * UDM propia de cada producto, igual que obtenerTopProductosConsumidosApp.
+ * Un producto sin costo capturado en MATRIZ no aporta $ a ningún total
+ * (no se inventa un valor) pero sí cuenta para su propio ranking de
+ * cantidad — se informa cuántos movimientos/productos quedaron así.
+ */
+function obtenerDashboardConsumoApp(filtros, token){
+
+  requerirSesionActivaApp_(token);
+  filtros = filtros || {};
+
+  const rango = resolverRangoFechas_(filtros);
+  const areaFiltro = filtros.area ? normalizarAreaSalida_(filtros.area) : "";
+  const limite = Math.max(1, Number(filtros.limite) || 10);
+
+  // Mapa código -> {producto, udm, costoUnitarioReal} — una sola pasada de MATRIZ.
+  const datosMatriz = obtenerFilasHojaCacheadas_("MATRIZ").slice(1);
+  const mapaProducto = {};
+  datosMatriz.forEach(function(f){
+    const codigo = String(f[4] || "").trim();
+    if(!codigo) return;
+    const costoUnitarioReal = obtenerCostoUnitarioReal_(Number(f[17]) || 0, f[18], f[19]);
+    mapaProducto[codigo] = { producto: f[0], udm: f[1], costoUnitarioReal: costoUnitarioReal, costoDisponible: costoUnitarioReal > 0 };
+  });
+
+  const datosSalida = obtenerFilasHojaCacheadas_("SALIDA").slice(1);
+
+  function sumarValorEnRango_(desde, hasta){
+    let valor = 0;
+    datosSalida.forEach(function(f){
+      const cantidad = Number(f[5]);
+      if(!cantidad || cantidad <= 0) return;
+      const fecha = f[2] instanceof Date ? f[2] : new Date(f[2]);
+      if(isNaN(fecha.getTime())) return;
+      if(fecha.getTime() < desde.getTime() || fecha.getTime() > hasta.getTime()) return;
+      if(areaFiltro && normalizarAreaSalida_(f[7]) !== areaFiltro) return;
+      const codigo = String(f[3] || "").trim();
+      const info = mapaProducto[codigo];
+      if(!info || !info.costoDisponible) return;
+      valor += cantidad * info.costoUnitarioReal;
+    });
+    return valor;
+  }
+
+  const porMes = {};
+  const porArea = {};
+  const acumuladoProducto = {};
+  let valorConsumoTotal = 0;
+  let movimientosTotales = 0;
+  let movimientosSinCosto = 0;
+  const codigosSinCosto = {};
+
+  datosSalida.forEach(function(f){
+    const cantidad = Number(f[5]);
+    if(!cantidad || cantidad <= 0) return;
+    const fecha = f[2] instanceof Date ? f[2] : new Date(f[2]);
+    if(isNaN(fecha.getTime())) return;
+    if(fecha.getTime() < rango.desde.getTime() || fecha.getTime() > rango.hasta.getTime()) return;
+    if(areaFiltro && normalizarAreaSalida_(f[7]) !== areaFiltro) return;
+
+    const codigo = String(f[3] || "").trim();
+    if(!codigo) return;
+
+    movimientosTotales++;
+
+    if(!acumuladoProducto[codigo]) acumuladoProducto[codigo] = { consumo: 0, movimientos: 0, udms: {} };
+    acumuladoProducto[codigo].consumo += cantidad;
+    acumuladoProducto[codigo].movimientos++;
+    const udmMov = String(f[6] || "").trim();
+    if(udmMov) acumuladoProducto[codigo].udms[udmMov] = true;
+
+    const info = mapaProducto[codigo];
+    if(!info || !info.costoDisponible){
+      movimientosSinCosto++;
+      codigosSinCosto[codigo] = true;
+      return; // sin costo capturado: no aporta $ a mes/área/total (no se inventa un valor)
+    }
+
+    const valor = cantidad * info.costoUnitarioReal;
+    valorConsumoTotal += valor;
+
+    const claveMes = fecha.getFullYear() + "-" + String(fecha.getMonth() + 1).padStart(2, "0");
+    if(!porMes[claveMes]) porMes[claveMes] = { anio: fecha.getFullYear(), mes: fecha.getMonth() + 1, etiqueta: obtenerMesLetra(fecha) + " " + fecha.getFullYear(), valor: 0 };
+    porMes[claveMes].valor += valor;
+
+    const areaOriginal = String(f[7] || "").trim() || "(Sin área registrada)";
+    const claveArea = normalizarAreaSalida_(areaOriginal);
+    if(!porArea[claveArea]) porArea[claveArea] = { area: areaOriginal, valor: 0 };
+    porArea[claveArea].valor += valor;
+  });
+
+  const consumoMensualValor = Object.keys(porMes).sort().map(function(clave){
+    const m = porMes[clave];
+    return { anio: m.anio, mes: m.mes, etiqueta: m.etiqueta, valor: Math.round(m.valor * 100) / 100 };
+  });
+
+  let mesMayorGasto = null;
+  consumoMensualValor.forEach(function(m){
+    if(!mesMayorGasto || m.valor > mesMayorGasto.valor) mesMayorGasto = m;
+  });
+
+  const consumoPorArea = Object.values(porArea)
+    .map(function(a){
+      return { area: a.area, valor: Math.round(a.valor * 100) / 100, porcentaje: valorConsumoTotal > 0 ? Math.round((a.valor / valorConsumoTotal) * 1000) / 10 : 0 };
+    })
+    .sort(function(a, b){ return b.valor - a.valor; });
+
+  const topProductos = Object.keys(acumuladoProducto).map(function(codigo){
+    const info = mapaProducto[codigo];
+    const acc = acumuladoProducto[codigo];
+    const udmsDistintas = Object.keys(acc.udms);
+    return {
+      codigo: codigo,
+      producto: info ? info.producto : ("(código no encontrado en MATRIZ: " + codigo + ")"),
+      udm: udmsDistintas.length === 1 ? udmsDistintas[0] : (info ? info.udm : ""),
+      conversionDisponible: udmsDistintas.length <= 1,
+      consumoTotal: Math.round(acc.consumo * 1000) / 1000,
+      movimientos: acc.movimientos
+    };
+  }).sort(function(a, b){ return b.consumoTotal - a.consumoTotal; }).slice(0, limite);
+
+  const productoTop = topProductos.length ? topProductos[0] : null;
+
+  // Periodo anterior (misma duración, inmediatamente antes) — solo para tendencia en $.
+  const duracionMs = rango.hasta.getTime() - rango.desde.getTime();
+  const anteriorHasta = new Date(rango.desde.getTime() - 1000);
+  const anteriorDesde = new Date(anteriorHasta.getTime() - duracionMs);
+  const valorPeriodoAnterior = sumarValorEnRango_(anteriorDesde, anteriorHasta);
+  const tendenciaPct = valorPeriodoAnterior > 0 ? Math.round(((valorConsumoTotal - valorPeriodoAnterior) / valorPeriodoAnterior) * 1000) / 10 : null;
+
+  return {
+    filtros: {
+      periodoPreset: filtros.periodoPreset || "PERSONALIZADO",
+      fechaDesde: Utilities.formatDate(rango.desde, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+      fechaHasta: Utilities.formatDate(rango.hasta, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+      area: filtros.area || ""
+    },
+    resumen: {
+      valorConsumoTotal: Math.round(valorConsumoTotal * 100) / 100,
+      valorPeriodoAnterior: Math.round(valorPeriodoAnterior * 100) / 100,
+      tendenciaPct: tendenciaPct,
+      movimientosTotales: movimientosTotales,
+      movimientosSinCosto: movimientosSinCosto,
+      productosSinCosto: Object.keys(codigosSinCosto).length,
+      productoTop: productoTop,
+      mesMayorGasto: mesMayorGasto
+    },
+    consumoMensualValor: consumoMensualValor,
+    topProductos: topProductos,
+    consumoPorArea: consumoPorArea
+  };
+
+}

@@ -7873,6 +7873,36 @@ function abrirHistoricoConsumo(){
     <p style="color:var(--text-soft);font-size:13px;margin-top:-8px">Solo lectura — consulta cuánto se ha consumido realmente de un producto, con base en los movimientos de Salida ya registrados. No crea ni modifica ningún movimiento.</p>
 
     <div class="cardProducto">
+      <h3 style="margin-top:0;display:flex;align-items:center;gap:8px">${tgIcon("dinero",17)} Dashboard de Consumo</h3>
+      <p style="color:var(--text-soft);font-size:12.5px;margin-top:-8px">Vista general de todo el almacén: top de productos, gasto mensual y consumo por área. Los totales se muestran en $ porque no se pueden sumar kg, L y pz de productos distintos en un solo número.</p>
+
+      <div class="gridFormulario" style="margin-top:10px">
+        <div class="campo">
+          <label>Periodo</label>
+          <select id="periodoDashboardConsumo" onchange="cambiarPeriodoDashboardConsumo()">
+            ${HISTORICO_CONSUMO_PERIODOS_.map(function(p){ return `<option value="${p.valor}"${p.valor === "ULTIMOS_6M" ? " selected" : ""}>${p.etiqueta}</option>`; }).join("")}
+          </select>
+        </div>
+        <div class="campo" id="campoFechaDesdeDashboardConsumo" style="display:none">
+          <label>Desde</label>
+          <input id="fechaDesdeDashboardConsumo" type="date">
+        </div>
+        <div class="campo" id="campoFechaHastaDashboardConsumo" style="display:none">
+          <label>Hasta</label>
+          <input id="fechaHastaDashboardConsumo" type="date">
+        </div>
+        <div class="campo">
+          <label>Área</label>
+          <select id="areaDashboardConsumo"><option value="">Todas</option></select>
+        </div>
+      </div>
+
+      <div class="boton" id="btnActualizarDashboardConsumo" style="margin-top:12px;max-width:200px" onclick="actualizarDashboardConsumo()">${tgIcon("refrescar",16)} Actualizar</div>
+
+      <div id="resultadoDashboardConsumo" style="margin-top:14px"></div>
+    </div>
+
+    <div class="cardProducto">
 
       <label>Producto</label>
       <div style="position:relative;max-width:420px">
@@ -7913,12 +7943,16 @@ function abrirHistoricoConsumo(){
 
   google.script.run
     .withSuccessHandler(function(areas){
-      const select = document.getElementById("areaHistoricoConsumo");
-      if(!select) return;
-      areas.forEach(function(a){ select.innerHTML += `<option value="${a}">${a}</option>`; });
+      ["areaHistoricoConsumo", "areaDashboardConsumo"].forEach(function(id){
+        const select = document.getElementById(id);
+        if(!select) return;
+        areas.forEach(function(a){ select.innerHTML += `<option value="${a}">${a}</option>`; });
+      });
     })
-    .withFailureHandler(function(){ /* si falla, el selector se queda solo con "Todas" — no bloquea el resto de la pantalla */ })
+    .withFailureHandler(function(){ /* si falla, los selectores se quedan solo con "Todas" — no bloquea el resto de la pantalla */ })
     .obtenerAreasSalidaApp(obtenerTokenSesion());
+
+  actualizarDashboardConsumo();
 
 }
 
@@ -7926,6 +7960,146 @@ function cambiarPeriodoHistoricoConsumo(){
   const personalizado = document.getElementById("periodoHistoricoConsumo").value === "PERSONALIZADO";
   document.getElementById("campoFechaDesdeHistoricoConsumo").style.display = personalizado ? "block" : "none";
   document.getElementById("campoFechaHastaHistoricoConsumo").style.display = personalizado ? "block" : "none";
+}
+
+function cambiarPeriodoDashboardConsumo(){
+  const personalizado = document.getElementById("periodoDashboardConsumo").value === "PERSONALIZADO";
+  document.getElementById("campoFechaDesdeDashboardConsumo").style.display = personalizado ? "block" : "none";
+  document.getElementById("campoFechaHastaDashboardConsumo").style.display = personalizado ? "block" : "none";
+}
+
+function actualizarDashboardConsumo(){
+
+  const cont = document.getElementById("resultadoDashboardConsumo");
+  if(!cont) return;
+
+  const filtros = {
+    periodoPreset: document.getElementById("periodoDashboardConsumo").value,
+    fechaDesde: document.getElementById("fechaDesdeDashboardConsumo").value,
+    fechaHasta: document.getElementById("fechaHastaDashboardConsumo").value,
+    area: document.getElementById("areaDashboardConsumo").value,
+    limite: 8
+  };
+
+  activarCargaBoton("btnActualizarDashboardConsumo", true);
+  cont.innerHTML = `<div class="spinnerCentro"><div class="spinner"></div></div>`;
+
+  google.script.run
+    .withSuccessHandler(function(datos){
+      activarCargaBoton("btnActualizarDashboardConsumo", false);
+      dibujarDashboardConsumo(datos);
+    })
+    .withFailureHandler(function(e){
+      activarCargaBoton("btnActualizarDashboardConsumo", false);
+      cont.innerHTML = tgEmptyState("alertaTriangulo", e.message);
+    })
+    .obtenerDashboardConsumoApp(filtros, obtenerTokenSesion());
+
+}
+
+function dibujarDashboardConsumo(datos){
+
+  const cont = document.getElementById("resultadoDashboardConsumo");
+  if(!cont) return;
+
+  const r = datos.resumen;
+  const formatoDinero = function(v){ return "$" + Number(v || 0).toLocaleString("es-MX",{minimumFractionDigits:2}); };
+  const tendenciaTexto = r.tendenciaPct === null
+    ? "Sin periodo anterior comparable"
+    : (Math.abs(r.tendenciaPct) + "% vs. periodo anterior");
+  const tendenciaColor = r.tendenciaPct === null ? "var(--text-muted)" : (r.tendenciaPct > 0 ? "var(--color-danger)" : (r.tendenciaPct < 0 ? "var(--color-success)" : "var(--text-muted)"));
+  const tendenciaIcono = r.tendenciaPct === null ? "" : (r.tendenciaPct > 0 ? tgIcon("tendenciaSube",13) : (r.tendenciaPct < 0 ? tgIcon("tendenciaBaja",13) : ""));
+
+  // Barras horizontales de una sola magnitud (sin codificar identidad por
+  // color: cada fila ya lleva su nombre como texto) — mismo criterio usado
+  // en el resto de TAGERS para listas ordenadas, ancho proporcional al máximo.
+  function barrasRanking(filas, opts){
+    if(!filas || !filas.length) return tgEmptyState("carrito", "Sin movimientos en el periodo seleccionado");
+    const max = Math.max.apply(null, filas.map(function(f){ return opts.valor(f); })) || 1;
+    return `<div style="display:flex;flex-direction:column;gap:9px">` + filas.map(function(f){
+      const v = opts.valor(f);
+      const pct = Math.max(2, Math.round((v / max) * 100));
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">${opts.etiqueta(f)}</span>
+            <span style="font-weight:700;color:${opts.color}">${opts.formato(f)}</span>
+          </div>
+          <div style="background:var(--bg);border-radius:6px;height:8px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${opts.color};border-radius:6px"></div>
+          </div>
+        </div>`;
+    }).join("") + `</div>`;
+  }
+
+  // Barras verticales para la tendencia mensual en $ — un solo hue, altura proporcional al máximo.
+  function barrasMensuales(filas){
+    if(!filas || !filas.length) return tgEmptyState("carrito", "Sin movimientos en el periodo seleccionado");
+    const max = Math.max.apply(null, filas.map(function(f){ return f.valor; })) || 1;
+    return `<div style="display:flex;align-items:flex-end;gap:8px;height:150px;padding-top:10px;min-width:min-content">` + filas.map(function(m){
+      const alturaPct = Math.max(3, Math.round((m.valor / max) * 100));
+      return `
+        <div style="flex:0 0 56px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px" title="${m.etiqueta}: ${formatoDinero(m.valor)}">
+          <span style="font-size:10.5px;font-weight:700;color:var(--text-muted);white-space:nowrap">${formatoDinero(m.valor)}</span>
+          <div style="width:100%;max-width:34px;background:var(--guinda);border-radius:4px 4px 0 0;height:${alturaPct}%"></div>
+          <span style="font-size:10px;color:var(--text-muted);white-space:nowrap">${m.etiqueta.split(" ")[0].slice(0,3)}</span>
+        </div>`;
+    }).join("") + `</div>`;
+  }
+
+  cont.innerHTML = `
+
+    <div class="gridFormulario" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;max-width:none">
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">Consumo total</div>
+        <div style="font-size:18px;font-weight:800;color:var(--guinda)">${formatoDinero(r.valorConsumoTotal)}</div>
+      </div>
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">Tendencia</div>
+        <div style="font-size:15px;font-weight:800;color:${tendenciaColor};display:flex;align-items:center;justify-content:center;gap:5px">${tendenciaIcono} ${tendenciaTexto}</div>
+      </div>
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">Movimientos</div>
+        <div style="font-size:18px;font-weight:800;color:var(--oliva)">${r.movimientosTotales}</div>
+      </div>
+      <div class="campo" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em">Mes de mayor gasto</div>
+        <div style="font-size:14px;font-weight:700">${r.mesMayorGasto ? (r.mesMayorGasto.etiqueta + " — " + formatoDinero(r.mesMayorGasto.valor)) : "—"}</div>
+      </div>
+    </div>
+
+    ${r.productosSinCosto > 0 ? `
+      <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
+        ${tgIcon("info",13)} ${r.productosSinCosto} producto(s) sin costo capturado en MATRIZ (${r.movimientosSinCosto} movimiento(s)) no se incluyeron en los totales en $, pero sí en su propio ranking de cantidad.
+      </p>
+    ` : ""}
+
+    <h3 style="margin-top:20px">Gasto mensual</h3>
+    <div style="overflow-x:auto">${barrasMensuales(datos.consumoMensualValor)}</div>
+
+    <div class="gridFormulario" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px;align-items:start;max-width:none">
+      <div>
+        <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("carrito",16)} Top productos ${r.productoTop ? "" : ""}</h3>
+        ${barrasRanking(datos.topProductos, {
+          valor: function(p){ return p.consumoTotal; },
+          etiqueta: function(p){ return p.producto; },
+          formato: function(p){ return formatearCantidadJS(p.consumoTotal) + " " + p.udm; },
+          color: "var(--guinda)"
+        })}
+      </div>
+      <div>
+        <h3 style="margin-top:0;display:flex;align-items:center;gap:7px">${tgIcon("ubicacion",16)} Consumo por área</h3>
+        ${barrasRanking(datos.consumoPorArea, {
+          valor: function(a){ return a.valor; },
+          etiqueta: function(a){ return a.area; },
+          formato: function(a){ return formatoDinero(a.valor) + " (" + a.porcentaje + "%)"; },
+          color: "var(--oliva)"
+        })}
+      </div>
+    </div>
+
+  `;
+
 }
 
 function buscarProductoParaHistoricoConsumo(){
